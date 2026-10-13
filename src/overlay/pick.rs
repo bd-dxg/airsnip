@@ -18,7 +18,7 @@ const ACCENT_B: u8 = 232;
 /// 手柄命中半径。
 pub(super) const PICK_RADIUS: i32 = 6;
 
-/// 选区手柄类型（八向 + 移动 + 对象移动）。
+/// 选区手柄类型（八向 + 移动）；对象手柄见 `objedit::ObjHandle`。
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Handle {
     N,
@@ -30,8 +30,6 @@ pub(super) enum Handle {
     SE,
     SW,
     Move,
-    /// 拖动文本对象（EDT-4）。
-    MoveObj,
 }
 
 /// 八向手柄/移动命中（CAP-2）。
@@ -223,7 +221,7 @@ pub(super) fn draw_curve_handles(pixmap: &mut Pixmap, obj: &Object) {
 }
 
 /// 虚线辅助线（5px 实 / 4px 虚）：tiny-skia 无 dash，手动拆成小段。
-fn dashed_line(pixmap: &mut Pixmap, a: Point, b: Point) {
+pub(super) fn dashed_line(pixmap: &mut Pixmap, a: Point, b: Point) {
     let (dx, dy) = (b.x - a.x, b.y - a.y);
     let len = (dx * dx + dy * dy).sqrt();
     if len < 1.0 {

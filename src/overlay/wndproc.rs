@@ -8,7 +8,6 @@ use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::Overlay;
-use super::cursor::apply_cursor;
 use super::geometry::SelRect;
 
 pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -38,6 +37,9 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
             overlay.on_mouse_move(x, y);
+            // 光标随鼠标位置变：手柄→方向光标、对象/曲线控制柄→移动光标（否则系统只在
+            // 位置变化且命中窗口时发 WM_SETCURSOR，拖动手柄途中光标不会更新）
+            overlay.apply_cursor_at(x, y);
             LRESULT(0)
         }
         WM_LBUTTONUP => {
@@ -104,9 +106,9 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             LRESULT(0)
         }
         WM_ERASEBKGND => LRESULT(1),
-        // 按住空格时切换为自绘抓手光标，提示「空格 + 拖动可移动选区」
+        // 光标形状随鼠标位置决定（手柄方向 / 对象移动 / 十字），见 `cursor::cursor_at`
         WM_SETCURSOR => {
-            apply_cursor(hwnd, space_down());
+            overlay.apply_cursor_now(hwnd);
             LRESULT(1)
         }
         WM_KEYDOWN => {
@@ -124,9 +126,9 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             } else {
                 wparam.0 as u32
             };
-            // 空格按下立即切抓手光标：系统只在鼠标移动时发 WM_SETCURSOR，不能等它
+            // 空格按下立即刷新光标：系统只在鼠标移动时发 WM_SETCURSOR，不能等它
             if vk == 0x20 {
-                apply_cursor(hwnd, true);
+                overlay.apply_cursor_now(hwnd);
                 return LRESULT(0);
             }
             match vk {
@@ -145,6 +147,10 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                     }
                 }
                 0x59 if ctrl_down() => overlay.on_redo(), // Ctrl+Y
+                // EDT-7：删除选中对象 / 层级调整（Ctrl+] 置顶、Ctrl+[ 置底）
+                0x2E => overlay.delete_selected(),
+                0xDD if ctrl_down() => overlay.reorder_selected(true),
+                0xDB if ctrl_down() => overlay.reorder_selected(false),
                 _ => {
                     // 工具切换键（M3）：任意键都查映射（不限于数字键），
                     // 以便设置面板可把工具键改为字母等
@@ -177,8 +183,9 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             LRESULT(0)
         }
         WM_KEYUP => {
+            // 空格松开：光标回到按当前位置判定的形状
             if wparam.0 as u32 == 0x20 {
-                apply_cursor(hwnd, false);
+                overlay.apply_cursor_now(hwnd);
             }
             LRESULT(0)
         }
@@ -206,7 +213,8 @@ fn ctrl_down() -> bool {
     key_down(0x11)
 }
 
-fn shift_down() -> bool {
+/// Shift 是否按下（文本输入修饰键 / 绘制约束 EDT-1·EDT-2）。
+pub(super) fn shift_down() -> bool {
     key_down(0x10)
 }
 

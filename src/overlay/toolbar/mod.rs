@@ -36,6 +36,8 @@ pub struct State {
     pub round: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+    /// 是否有选中对象（层级/删除按钮可用性，EDT-7）。
+    pub has_selection: bool,
 }
 
 /// 工具栏动作。
@@ -47,6 +49,12 @@ pub enum Action {
     ToggleRound,
     Undo,
     Redo,
+    /// EDT-7：选中对象置顶（最上层）。
+    Raise,
+    /// EDT-7：选中对象置底（最下层）。
+    Lower,
+    /// EDT-7：删除选中对象（Del 同效）。
+    Delete,
     /// PIN-1：把选区（含标注）贴为置顶窗口。
     Pin,
     /// M4：把当前选区作为滚动视口，进入长截图拼接（S 键同效）。
@@ -115,6 +123,11 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32) -> Toolbar {
     c.sep();
     item(&mut c, BTN, BTN, Action::Undo);
     item(&mut c, BTN, BTN, Action::Redo);
+    c.sep();
+    // EDT-7：对象层级与删除（需选中对象）
+    item(&mut c, BTN, BTN, Action::Raise);
+    item(&mut c, BTN, BTN, Action::Lower);
+    item(&mut c, BTN, BTN, Action::Delete);
     c.sep();
     item(&mut c, BTN, BTN, Action::Pin);
     item(&mut c, BTN, BTN, Action::Longshot);
@@ -195,23 +208,27 @@ mod tests {
     #[test]
     fn toolbar_hit_maps_each_element() {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440);
-        let y = bar.rect.y + H / 2;
-        let center = |offset: i32| bar.hit(bar.rect.x + offset, y);
-        assert_eq!(center(18), Some(Action::Tool(Tool::Rect)));
-        assert_eq!(center(48), Some(Action::Tool(Tool::Arrow)));
-        assert_eq!(center(78), Some(Action::Tool(Tool::Text)));
-        assert_eq!(center(108), Some(Action::Tool(Tool::Highlight)));
-        assert_eq!(center(138), Some(Action::Tool(Tool::Blur)));
-        assert_eq!(center(168), Some(Action::Tool(Tool::Glow)));
-        assert_eq!(center(201), Some(Action::Color(0)));
-        assert_eq!(center(227), Some(Action::Color(1)));
-        assert_eq!(center(338), Some(Action::ToggleFill));
-        assert_eq!(center(368), Some(Action::ToggleRound));
-        assert_eq!(center(403), Some(Action::Undo));
-        assert_eq!(center(433), Some(Action::Redo));
-        assert_eq!(center(468), Some(Action::Pin)); // 贴图按钮（M2b，Pin 组单独分隔）
-        assert_eq!(center(498), Some(Action::Longshot)); // 长截图按钮（M4）
-        assert_eq!(center(530), Some(Action::Copy)); // 复制按钮（OUT-1）
-        assert_eq!(center(560), Some(Action::Save)); // 保存按钮（OUT-2）
+        // 每个元素的中心点必须命中它自己
+        for (r, action) in &bar.hits {
+            let (cx, cy) = (r.x + r.w / 2, r.y + r.h / 2);
+            assert_eq!(bar.hit(cx, cy), Some(*action), "元素 {action:?} 中心未命中自己");
+        }
+        // 元素不重叠（命中区连续递增）
+        for w in bar.hits.windows(2) {
+            assert!(w[0].0.x + w[0].0.w <= w[1].0.x, "元素重叠：{:?} / {:?}", w[0].0, w[1].0);
+        }
+        // 元素顺序与数量（EDT-7 工具栏结构）
+        let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
+        assert_eq!(actions.len(), 22);
+        assert_eq!(actions[..6], Tool::ALL.map(Action::Tool));
+        assert_eq!(actions[13], Action::Undo);
+        assert_eq!(actions[14], Action::Redo);
+        assert_eq!(actions[15], Action::Raise);
+        assert_eq!(actions[16], Action::Lower);
+        assert_eq!(actions[17], Action::Delete);
+        assert_eq!(actions[18], Action::Pin);
+        assert_eq!(actions[19], Action::Longshot);
+        assert_eq!(actions[20], Action::Copy);
+        assert_eq!(actions[21], Action::Save);
     }
 }

@@ -8,12 +8,26 @@ use tiny_skia::Pixmap;
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection, DEFAULT_GUI_FONT,
-    DIB_RGB_COLORS, DeleteDC, GetDC, GetStockObject, HBITMAP, HDC, ReleaseDC, SRCCOPY, SelectObject, SetBkMode,
-    SetTextColor, TRANSPARENT, TextOutW,
+    DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetStockObject, HBITMAP, HDC, ReleaseDC, SRCCOPY, SelectObject,
+    SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
 };
 
 use super::SelRect;
 use super::geometry::text_rect;
+
+impl Drop for super::Overlay {
+    /// 释放上屏用 GDI 资源（DIB section 位图 + 内存 DC）。
+    fn drop(&mut self) {
+        unsafe {
+            if !self.dib_bmp.0.is_null() {
+                let _ = DeleteObject(self.dib_bmp.into());
+            }
+            if !self.mem_dc.0.is_null() {
+                let _ = DeleteDC(self.mem_dc);
+            }
+        }
+    }
+}
 
 impl super::Overlay {
     /// 上屏指定区域：局部 RGBA → BGRA 写入 DIB section，再用 BitBlt 刷到窗口。

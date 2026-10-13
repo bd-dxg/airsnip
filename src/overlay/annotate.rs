@@ -53,6 +53,8 @@ impl super::Overlay {
             round: self.round,
             can_undo: self.doc.can_undo(),
             can_redo: self.doc.can_redo(),
+            // 层级/删除按钮需要选中对象才可用（EDT-7）
+            has_selection: self.selected.is_some(),
         }
     }
 
@@ -60,19 +62,29 @@ impl super::Overlay {
     pub(super) fn apply_action(&mut self, action: toolbar::Action) {
         match action {
             toolbar::Action::Tool(t) => self.tool = t,
-            toolbar::Action::Color(i) => self.color_index = i,
+            toolbar::Action::Color(i) => {
+                self.color_index = i;
+                // EDT-7：颜色同时作用于选中的对象
+                self.style_selected();
+            }
             toolbar::Action::ToggleFill => {
                 // 文本工具无背景功能：填充开关仅对矩形有效，文本下忽略
                 if self.tool != crate::editor::Tool::Text {
                     self.filled = !self.filled;
+                    self.style_selected();
                 }
             }
             // 圆角开关仅对矩形有效（EDT-4 文本工具下点击无效果）
             toolbar::Action::ToggleRound => {
                 if self.tool != crate::editor::Tool::Text {
                     self.round = !self.round;
+                    self.style_selected();
                 }
             }
+            // EDT-7：层级调整与删除（与 Ctrl+] / Ctrl+[ / Del 同一条路径）
+            toolbar::Action::Raise => return self.reorder_selected(true),
+            toolbar::Action::Lower => return self.reorder_selected(false),
+            toolbar::Action::Delete => return self.delete_selected(),
             toolbar::Action::Undo => return self.on_undo(),
             toolbar::Action::Redo => return self.on_redo(),
             // PIN-1：贴图按钮 → 选区贴图后覆盖层自行关闭（不复绘）

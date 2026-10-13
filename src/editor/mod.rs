@@ -7,12 +7,14 @@ mod curve;
 mod document;
 mod hit;
 pub(crate) mod text;
+mod transform;
 
 pub use curve::{
     SEGMENTS as CURVE_SEGMENTS, dist_to_polyline, end_tangent, flatten, head_entry_t, point_at, polyline_len,
     split_left, t_at_arc_from_end,
 };
 pub use document::{Document, MAX_HISTORY};
+pub use transform::{ArrowEnd, scale_factors, snap_direction, square_corner};
 
 /// 坐标点。
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -220,6 +222,9 @@ impl Tool {
 /// 新建对象默认线宽（物理像素，连续可调：滚轮 / 二级工具栏）。
 pub const DEFAULT_LINE_WIDTH: f32 = 4.0;
 
+/// 矩形圆角半径（EDT-1 圆角开关打开时的固定半径）。
+pub const ROUND_RADIUS: f32 = 12.0;
+
 /// 模糊默认强度（EDT-5：半径，连续可调）。
 pub const DEFAULT_BLUR_RADIUS: f32 = 16.0;
 
@@ -312,6 +317,27 @@ mod tests {
         let mut doc = Document::new();
         assert!(!doc.undo());
         assert!(!doc.redo());
+    }
+
+    #[test]
+    fn raise_and_lower_change_z_order() {
+        let mut doc = Document::new();
+        doc.begin();
+        doc.push(rect((0.0, 0.0), (10.0, 10.0)));
+        doc.push(arrow((0.0, 0.0), (20.0, 20.0)));
+        doc.push(rect((5.0, 5.0), (15.0, 15.0)));
+        doc.commit(true);
+
+        // 最底层置顶：移到末尾，其余顺序保持
+        assert!(doc.raise(0));
+        assert!(matches!(doc.objects()[0].kind, Kind::Arrow { .. }));
+        assert!(matches!(doc.objects()[2].kind, Kind::Rect { .. }));
+        assert!(!doc.raise(2), "已在顶层应无变化");
+
+        // 置底：移到开头
+        assert!(doc.lower(2));
+        assert!(matches!(doc.objects()[0].kind, Kind::Rect { .. }));
+        assert!(!doc.lower(0), "已在底层应无变化");
     }
 
     #[test]
