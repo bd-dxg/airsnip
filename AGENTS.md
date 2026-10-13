@@ -4,11 +4,11 @@
 
 轻量原生截图与标注工具（Windows 11，Rust + windows-rs，纯 CPU 渲染），面向无独显迷你主机。目标：常驻 ≈0 开销、触发即用、框选/箭头/文本/高斯模糊/高亮标注、长截图、贴图。
 
-完整需求见 `screenshot-tool-PRD.md`，域术语见 `CONTEXT.md`，架构决策见 `docs/adr/`。
+完整需求见 `screenshot-tool-PRD.md`，架构决策见 `docs/adr/`。
 
 ## 项目状态
 
-- 当前处于 **M0–M4 全部交付，M5a 阶段 A 已交付**：M0/M1/M2/M2b/M3/M4 均已交付（M4 已合并 PR #23，用户复验通过）；M4 自动化验证（`cargo test` 95 项全绿；`Task/verify-m4.ps1` GUI 端到端 PIL 验证 PASS：自建可滚动目标窗口 → F1 → 框选 → S（工具栏按钮/快捷键）→ 自动滚动拼接 → 输出 PNG 844x1901 > 视口 641）。关键实现：全重叠区一致性拼接（`stitch`）、固定页眉/页脚检测（`engine`）、视口蓝框（`border`）、执行窗口 `WS_EX_NOACTIVATE` + `AttachThreadInput` 激活目标后发真实滚轮（`scroll`）、`ImmGetVirtualKey` 解决输入法吞键。**下一步：M5a 阶段 B（对象二次编辑）**——阶段 A（保存/命名模板/WebP）已交付（分支 `feat/save-config`，PR 待合并）：保存一律弹系统「另存为」对话框（PNG/JPEG/WebP 无损，纯 Rust `image-webp`），记忆上次格式，设置面板提供三种文件名模板；剩余缺口（对象二次编辑、文本字体）见 `Task/task_plan.md` 的 M5a 节。- 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
+- 当前处于 **M0–M4 全部交付，M5a 阶段 A 已交付**：M0/M1/M2/M2b/M3/M4 均已交付（M4 已合并 PR #23，用户复验通过）；M4 自动化验证（`cargo test` 95 项全绿；`Task/verify-m4.ps1` GUI 端到端 PIL 验证 PASS：自建可滚动目标窗口 → F1 → 框选 → S（工具栏按钮/快捷键）→ 自动滚动拼接 → 输出 PNG 844x1901 > 视口 641）。关键实现：全重叠区一致性拼接（`stitch`）、固定页眉/页脚检测（`engine`）、视口蓝框（`border`）、执行窗口 `WS_EX_NOACTIVATE` + `AttachThreadInput` 激活目标后发真实滚轮（`scroll`）、`ImmGetVirtualKey` 解决输入法吞键。**下一步：M5a 阶段 B（对象二次编辑）**——阶段 A（保存/命名模板/WebP）已交付（PR #24）：保存一律弹系统「另存为」对话框（PNG/JPEG/WebP 无损，纯 Rust `image-webp`），记忆上次格式，设置面板提供三种文件名模板；剩余缺口（对象二次编辑、文本字体）见 `Task/task_plan.md` 的 M5a 节。- 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
 - 开发由 AI 驱动，本文件是进入此仓库的 agent 的上下文。
 
 ## 技术栈
@@ -31,7 +31,7 @@
 1. **禁止在主分支（main）直接开发**：任何功能、修复、优化都必须新建分支（命名建议 `feat/*`、`fix/*`、`docs/*`），完成后以 Pull Request 提交、经审查后合并回 main。main 只接受 PR 合并，不允许本地直接 push。
 2. **先验证，后提交**：完成实现后先自行编译/测试，然后把改动交给用户手动验证（运行、体验、确认交互）。**未得到用户明确确认前，禁止执行 `git commit`、`git push`、创建 PR 或合并**。只有用户说“验证通过 / 可以提交”后才走提交与 PR 流程。
 3. 按里程碑推进（PRD §7：M0 → M5，二期另行），每次只实现当前里程碑需求，不做投机性代码。
-4. 实现功能前先同步文档：新术语写入 `CONTEXT.md`；不可逆/高杠杆决策记入 `docs/adr/NNNN-*.md`；需求变更落在 PRD 对应编号。
+4. 实现功能前先同步文档：不可逆/高杠杆决策记入 `docs/adr/NNNN-*.md`；需求变更落在 PRD 对应编号。
 5. 每个源文件保留头部 `SPDX-License-Identifier: GPL-3.0-only`。
 6. 引入新依赖前确认许可证与 GPL-3.0-only 兼容，并说明用途。
 7. `windows` crate 按需开启 features，不一次性全量开启。

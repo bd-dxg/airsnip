@@ -42,7 +42,6 @@ cargo build --release
 ## 文档
 
 - `screenshot-tool-PRD.md` — 完整需求与技术方案（含性能指标、风险对策）
-- `CONTEXT.md` — 领域术语表
 - `docs/adr/` — 架构决策记录（ADR）
 
 ## 许可
