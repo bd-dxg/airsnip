@@ -65,6 +65,10 @@ pub struct Overlay {
     tool: Tool,
     /// 工具切换键配置（M3：数字键 1-5 切换标注工具）。
     tool_keys: crate::settings::ToolKeys,
+    /// 保存文件名模板（OUT-2）：保存对话框预填文件名用。
+    name_style: crate::settings::NameStyle,
+    /// 上次保存的格式扩展名（OUT-2）：保存对话框默认选中的筛选器。
+    last_save_ext: Option<String>,
     color_index: usize,
     /// 新建对象的默认线宽（滚轮 / 二级工具栏可连续调整）。
     line_width: f32,
@@ -120,6 +124,8 @@ impl Overlay {
         palette: &'static Palette,
         tool_keys: crate::settings::ToolKeys,
         default_tool: Tool,
+        name_style: crate::settings::NameStyle,
+        last_save_ext: Option<String>,
     ) -> Result<Self, String> {
         let (w, h) = (capture.width, capture.height);
         let Some(size) = tiny_skia::IntSize::from_wh(w, h) else {
@@ -147,6 +153,8 @@ impl Overlay {
             doc: Document::new(),
             tool: default_tool, // 记住上次工具（M3），首次为矩形
             tool_keys,
+            name_style,
+            last_save_ext,
             color_index: 1, // 默认红色
             line_width: editor::DEFAULT_LINE_WIDTH,
             blur_radius: editor::DEFAULT_BLUR_RADIUS,
@@ -212,6 +220,8 @@ impl Overlay {
         palette: &'static Palette,
         tool_keys: crate::settings::ToolKeys,
         default_tool: Tool,
+        name_style: crate::settings::NameStyle,
+        last_save_ext: Option<String>,
         hinstance: HINSTANCE,
         main_hwnd: HWND,
     ) -> OverlayResult {
@@ -226,7 +236,7 @@ impl Overlay {
             }
         };
 
-        let mut overlay = match Self::new(capture, palette, tool_keys, default_tool) {
+        let mut overlay = match Self::new(capture, palette, tool_keys, default_tool, name_style, last_save_ext) {
             Ok(o) => o,
             Err(_) => {
                 unsafe {

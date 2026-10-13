@@ -51,6 +51,10 @@ pub enum Action {
     Pin,
     /// M4：把当前选区作为滚动视口，进入长截图拼接（S 键同效）。
     Longshot,
+    /// OUT-1：复制选区到剪贴板（Enter / Ctrl+C 同效）。
+    Copy,
+    /// OUT-2：按配置的目录与格式保存（Ctrl+S 同效）。
+    Save,
 }
 
 /// 工具栏布局：整体矩形 + 各元素命中区。
@@ -114,6 +118,9 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32) -> Toolbar {
     c.sep();
     item(&mut c, BTN, BTN, Action::Pin);
     item(&mut c, BTN, BTN, Action::Longshot);
+    c.sep();
+    item(&mut c, BTN, BTN, Action::Copy);
+    item(&mut c, BTN, BTN, Action::Save);
 
     let w = c.x - GAP + PAD;
     let x = sel.x.clamp(4, (screen_w - w - 4).max(4));
@@ -204,5 +211,7 @@ mod tests {
         assert_eq!(center(433), Some(Action::Redo));
         assert_eq!(center(468), Some(Action::Pin)); // 贴图按钮（M2b，Pin 组单独分隔）
         assert_eq!(center(498), Some(Action::Longshot)); // 长截图按钮（M4）
+        assert_eq!(center(530), Some(Action::Copy)); // 复制按钮（OUT-1）
+        assert_eq!(center(560), Some(Action::Save)); // 保存按钮（OUT-2）
     }
 }

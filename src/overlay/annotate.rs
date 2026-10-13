@@ -79,6 +79,10 @@ impl super::Overlay {
             toolbar::Action::Pin => return self.on_pin(),
             // M4：长截图按钮 → 选区作为视口进入拼接（不复绘）
             toolbar::Action::Longshot => return self.on_longshot(),
+            // OUT-1：复制按钮 → 复制到剪贴板并关闭覆盖层（不复绘）
+            toolbar::Action::Copy => return self.on_copy(),
+            // OUT-2：保存按钮 → 按配置保存并关闭覆盖层（不复绘）
+            toolbar::Action::Save => return self.on_save(),
         }
         // 仅工具栏自身外观发生变化
         let bar = self.bar.as_ref().map(|b| b.rect);
@@ -209,23 +213,52 @@ impl super::Overlay {
         }
     }
 
-    /// Ctrl+S：保存 PNG 到默认目录并关闭（OUT-2）。
+    /// Ctrl+S / 工具栏保存按钮：弹原生另存为对话框，按所选格式保存（OUT-2）。
+    /// 用户取消时保留覆盖层（可继续标注），不算截图完成。
     pub(super) fn on_save(&mut self) {
-        if let Some(sel) = self.selection {
-            let Some(cropped) = self.baked_selection(sel) else {
-                return;
-            };
-            std::thread::spawn(move || {
-                let dir = output::default_save_dir();
-                let _ = std::fs::create_dir_all(&dir);
-                let path = dir.join(output::timestamped_filename("png"));
-                if let Err(e) = output::save_png(&cropped, &path) {
-                    // 保存失败必须提示：静默吞掉会让用户以为截图已保存（OUT-2）
-                    crate::app::message_box(None, &format!("保存失败：{e}"), MB_OK | MB_ICONERROR);
-                }
-            });
+        let Some(sel) = self.selection else {
+            return;
+        };
+        // 预填文件名按设置里的命名模板；格式用上次保存的（首次为 PNG）
+        let ext = self.last_save_ext.as_deref().unwrap_or("png").to_string();
+        let name = format!("{}.{ext}", output::base_name(self.name_style));
+        // 初始目录用默认截图目录（不存在时交给系统记住的上次位置）
+        let dir = output::default_save_dir();
+        let chosen = if dir.is_dir() {
+            crate::app::filedlg::pick_save_file(self.hwnd, Some(&dir), &name, &ext)
+        } else {
+            crate::app::filedlg::pick_save_file(self.hwnd, None, &name, &ext)
+        };
+        // 对话框盖在覆盖层之上：关闭后整屏重绘，否则留下对话框残影
+        let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
+        self.repaint(SelRect {
+            x: 0,
+            y: 0,
+            w: vw,
+            h: vh,
+        });
+        let Some(path) = chosen else {
+            return;
+        };
+        // 记住本次格式：下次打开对话框时默认选中它（连拍时不必反复切筛选器）
+        if let Some(e) = path.extension().and_then(|e| e.to_str()) {
+            crate::app::last_save_ext_store(e);
         }
+        let Some(cropped) = self.baked_selection(sel) else {
+            return;
+        };
+        std::thread::spawn(move || {
+            if let Err(e) = output::save_file(&cropped, &path) {
+                // 保存失败必须提示：静默吞掉会让用户以为截图已保存（OUT-2）
+                crate::app::message_box(None, &format!("保存失败：{e}"), MB_OK | MB_ICONERROR);
+            }
+        });
         self.cancelled = false;
+        self.close();
+    }
+
+    /// 结束覆盖层：取消标志已由调用方设置，这里只投递关闭消息。
+    fn close(&self) {
         unsafe {
             let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
