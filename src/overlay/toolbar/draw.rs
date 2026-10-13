@@ -17,8 +17,9 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
     rounded_rect(pixmap, bar.rect, 7.0, p.bg, Some(p.border));
 
     // 组分隔线：画在每个组首个元素左侧的空白处
-    // 组划分（hits 索引）：[工具 0-5][颜色 6-10][填充 11 圆角 12][撤销 13 重做 14][贴图 15 长截图 16]
-    for &index in &[6usize, 11, 13, 15] {
+    // 组划分（hits 索引）：[工具 0-5][颜色 6-10][填充 11 圆角 12][撤销 13 重做 14]
+    // [贴图 15 长截图 16][复制 17 保存 18]
+    for &index in &[6usize, 11, 13, 15, 17] {
         let Some((first, _)) = bar.hits.get(index) else {
             continue;
         };
@@ -90,6 +91,10 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
             Action::Pin => pin_icon(pixmap, *r, p.icon),
             // M4：长截图（向下展开的页面 + 箭头）
             Action::Longshot => longshot_icon(pixmap, *r, p.icon),
+            // OUT-1：复制（两张叠放的纸）
+            Action::Copy => copy_icon(pixmap, *r, p.icon),
+            // OUT-2：保存（软盘）
+            Action::Save => save_icon(pixmap, *r, p.icon),
         }
     }
 }

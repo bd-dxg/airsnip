@@ -3,6 +3,7 @@
 //! 拆分：`run` 入口与消息分发见本文件，托盘在 `tray`，热键在 `hotkey`，自启在 `autostart`。
 
 pub mod autostart;
+pub mod filedlg;
 mod hotkey;
 pub mod popmenu;
 mod tray;
@@ -36,6 +37,21 @@ pub const WM_PIN_BORDER_CHANGED: u32 = WM_APP + 5;
 
 /// 截图覆盖层是否在运行（跨线程；截图期间撤销全局贴图热键）。
 static OVERLAY_RUNNING: AtomicBool = AtomicBool::new(false);
+
+/// 覆盖层保存时选定的格式扩展名（OUT-2）：覆盖层线程写，主线程在截图结束时写回配置。
+static LAST_SAVE_EXT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 记录本次保存用的格式扩展名（覆盖层线程调用）。
+pub fn last_save_ext_store(ext: &str) {
+    if let Ok(mut g) = LAST_SAVE_EXT.lock() {
+        *g = Some(ext.to_ascii_lowercase());
+    }
+}
+
+/// 取出并清空记录的扩展名（主线程写回配置用）。
+fn last_save_ext_take() -> Option<String> {
+    LAST_SAVE_EXT.lock().ok().and_then(|mut g| g.take())
+}
 
 pub const ID_TRAY: u32 = 1;
 pub const ID_HOTKEY_SHOT: i32 = 101;
@@ -141,13 +157,24 @@ impl App {
         // 工具切换键配置 + 默认工具（记住上次使用，M3）
         let tool_keys = self.config.tool_keys.clone();
         let default_tool = crate::settings::last_tool();
+        // 命名模板与上次保存格式（OUT-2）：保存对话框预填文件名与默认筛选器用
+        let name_style = self.config.name_style;
+        let last_save_ext = self.config.last_save_ext.clone();
         std::thread::spawn(move || {
             let hinstance = HINSTANCE(hinstance as *mut _);
             let main_hwnd = HWND(main_hwnd as *mut _);
             match crate::capture::capture_virtual_screen() {
                 Ok(screen) => {
-                    let result =
-                        crate::overlay::Overlay::run(screen, palette, tool_keys, default_tool, hinstance, main_hwnd);
+                    let result = crate::overlay::Overlay::run(
+                        screen,
+                        palette,
+                        tool_keys,
+                        default_tool,
+                        name_style,
+                        last_save_ext,
+                        hinstance,
+                        main_hwnd,
+                    );
                     // M4：工具栏长截图按钮 / S 键返回视口选区，进入长截图拼接。
                     if let crate::overlay::OverlayResult::Viewport((x, y, w, h)) = result {
                         crate::longshot::run(x, y, w, h, hinstance, max_height, palette);
@@ -178,7 +205,10 @@ impl App {
 
     /// 应用设置面板的工作副本：写回配置、保存、重注册热键。
     pub fn apply_panel_config(&mut self, cfg: &Config) {
+        // 保存格式是运行时记忆（面板里没有对应设置项），不能被面板的旧副本覆盖（OUT-2）
+        let last_save_ext = self.config.last_save_ext.clone();
         self.config = cfg.clone();
+        self.config.last_save_ext = last_save_ext;
         self.config.save();
         self.register_hotkeys();
         // 贴图内边框快捷键（M2b）：立即下发给贴图窗口（含已存在的）
@@ -287,6 +317,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_OVERLAY_DONE => {
             if let Some(app) = app_from(hwnd) {
                 app.register_hotkeys(); // 重注册截图期间撤销的贴图热键
+                // 本次保存用过对话框的话，记住格式供下次默认选中（OUT-2）
+                if let Some(ext) = last_save_ext_take() {
+                    app.config.last_save_ext = Some(ext);
+                    app.config.save();
+                }
             }
             LRESULT(0)
         }

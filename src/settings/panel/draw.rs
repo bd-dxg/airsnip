@@ -228,6 +228,9 @@ fn draw_radio(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::ThemeDark => panel.config.theme == ThemeSetting::Dark,
         RowId::PinPosOriginal => panel.config.pin_position == crate::settings::PinPosition::Original,
         RowId::PinPosCenter => panel.config.pin_position == crate::settings::PinPosition::Center,
+        RowId::NameDateTime => panel.config.name_style == crate::settings::NameStyle::DateTime,
+        RowId::NameTimestamp => panel.config.name_style == crate::settings::NameStyle::Timestamp,
+        RowId::NameDate => panel.config.name_style == crate::settings::NameStyle::Date,
         _ => false,
     };
     let c = &row.control;

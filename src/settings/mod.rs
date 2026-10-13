@@ -109,6 +109,31 @@ pub enum PinPosition {
     Center,
 }
 
+/// 保存文件名模板（OUT-2）：保存对话框预填的文件名，可在设置面板选择。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum NameStyle {
+    /// `jietu-20241231-235959`（日期 + 时间，默认）。
+    #[default]
+    #[serde(rename = "datetime")]
+    DateTime,
+    /// `1735689599123`（Unix 毫秒时间戳）。
+    #[serde(rename = "timestamp")]
+    Timestamp,
+    /// `jietu-20241231`（仅日期）。
+    #[serde(rename = "date")]
+    Date,
+}
+
+impl NameStyle {
+    pub fn title(self) -> &'static str {
+        match self {
+            NameStyle::DateTime => "日期 + 时间",
+            NameStyle::Timestamp => "时间戳（Unix 毫秒）",
+            NameStyle::Date => "仅日期",
+        }
+    }
+}
+
 /// 根配置。所有字段带默认值，旧配置文件缺字段时自动补齐。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -127,6 +152,10 @@ pub struct Config {
     pub pin_position: PinPosition,
     /// 贴图 1px 蓝色边框（M2b，默认开）。
     pub pin_border: bool,
+    /// 保存文件名模板（OUT-2）。
+    pub name_style: NameStyle,
+    /// 上次保存用的格式扩展名（OUT-2，运行时记忆）：保存对话框下次默认选中该格式。
+    pub last_save_ext: Option<String>,
     /// 长截图拼接高度上限（像素，LNG-7，默认 30000）。
     pub longshot_max_height: u32,
 }
@@ -142,6 +171,8 @@ impl Default for Config {
             hotkey_warned: false,
             pin_position: PinPosition::Original,
             pin_border: true,
+            name_style: NameStyle::DateTime,
+            last_save_ext: None,
             longshot_max_height: 30000,
         }
     }
@@ -221,5 +252,21 @@ mod tests {
         assert_eq!(back.hotkey.screenshot_modifiers, 1);
         assert_eq!(back.hotkey.pin_modifiers, 4);
         assert!(!text.contains("legacy_modifiers"), "遗留字段不应写入配置：{text}");
+    }
+
+    /// 命名模板（OUT-2）：旧配置缺字段时回退默认值，新值能往返。
+    #[test]
+    fn name_style_roundtrip_and_defaults() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.name_style, NameStyle::DateTime, "旧配置应回退默认命名模板");
+        assert_eq!(old.last_save_ext, None, "旧配置无上次格式记录");
+
+        let cfg = Config {
+            name_style: NameStyle::Date,
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.name_style, NameStyle::Date);
+        assert_eq!(back.name_style.title(), "仅日期");
     }
 }

@@ -124,6 +124,19 @@ impl Panel {
                 self.end_capture();
                 self.config.pin_position = crate::settings::PinPosition::Center;
             }
+            // 文件名模板（OUT-2）：保存对话框预填文件名用
+            RowId::NameDateTime => {
+                self.end_capture();
+                self.config.name_style = crate::settings::NameStyle::DateTime;
+            }
+            RowId::NameTimestamp => {
+                self.end_capture();
+                self.config.name_style = crate::settings::NameStyle::Timestamp;
+            }
+            RowId::NameDate => {
+                self.end_capture();
+                self.config.name_style = crate::settings::NameStyle::Date;
+            }
             _ => self.end_capture(),
         }
     }
