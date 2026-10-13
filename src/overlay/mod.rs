@@ -5,13 +5,14 @@
 //!
 //! 文件分工：`wndproc` 消息分发、`geometry` 矩形运算、`surface` 像素缓冲与上屏、
 //! `cursor` 光标、`selection` 脏区重绘、`interaction` 鼠标交互、`pick` 对象选中与控制柄、
-//! `annotate` 标注与输出、`toolbar` 工具栏。
+//! `objedit` 对象手柄/拖动缩放/删除/层级、`annotate` 标注与输出、`toolbar` 工具栏。
 
 mod annotate;
 mod control;
 mod cursor;
 pub(crate) mod geometry;
 mod interaction;
+mod objedit;
 mod pick;
 mod selection;
 pub(crate) mod surface;
@@ -22,7 +23,7 @@ mod wndproc;
 
 use tiny_skia::Pixmap;
 use windows::Win32::Foundation::{HINSTANCE, HWND};
-use windows::Win32::Graphics::Gdi::{DeleteDC, DeleteObject, HBITMAP, HDC, InvalidateRect, UpdateWindow};
+use windows::Win32::Graphics::Gdi::{HBITMAP, HDC, InvalidateRect, UpdateWindow};
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
@@ -87,6 +88,8 @@ pub struct Overlay {
     selected: Option<usize>,
     /// 正在拖动的曲线控制柄：(控制点索引, 按下时的坐标)（EDT-3）。
     ctrl_drag: Option<(usize, Point)>,
+    /// 正在拖动的选中对象（EDT-7 移动/缩放）。
+    obj_drag: Option<objedit::ObjDrag>,
     /// 文本输入中状态（EDT-4）。
     text_edit: Option<TextEdit>,
     /// 当前工具栏布局（选区存在时才有）。
@@ -103,19 +106,6 @@ pub struct Overlay {
     dib_bmp: HBITMAP,
     /// DIB section 像素指针（BGRA，top-down）。
     dib_bits: *mut u8,
-}
-
-impl Drop for Overlay {
-    fn drop(&mut self) {
-        unsafe {
-            if !self.dib_bmp.0.is_null() {
-                let _ = DeleteObject(self.dib_bmp.into());
-            }
-            if !self.mem_dc.0.is_null() {
-                let _ = DeleteDC(self.mem_dc);
-            }
-        }
-    }
 }
 
 impl Overlay {
@@ -165,6 +155,7 @@ impl Overlay {
             down_started_draw: false,
             selected: None,
             ctrl_drag: None,
+            obj_drag: None,
             text_edit: None,
             bar: None,
             hwnd: HWND::default(),
@@ -185,7 +176,7 @@ impl Overlay {
                 style: CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS,
                 lpfnWndProc: Some(wndproc::wndproc),
                 hInstance: hinstance,
-                hCursor: cursor::create_cross_cursor(),
+                hCursor: cursor::cross_cursor(),
                 hbrBackground: Default::default(),
                 lpszMenuName: PCWSTR::null(),
                 lpszClassName: WINDOW_CLASS,

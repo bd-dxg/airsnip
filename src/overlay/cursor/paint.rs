@@ -1,20 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 光标（CAP-2）：白十字（默认）与自绘抓手（按住空格移动选区时）。
+//! 自绘光标（CAP-2）：白十字（默认）与抓手（按住空格移动选区）。
+//! 方向 / 移动光标用系统内置（见 `super`），这里只画系统没有的形状。
 
 use std::mem::size_of;
 use std::sync::atomic::{AtomicIsize, Ordering};
 
-use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, CreateBitmap, CreateDIBSection, DIB_RGB_COLORS, DeleteObject,
 };
-use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconIndirect, GCLP_HCURSOR, GetClassLongPtrW, HCURSOR, ICONINFO, SetCursor,
-};
+use windows::Win32::UI::WindowsAndMessaging::{CreateIconIndirect, HCURSOR, ICONINFO};
 
 /// 创建白十字 + 黑描边彩色光标（32bpp alpha），保证在暗化画面上清晰可见。
 /// 结果缓存进 static：窗口类可多次注册（截图每次重注册），直接新建会泄漏 GDI 图标句柄。
-pub(super) fn create_cross_cursor() -> HCURSOR {
+pub(in crate::overlay) fn cross_cursor() -> HCURSOR {
     let cached = CROSS_CURSOR.load(Ordering::Relaxed);
     if cached != 0 {
         return HCURSOR(cached as *mut core::ffi::c_void);
@@ -91,18 +89,6 @@ fn build_cross_cursor() -> HCURSOR {
     }
 }
 
-/// 切换当前光标：按住空格时用自绘抓手，否则用窗口类光标（十字）。
-pub(super) fn apply_cursor(hwnd: HWND, space: bool) {
-    unsafe {
-        let cur = if space {
-            hand_cursor()
-        } else {
-            HCURSOR(GetClassLongPtrW(hwnd, GCLP_HCURSOR) as *mut _)
-        };
-        let _ = SetCursor(Some(cur));
-    }
-}
-
 /// 抓手光标句柄缓存（进程内只创建一次，避免每次截图泄漏 GDI 句柄）。
 static HAND_CURSOR: AtomicIsize = AtomicIsize::new(0);
 
@@ -157,7 +143,7 @@ fn paint_hand(px: &mut [u8], s: i32) {
 }
 
 /// 抓手光标（空格移动选区时使用）。
-fn hand_cursor() -> HCURSOR {
+pub(super) fn hand_cursor() -> HCURSOR {
     let cached = HAND_CURSOR.load(Ordering::Relaxed);
     if cached != 0 {
         return HCURSOR(cached as *mut core::ffi::c_void);

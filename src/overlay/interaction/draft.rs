@@ -20,7 +20,7 @@ impl super::super::Overlay {
             Tool::Rect => Kind::Rect {
                 a: p,
                 b: p,
-                radius: if self.round { 12.0 } else { 0.0 },
+                radius: if self.round { crate::editor::ROUND_RADIUS } else { 0.0 },
                 filled: self.filled,
             },
             Tool::Arrow => Kind::arrow(p, p),
@@ -46,15 +46,16 @@ impl super::super::Overlay {
     }
 
     /// 拖动中：草稿终点跟随鼠标（限制在选区内）并重绘。
-    pub(super) fn update_draft(&mut self, x: i32, y: i32) {
+    /// `shift` 为真时施加绘制约束：矩形 → 正方形（EDT-1），箭头 → 水平 / 垂直 / 45° 吸附（EDT-2）。
+    pub(super) fn update_draft(&mut self, x: i32, y: i32, shift: bool) {
         let Some(sel) = self.selection else {
             return;
         };
         let cx = x.clamp(sel.x, (sel.x + sel.w - 1).max(sel.x));
         let cy = y.clamp(sel.y, (sel.y + sel.h - 1).max(sel.y));
+        let end = self.constrained_end(cx, cy, shift, sel);
         let before = self.draft_region();
         if let Some(draft) = self.draft.as_mut() {
-            let end = Point::new(cx as f32, cy as f32);
             draft.kind = match &draft.kind {
                 Kind::Rect { a, radius, filled, .. } => Kind::Rect {
                     a: *a,
@@ -80,6 +81,24 @@ impl super::super::Overlay {
         if let Some(d) = union_rect(before, self.draft_region()) {
             self.repaint(expand_rect(d, 2));
         }
+    }
+
+    /// 草稿终点：鼠标点已夹在选区内，再按 Shift 施加几何约束（EDT-1/EDT-2）；
+    /// 约束结果仍要落在选区内，故再夹一次（贴边时正方形/45° 会被裁到边界）。
+    fn constrained_end(&self, cx: i32, cy: i32, shift: bool, sel: SelRect) -> Point {
+        let end = Point::new(cx as f32, cy as f32);
+        if !shift {
+            return end;
+        }
+        let snapped = match self.draft.as_ref().map(|d| &d.kind) {
+            Some(Kind::Rect { a, .. }) => crate::editor::square_corner(*a, end),
+            Some(Kind::Arrow { from, .. }) => crate::editor::snap_direction(*from, end),
+            _ => return end,
+        };
+        Point::new(
+            snapped.x.clamp(sel.x as f32, (sel.x + sel.w - 1).max(sel.x) as f32),
+            snapped.y.clamp(sel.y as f32, (sel.y + sel.h - 1).max(sel.y) as f32),
+        )
     }
 
     /// 放开：过短视为误触丢弃；保存并选中，入撤销栈。

@@ -82,6 +82,26 @@ impl Document {
         self.objects.remove(index)
     }
 
+    /// 置顶（EDT-7 层级调整）：移到列表末尾（最上层）；已在顶层返回 false。
+    pub fn raise(&mut self, index: usize) -> bool {
+        if index + 1 >= self.objects.len() {
+            return false;
+        }
+        let obj = self.objects.remove(index);
+        self.objects.push(obj);
+        true
+    }
+
+    /// 置底（EDT-7 层级调整）：移到列表开头（最下层）；已在底层返回 false。
+    pub fn lower(&mut self, index: usize) -> bool {
+        if index == 0 || index >= self.objects.len() {
+            return false;
+        }
+        let obj = self.objects.remove(index);
+        self.objects.insert(0, obj);
+        true
+    }
+
     /// 撤销；返回是否有变化。
     pub fn undo(&mut self) -> bool {
         let Some(prev) = self.undo.pop() else {

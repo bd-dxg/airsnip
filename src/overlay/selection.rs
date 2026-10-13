@@ -5,6 +5,7 @@
 use tiny_skia::{Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 use super::geometry::{SelRect, expand_rect, intersect_rect, same_rect, text_rect, union_rect};
+use super::objedit;
 use super::pick::draw_curve_handles;
 use super::surface::{blit_region, restore_region};
 use super::{textinput, toolbar};
@@ -12,6 +13,8 @@ use crate::render;
 
 /// 脏区域外扩（覆盖边框、手柄与信息文字）。
 pub(super) const DIRTY_PAD: i32 = 60;
+/// 对象包围框与控制柄的脏区外扩（手柄画在包围盒之外）。
+const HANDLE_PAD: i32 = 12;
 /// 手柄边长。
 const HANDLE_SIZE: i32 = 7;
 const ACCENT: u8 = 26; // 主题蓝
@@ -55,6 +58,7 @@ impl super::Overlay {
     /// 1) 底图复位（选区外恢复暗图、选区内回贴原图）2) 重绘标注 3) 选区装饰 4) 工具栏。
     pub(super) fn repaint(&mut self, r: SelRect) {
         let r = self.expand_for_objects(r);
+        let r = self.expand_for_selected(r);
         let (w, h) = (self.display.width() as i32, self.display.height() as i32);
         let x0 = r.x.clamp(0, w);
         let y0 = r.y.clamp(0, h);
@@ -113,10 +117,12 @@ impl super::Overlay {
             self.text_edit.as_ref().and_then(|e| e.obj_index),
             (x0, y0, x1, y1),
         );
-        // 2b) 选中箭头的控制柄与虚线辅助线（EDT-3；仅屏幕显示，不进导出烘焙）
+        // 2b) 选中对象的包围框与八向控制柄（EDT-7），箭头另画曲线控制柄（EDT-3）；
+        // 仅屏幕显示，不进导出烘焙
         if let Some(obj) = self.selected_object().cloned()
             && render::intersects(&obj.bounds(), (x0, y0, x1, y1))
         {
+            objedit::draw_frame(&mut self.display, &obj);
             draw_curve_handles(&mut self.display, &obj);
         }
         // 2c) 文本输入框（EDT-4；仅屏幕显示，提交后为对象）
@@ -140,6 +146,18 @@ impl super::Overlay {
             }
         }
         self.present_region(region);
+    }
+
+    /// 选中对象的手柄画在包围盒之外，脏区需一并覆盖（否则手柄残缺或残留）。
+    fn expand_for_selected(&self, r: SelRect) -> SelRect {
+        let Some(obj) = self.selected_object() else {
+            return r;
+        };
+        if render::intersects(&obj.bounds(), (r.x, r.y, r.x + r.w, r.y + r.h)) {
+            expand_rect(r, HANDLE_PAD)
+        } else {
+            r
+        }
     }
 
     /// 把脏区扩展到与它相交的所有标注对象的完整包围盒：

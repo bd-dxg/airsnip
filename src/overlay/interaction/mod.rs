@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 鼠标与绘制交互（CAP-2、EDT-1/2/3/7）：框选、八向缩放、空格移动选区、选区内绘制标注。
-//! 手柄/对象命中判定与选中状态见 `pick`；文本对象拖动见 `move_obj`，绘制草稿见 `draft`。
+//! 鼠标与绘制交互（CAP-2、EDT-1/2/3/7）：框选、八向缩放、空格移动选区、选区内绘制标注、
+//! 选中对象的拖动与缩放。命中优先级：
+//! 选中对象的手柄 > 曲线控制柄 > 选区手柄 > 已有对象（选中并可拖动）> 空白处绘制。
+//! 对象手柄与几何变换见 `objedit`；手柄/对象命中判定与选中状态见 `pick`，绘制草稿见 `draft`。
 
 mod draft;
-mod move_obj;
-
-use crate::editor::{Kind, Point};
 
 use super::geometry::SelRect;
+use super::objedit::{self, ObjHandle};
 use super::pick::{Handle, hit_handle};
 use super::wndproc::space_down;
 
@@ -20,17 +20,15 @@ pub(super) enum Phase {
     Adjusting,
 }
 
-/// 拖拽中的上下文。
+/// 拖拽中的上下文（选区拖动；对象拖动见 `objedit::ObjDrag`）。
 #[derive(Clone, Copy)]
 pub(super) struct Drag {
-    handle: Handle,
+    pub(super) handle: Handle,
     /// 按下时的选区（用于计算增量）。
     orig: SelRect,
     /// 按下时的鼠标位置。
     px: i32,
     py: i32,
-    /// Handle::MoveObj：按下命中的对象索引与按下时的位置（EDT-4）。
-    obj: Option<(usize, Point)>,
 }
 
 impl super::Overlay {
@@ -53,7 +51,14 @@ impl super::Overlay {
         let new = match self.selection {
             None => Some(self.begin_select(x, y)),
             Some(sel) => {
-                // 控制柄优先于缩放/绘制（EDT-3）：它可能落在对象描边上
+                // 1) 选中对象的八向手柄（EDT-7）：可能压在选区装饰或对象描边上，最优先
+                if let Some(i) = self.selected
+                    && let Some(h) = self.doc.objects().get(i).and_then(|o| objedit::hit_handle(o, x, y))
+                {
+                    self.begin_obj_drag(i, h, x, y);
+                    return;
+                }
+                // 2) 曲线控制柄（EDT-3）：控制点常落在自己线身上，需先于「选中对象」判定
                 if let Some(index) = self.hit_control(x, y) {
                     self.begin_control_drag(index);
                     return;
@@ -64,7 +69,6 @@ impl super::Overlay {
                         orig: sel,
                         px: x,
                         py: y,
-                        obj: None,
                     });
                     self.phase = Phase::Adjusting;
                     Some(sel)
@@ -76,22 +80,13 @@ impl super::Overlay {
                             orig: sel,
                             px: x,
                             py: y,
-                            obj: None,
                         });
                         self.phase = Phase::Adjusting;
                         Some(sel)
                     } else if let Some(i) = self.hit_object(x, y) {
-                        // 文本对象：按下即进入拖拽移动（无位移退化为单击选中，双击仍进编辑，EDT-4）
-                        let pos = match &self.doc.objects()[i].kind {
-                            Kind::Text { pos, .. } => Some(*pos),
-                            _ => None,
-                        };
-                        if let Some(pos) = pos {
-                            self.begin_object_move(i, sel, x, y, pos);
-                            return;
-                        }
-                        // 其它对象：仅选中（EDT-7），不新建
-                        self.set_selected(Some(i));
+                        // 点中已有对象：选中并可直接拖动（EDT-7）；
+                        // 无位移的按下退化为单击选中，只有真正移动才进撤销栈
+                        self.begin_obj_drag(i, ObjHandle::Move, x, y);
                         return;
                     } else {
                         // 空白处按下：用当前工具绘制标注（EDT-1/EDT-2/EDT-3）
@@ -111,14 +106,21 @@ impl super::Overlay {
     }
 
     pub(super) fn on_mouse_move(&mut self, x: i32, y: i32) {
+        // Shift 约束（EDT-1/EDT-2/EDT-7）：新建与二次编辑共用同一状态
+        let shift = super::wndproc::shift_down();
+        // 拖动选中对象（EDT-7）
+        if self.obj_drag.is_some() {
+            self.drag_obj(x, y, shift);
+            return;
+        }
         // 拖动曲线控制柄（EDT-3）
         if self.ctrl_drag.is_some() {
             self.drag_control(x, y);
             return;
         }
-        // 绘制中：草稿终点跟随鼠标（限制在选区内）
+        // 绘制中：草稿终点跟随鼠标（限制在选区内）；Shift 施加正方形/方向约束（EDT-1/EDT-2）
         if self.draft.is_some() {
-            self.update_draft(x, y);
+            self.update_draft(x, y, shift);
             return;
         }
         let Some(drag) = &self.drag else {
@@ -127,19 +129,12 @@ impl super::Overlay {
         let (dx, dy) = (x - drag.px, y - drag.py);
         let handle = drag.handle;
         let orig = drag.orig;
-        let obj = drag.obj;
         let phase = self.phase;
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
         let max_x = vw.saturating_sub(1);
         let max_y = vh.saturating_sub(1);
         let x = x.clamp(0, max_x);
         let y = y.clamp(0, max_y);
-
-        // 拖动文本对象（EDT-4）
-        if let Some((i, orig_pos)) = obj {
-            self.drag_object(i, orig_pos, dx, dy);
-            return;
-        }
 
         let new = if phase == Phase::Selecting {
             // 框选阶段：以按下点为锚点拉伸矩形
@@ -174,24 +169,20 @@ impl super::Overlay {
                 Handle::NW => SelRect::normalized(x, y, orig.x + orig.w, orig.y + orig.h),
                 Handle::SE => SelRect::normalized(orig.x, orig.y, x.max(orig.x + 1), y.max(orig.y + 1)),
                 Handle::SW => SelRect::normalized(x, orig.y, orig.x + orig.w, orig.y + orig.h),
-                // 对象移动已在上方提前返回，此处只做模式穷尽
-                Handle::MoveObj => return,
             }
         };
         self.set_selection(Some(new));
     }
 
     pub(super) fn on_lbutton_up(&mut self) {
+        // 结束对象拖动（EDT-7）：无位移视为单击（仅选中），不进撤销栈
+        if self.obj_drag.is_some() {
+            self.end_obj_drag();
+            return;
+        }
         // 结束控制柄拖动（EDT-3）
         if self.ctrl_drag.is_some() {
             self.end_control_drag();
-            return;
-        }
-        // 结束文本对象拖动（EDT-4）：无位移视为单击（仅选中），不进撤销栈
-        if let Some(d) = self.drag
-            && d.handle == Handle::MoveObj
-        {
-            self.end_object_move();
             return;
         }
         // 结束绘制：过短视为误触，丢弃；提交后进入撤销栈
@@ -221,7 +212,6 @@ impl super::Overlay {
             orig: sel,
             px: x,
             py: y,
-            obj: None,
         });
         sel
     }

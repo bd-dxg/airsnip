@@ -8,7 +8,7 @@
 
 ## 项目状态
 
-- 当前处于 **M0–M4 全部交付，M5a 阶段 A 已交付**：M0/M1/M2/M2b/M3/M4 均已交付（M4 已合并 PR #23，用户复验通过）；M4 自动化验证（`cargo test` 95 项全绿；`Task/verify-m4.ps1` GUI 端到端 PIL 验证 PASS：自建可滚动目标窗口 → F1 → 框选 → S（工具栏按钮/快捷键）→ 自动滚动拼接 → 输出 PNG 844x1901 > 视口 641）。关键实现：全重叠区一致性拼接（`stitch`）、固定页眉/页脚检测（`engine`）、视口蓝框（`border`）、执行窗口 `WS_EX_NOACTIVATE` + `AttachThreadInput` 激活目标后发真实滚轮（`scroll`）、`ImmGetVirtualKey` 解决输入法吞键。**下一步：M5a 阶段 B（对象二次编辑）**——阶段 A（保存/命名模板/WebP）已交付（PR #24）：保存一律弹系统「另存为」对话框（PNG/JPEG/WebP 无损，纯 Rust `image-webp`），记忆上次格式，设置面板提供三种文件名模板；剩余缺口（对象二次编辑、文本字体）见 `Task/task_plan.md` 的 M5a 节。- 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
+- 当前处于 **M0–M4 全部交付，M5a 阶段 A/B 已实现**：M0/M1/M2/M2b/M3/M4 均已交付（M4 已合并 PR #23，用户复验通过）；M4 自动化验证（`cargo test` 95 项全绿；`Task/verify-m4.ps1` GUI 端到端 PIL 验证 PASS：自建可滚动目标窗口 → F1 → 框选 → S（工具栏按钮/快捷键）→ 自动滚动拼接 → 输出 PNG 844x1901 > 视口 641）。关键实现：全重叠区一致性拼接（`stitch`）、固定页眉/页脚检测（`engine`）、视口蓝框（`border`）、执行窗口 `WS_EX_NOACTIVATE` + `AttachThreadInput` 激活目标后发真实滚轮（`scroll`）、`ImmGetVirtualKey` 解决输入法吞键。**当前分支：`feat/object-edit`（M5a 阶段 B 对象二次编辑，已实现，待用户验证）**——阶段 A（保存/命名模板/WebP，PR #24 已合并）与术语表清理（PR #25）已完成；阶段 B 交付：选中对象包围框 + 八向控制柄、拖动/缩放（`overlay/objedit/`）、`Del` 删除、`Ctrl+]`/`Ctrl+[` 与工具栏按钮置顶/置底、工具栏颜色/填充/圆角同步作用于选中对象、`Shift` 约束绘制（矩形正方形 / 箭头方向吸附，`editor/transform.rs`）；剩余：阶段 C（文本字体）。- 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
 - 开发由 AI 驱动，本文件是进入此仓库的 agent 的上下文。
 
 ## 技术栈
