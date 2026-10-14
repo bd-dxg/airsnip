@@ -8,7 +8,7 @@
 
 ## 项目状态
 
-- 当前处于 **M0–M4 全部交付，M5a 阶段 A/B 已实现**：M0/M1/M2/M2b/M3/M4 均已交付（M4 已合并 PR #23，用户复验通过）；M4 自动化验证（`cargo test` 95 项全绿；`Task/verify-m4.ps1` GUI 端到端 PIL 验证 PASS：自建可滚动目标窗口 → F1 → 框选 → S（工具栏按钮/快捷键）→ 自动滚动拼接 → 输出 PNG 844x1901 > 视口 641）。关键实现：全重叠区一致性拼接（`stitch`）、固定页眉/页脚检测（`engine`）、视口蓝框（`border`）、执行窗口 `WS_EX_NOACTIVATE` + `AttachThreadInput` 激活目标后发真实滚轮（`scroll`）、`ImmGetVirtualKey` 解决输入法吞键。**当前分支：`feat/interaction-nudge`（交互打磨：工具栏光标、下线删除/层级、方向键微调，待验证）**——阶段 A（保存/命名模板/WebP，PR #24）与阶段 B（对象二次编辑，PR #26）均已合并；阶段 B 交付：选中对象包围框 + 八向控制柄、箭头两端点手柄（无包围框）、拖动/缩放（`overlay/objedit/`）、工具栏颜色/填充/圆角同步作用于选中对象、`Shift` 约束（矩形正方形 / 箭头方向吸附 / 移动轴向锁定 / 角手柄等比，`editor/transform.rs`）、光标随鼠标位置变化（`overlay/cursor/`）；本次改动：工具栏鼠标改系统箭头、**下线「删除 + 层级调整」**（按钮与 `Del` / `Ctrl+[` / `Ctrl+]` 一并移除，PRD EDT-7 已同步）、方向键微调（选区框 / 全部标注对象 / 贴图窗口，1px、`Shift` 5px）；剩余：阶段 C（文本字体）。- 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
+- 当前处于 **M0–M4 全部交付，M5a 阶段 A/B/B′ 已合并**：M0/M1/M2/M2b/M3/M4 均已交付（M4 已合并 PR #23，用户复验通过）；M4 自动化验证（`cargo test` 95 项全绿；`Task/verify-m4.ps1` GUI 端到端 PIL 验证 PASS：自建可滚动目标窗口 → F1 → 框选 → S（工具栏按钮/快捷键）→ 自动滚动拼接 → 输出 PNG 844x1901 > 视口 641）。关键实现：全重叠区一致性拼接（`stitch`）、固定页眉/页脚检测（`engine`）、视口蓝框（`border`）、执行窗口 `WS_EX_NOACTIVATE` + `AttachThreadInput` 激活目标后发真实滚轮（`scroll`）、`ImmGetVirtualKey` 解决输入法吞键。**当前进度：M5a 阶段 A（保存，PR #24）、阶段 B（对象二次编辑，PR #26）、阶段 B′（交互打磨，PR #27）均已合并，`main` 干净且与 origin 同步；下一步：阶段 C（文本字体）**——阶段 B 交付：选中对象包围框 + 八向控制柄、箭头两端点手柄（无包围框）、拖动/缩放（`overlay/objedit/`）、工具栏颜色/填充/圆角同步作用于选中对象、`Shift` 约束（矩形正方形 / 箭头方向吸附 / 移动轴向锁定 / 角手柄等比，`editor/transform.rs`）、光标随鼠标位置变化（`overlay/cursor/`）；阶段 B′ 交付：工具栏鼠标改系统箭头、**下线「删除 + 层级调整」**（按钮与 `Del` / `Ctrl+[` / `Ctrl+]` 一并移除，PRD EDT-7 已同步，决策见 `docs/adr/0007-drop-delete-and-layering.md`）、方向键微调（选区框 / 全部标注对象 / 贴图窗口，1px、`Shift` 5px）；剩余：阶段 C（文本字体）。- 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
 - 开发由 AI 驱动，本文件是进入此仓库的 agent 的上下文。
 
 ## 技术栈
@@ -23,7 +23,7 @@
 - 编译检查：`cargo check`
 - 运行：`cargo run`（GUI 桌面程序，需 Windows 桌面会话；当前骨架阶段无可见界面）
 - 构建发布版：`cargo build --release`（已配 `lto="fat"`、`opt-level="z"`、`panic="abort"`、`strip=true`）
-- 测试：`cargo test`（当前 30+ 个：对象模型/撤销栈/矢量栅格化/光标/布局）
+- 测试：`cargo test`（当前 122 个：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量/长截图拼接/WebP/变换与手柄/光标映射/布局）
 - 格式化检查：`cargo fmt --check`（提交前必须通过）
 
 ## 开发流程（AI 驱动约定）
