@@ -3,13 +3,14 @@
 //! 编辑状态数据与字符级逻辑见 `text_edit_state`；绘制在覆盖层像素图上，不创建系统控件（ADR 0004）。
 
 use tiny_skia::Pixmap;
-use windows::Win32::UI::Input::Ime::{GCS_COMPSTR, GCS_RESULTSTR, IME_COMPOSITION_STRING};
+use windows::Win32::UI::Input::Ime::{GCS_COMPSTR, GCS_RESULTSTR};
 
 use crate::editor::{Kind, Object, Point};
 use crate::render;
 
 use super::geometry::expand_rect;
 use super::text_edit_state::TextEdit;
+use super::wndproc::ime_string;
 
 impl super::Overlay {
     /// 进入文本输入（Text 工具下点击选区内空白，EDT-4）。
@@ -24,6 +25,9 @@ impl super::Overlay {
             caret: 0,
             pending_high: None,
             font_size: self.font_size,
+            font_family: self.font_family.clone(),
+            bold: self.bold,
+            italic: self.italic,
         };
         self.text_edit = Some(edit);
         self.repaint_text_edit();
@@ -34,7 +38,13 @@ impl super::Overlay {
         let obj = self.doc.objects().get(i).cloned();
         let Some(obj) = obj else { return false };
         let Kind::Text {
-            pos, text, font_size, ..
+            pos,
+            text,
+            font_size,
+            font_family,
+            bold,
+            italic,
+            ..
         } = obj.kind
         else {
             return false;
@@ -52,6 +62,9 @@ impl super::Overlay {
             caret: text.chars().count(),
             pending_high: None,
             font_size,
+            font_family,
+            bold,
+            italic,
         });
         // 原对象隐藏、输入框登场，立即重绘
         self.repaint_text_edit();
@@ -79,11 +92,14 @@ impl super::Overlay {
             return;
         }
         let text: String = edit.chars.iter().collect();
-        let size = render::text::measure(&text, edit.font_size);
+        let size = render::text::measure(&text, &edit.spec());
         let kind = Kind::Text {
             pos: edit.pos,
             text: std::sync::Arc::from(text),
             font_size: edit.font_size,
+            font_family: edit.font_family,
+            bold: edit.bold,
+            italic: edit.italic,
             size,
         };
         match edit.obj_index {
@@ -114,6 +130,8 @@ impl super::Overlay {
 
     /// 文本输入变化后的重绘：覆盖整个选区，彻底避免文本变短/光标位移时的尾部残留。
     fn repaint_whole_selection(&mut self) {
+        // 输入态的开始/结束会影响第二行显隐（EDT-4）
+        self.refresh_toolbar();
         if let Some(sel) = self.selection {
             self.repaint(expand_rect(sel, 2));
         }
@@ -174,7 +192,14 @@ impl super::Overlay {
             // Enter：Shift/Ctrl 组合换行，单独 Enter 提交
             0x0D if shift || ctrl => edit.insert_char('\n'),
             0x0D => self.commit_text(), // Enter：提交
-            0x1B => self.cancel_text(), // Esc：取消
+            // Esc：字体面板展开时先收面板（保留输入态），否则取消输入（EDT-4）
+            0x1B => {
+                if self.font_list_open() {
+                    self.close_font_list();
+                } else {
+                    self.cancel_text();
+                }
+            }
             // Ctrl+Z：放弃本次未提交输入（已提交文本走全局撤销 Ctrl+Z）
             0x5A if ctrl => self.cancel_text(),
             _ => handled = false,
@@ -192,27 +217,6 @@ impl super::Overlay {
     }
 }
 
-/// 从 IME 上下文读取组合串/结果串（UTF-16 → String）。
-fn ime_string(hwnd: windows::Win32::Foundation::HWND, what: IME_COMPOSITION_STRING) -> String {
-    unsafe {
-        use windows::Win32::UI::Input::Ime::{ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext};
-        let ctx = ImmGetContext(hwnd);
-        if ctx.0.is_null() {
-            return String::new();
-        }
-        let len = ImmGetCompositionStringW(ctx, what, None, 0);
-        let out = if len <= 0 {
-            String::new()
-        } else {
-            let mut buf = vec![0u16; (len / 2) as usize];
-            ImmGetCompositionStringW(ctx, what, Some(buf.as_mut_ptr() as *mut core::ffi::c_void), len as u32);
-            String::from_utf16_lossy(&buf)
-        };
-        let _ = ImmReleaseContext(hwnd, ctx);
-        out
-    }
-}
-
 /// 输入框绘制（selection::repaint 调用于对象之上）：文字 + 带描边的光标 + 组合串下划线。
 pub(super) fn draw_edit(pixmap: &mut Pixmap, edit: &TextEdit, color: [u8; 4]) {
     let pad = crate::editor::text::pad(edit.font_size);
@@ -222,7 +226,7 @@ pub(super) fn draw_edit(pixmap: &mut Pixmap, edit: &TextEdit, color: [u8; 4]) {
         pixmap,
         edit.pos,
         &edit.display(),
-        edit.font_size,
+        &edit.spec(),
         color,
         tiny_skia::Transform::identity(),
     );
@@ -253,7 +257,7 @@ pub(super) fn draw_edit(pixmap: &mut Pixmap, edit: &TextEdit, color: [u8; 4]) {
 
     // 组合串下划线（IME 候选标记，贴在光标行文本下方）
     if !edit.comp.is_empty() {
-        let (cw, _) = render::text::measure(&edit.comp.iter().collect::<String>(), edit.font_size);
+        let (cw, _) = render::text::measure(&edit.comp.iter().collect::<String>(), &edit.spec());
         let x0 = edit.pos.x + edit.caret_x() - cw;
         let y = edit.pos.y + (edit.caret_row() + 1) as f32 * edit.line_height() + pad * 0.3;
         if let Some(rect) = tiny_skia::Rect::from_xywh(x0, y, cw.max(1.0), 1.0) {

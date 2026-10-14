@@ -6,21 +6,55 @@
 //! `IDWriteBitmapRenderTarget` 栅格化进内存 DIB（黑字白底）→ 反色取覆盖度与目标色混合。
 //! 全程纯 CPU、无窗口依赖；DirectWrite 初始化失败时返回估算测量并静默跳过绘制（不崩溃）。
 
+use std::sync::Arc;
+
 use tiny_skia::{Pixmap, Transform};
 use windows::Win32::Foundation::COLORREF;
 use windows::Win32::Graphics::DirectWrite::DWRITE_TEXT_METRICS;
 use windows::Win32::Graphics::DirectWrite::*;
 use windows::Win32::Graphics::Gdi::{DeleteDC, DeleteObject, GdiFlush, HBITMAP, HDC, PatBlt, WHITENESS};
-use windows::core::{BOOL, IUnknown, Ref, Result, implement, w};
+use windows::core::{BOOL, IUnknown, PCWSTR, Ref, Result, implement, w};
 
-use crate::editor::Point;
+use crate::editor::{Kind, Point};
 
-/// 中文字体（Win10/11 自带；EDT-4 一期固定，预留字体字段扩展）。
+/// 默认字体族（与对象模型同源；Win10/11 自带中文字体）。
+pub const DEFAULT_FAMILY: &str = crate::editor::DEFAULT_FONT_FAMILY;
 /// 布局构造的宽高上限：单行文本，禁止自动换行。
 const MAX_LAYOUT: f32 = 100_000.0;
 
+/// 字体规格（EDT-4）：族名 + 字号 + 粗体/斜体。
+#[derive(Clone, Debug, PartialEq)]
+pub struct FontSpec {
+    pub family: Arc<str>,
+    pub size: f32,
+    pub bold: bool,
+    pub italic: bool,
+}
+
+impl FontSpec {
+    /// 默认字体族、常规字重。
+    pub fn new(size: f32) -> Self {
+        Self {
+            family: Arc::from(DEFAULT_FAMILY),
+            size,
+            bold: false,
+            italic: false,
+        }
+    }
+
+    /// 由文本对象的字段构造。
+    pub fn from_parts(family: &Arc<str>, size: f32, bold: bool, italic: bool) -> Self {
+        Self {
+            family: family.clone(),
+            size,
+            bold,
+            italic,
+        }
+    }
+}
+
 /// 共享工厂缓存（DWrite SHARED 工厂线程安全，`IDWriteFactory` 实现了 Send+Sync）。
-fn factory() -> Option<&'static IDWriteFactory> {
+pub(crate) fn factory() -> Option<&'static IDWriteFactory> {
     static F: std::sync::OnceLock<Option<IDWriteFactory>> = std::sync::OnceLock::new();
     F.get_or_init(|| unsafe { DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED).ok() })
         .as_ref()
@@ -30,21 +64,40 @@ fn utf16(s: &str) -> Vec<u16> {
     s.encode_utf16().collect()
 }
 
+/// 宽字符串（尾部补 NUL）。
+/// **必须**用于传给 `CreateTextFormat` 的字体族名：DirectWrite 不接收长度参数，
+/// 只按 NUL 结尾读取；缺 NUL 会读到缓冲区之后的堆内存，导致字体名解析到垃圾
+/// （表现为「换了字体却渲染成默认字体」），空串还会直接访问越界崩溃。
+fn wide_z(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
 /// DirectWrite 不可用时的估算（供 bounds 使用，保证不崩溃）。
 fn approx(text: &str, font_size: f32) -> (f32, f32) {
     let n = text.encode_utf16().count() as f32;
     ((n * font_size * 0.9 + font_size).max(1.0), font_size * 1.4)
 }
 
-fn create_format(f: &IDWriteFactory, font_size: f32) -> Option<IDWriteTextFormat> {
+fn create_format(f: &IDWriteFactory, spec: &FontSpec) -> Option<IDWriteTextFormat> {
+    let family = wide_z(&spec.family);
+    let weight = if spec.bold {
+        DWRITE_FONT_WEIGHT_BOLD
+    } else {
+        DWRITE_FONT_WEIGHT_NORMAL
+    };
+    let style = if spec.italic {
+        DWRITE_FONT_STYLE_ITALIC
+    } else {
+        DWRITE_FONT_STYLE_NORMAL
+    };
     unsafe {
         f.CreateTextFormat(
-            w!("Microsoft YaHei UI"),
+            PCWSTR(family.as_ptr()),
             None,
-            DWRITE_FONT_WEIGHT_NORMAL,
-            DWRITE_FONT_STYLE_NORMAL,
+            weight,
+            style,
             DWRITE_FONT_STRETCH_NORMAL,
-            font_size,
+            spec.size,
             w!("zh-CN"),
         )
     }
@@ -52,22 +105,38 @@ fn create_format(f: &IDWriteFactory, font_size: f32) -> Option<IDWriteTextFormat
 }
 
 /// 测量文本尺寸（物理像素，单行）。失败时给估算值。
-pub fn measure(text: &str, font_size: f32) -> (f32, f32) {
+pub fn measure(text: &str, spec: &FontSpec) -> (f32, f32) {
     let Some(f) = factory() else {
-        return approx(text, font_size);
+        return approx(text, spec.size);
     };
-    let Some(format) = create_format(f, font_size) else {
-        return approx(text, font_size);
+    let Some(format) = create_format(f, spec) else {
+        return approx(text, spec.size);
     };
     let Ok(layout) = (unsafe { f.CreateTextLayout(&utf16(text), &format, MAX_LAYOUT, MAX_LAYOUT) }) else {
-        return approx(text, font_size);
+        return approx(text, spec.size);
     };
     let mut m = DWRITE_TEXT_METRICS::default();
     if unsafe { layout.GetMetrics(&mut m) }.is_ok() {
         // 多行（\n 换行）时 width 为布局宽度（最长行），height 为总行高
         return (m.width.max(1.0), m.height.max(1.0));
     }
-    approx(text, font_size)
+    approx(text, spec.size)
+}
+
+/// 重测文本对象的尺寸缓存（EDT-4：字号 / 字体族 / 粗斜体变化后调用）；非文本对象无操作。
+pub fn remeasure(kind: &mut Kind) {
+    if let Kind::Text {
+        text,
+        font_size,
+        font_family,
+        bold,
+        italic,
+        size,
+        ..
+    } = kind
+    {
+        *size = measure(text, &FontSpec::from_parts(font_family, *font_size, *bold, *italic));
+    }
 }
 
 /// 自定义文字器：只把字形转发给位图渲染目标（黑字白底），忽略下划线/删除线。
@@ -159,10 +228,10 @@ impl IDWriteTextRenderer_Impl for Renderer_Impl {
 
 /// 栅格化文本并混合进 `pixmap`（`tr` 用于导出烘焙的坐标平移）。
 /// `pos` 为文字左上角。
-pub(crate) fn draw(pixmap: &mut Pixmap, pos: Point, text: &str, font_size: f32, color: [u8; 4], tr: Transform) {
+pub(crate) fn draw(pixmap: &mut Pixmap, pos: Point, text: &str, spec: &FontSpec, color: [u8; 4], tr: Transform) {
     let Some(f) = factory() else { return };
-    let (w, h) = measure(text, font_size);
-    let pad = crate::editor::text::pad(font_size).ceil() as u32;
+    let (w, h) = measure(text, spec);
+    let pad = crate::editor::text::pad(spec.size).ceil() as u32;
     let cw = (w.ceil() as u32 + pad * 2).max(4);
     let ch = (h.ceil() as u32 + pad * 2).max(4);
 
@@ -193,7 +262,7 @@ pub(crate) fn draw(pixmap: &mut Pixmap, pos: Point, text: &str, font_size: f32, 
     unsafe {
         let _ = PatBlt(rt_dc, 0, 0, cw as i32, ch as i32, WHITENESS);
     }
-    let (Some(format), Ok(params)) = (create_format(f, font_size), unsafe { f.CreateRenderingParams() }) else {
+    let (Some(format), Ok(params)) = (create_format(f, spec), unsafe { f.CreateRenderingParams() }) else {
         cleanup(dc, bmp);
         return;
     };
@@ -223,10 +292,14 @@ mod tests {
     use super::*;
     use windows::Win32::Graphics::DirectWrite::DWRITE_FACTORY_TYPE_SHARED;
 
+    fn spec(size: f32) -> FontSpec {
+        FontSpec::new(size)
+    }
+
     #[test]
     fn measure_handles_chinese_and_latin() {
-        let (w1, h1) = measure("挺好", 24.0);
-        let (w2, h2) = measure("ab", 24.0);
+        let (w1, h1) = measure("挺好", &spec(24.0));
+        let (w2, h2) = measure("ab", &spec(24.0));
         assert!(w1 > 0.0 && h1 > 0.0, "中文测量应非零：{w1}x{h1}");
         assert!(w2 > 0.0, "拉丁字符测量应非零");
         assert!(w1 >= w2, "两个全角字应不窄于两个半角字符");
@@ -235,9 +308,73 @@ mod tests {
 
     #[test]
     fn larger_font_measures_larger() {
-        let (w1, _) = measure("测试", 16.0);
-        let (w2, _) = measure("测试", 48.0);
+        let (w1, _) = measure("测试", &spec(16.0));
+        let (w2, _) = measure("测试", &spec(48.0));
         assert!(w2 > w1 * 2.0, "字号 3 倍宽度应近似 3 倍：{w1} vs {w2}");
+    }
+
+    #[test]
+    fn bold_and_italic_render_differently() {
+        // 中文粗体在部分字体下字宽略窄，故以「实际栅格化像素」为判据：
+        // 粗体笔画更粗（着墨像素更多），斜体字形发生倾斜（像素图不同）
+        let ink = |spec: &FontSpec| {
+            let mut p = Pixmap::new(160, 60).unwrap();
+            p.fill(tiny_skia::Color::from_rgba8(0, 0, 0, 255));
+            draw(
+                &mut p,
+                Point::new(5.0, 5.0),
+                "bold Wm 粗",
+                spec,
+                [255, 255, 255, 255],
+                Transform::identity(),
+            );
+            p.data().chunks_exact(4).filter(|px| px[0] > 100).count()
+        };
+        let regular = FontSpec::new(24.0);
+        let bold = FontSpec {
+            bold: true,
+            ..regular.clone()
+        };
+        let italic = FontSpec {
+            italic: true,
+            ..regular.clone()
+        };
+        let (r, b, i) = (ink(&regular), ink(&bold), ink(&italic));
+        assert!(b > r, "粗体着墨应更多：regular={r} bold={b}");
+        assert!(i != r, "斜体字形应与常规不同：regular={r} italic={i}");
+    }
+
+    #[test]
+    fn different_families_measure_differently() {
+        let yahei = FontSpec::new(24.0);
+        let serif = FontSpec {
+            family: std::sync::Arc::from("SimSun"),
+            ..yahei.clone()
+        };
+        let (w1, _) = measure("字体测量 Family", &yahei);
+        let (w2, _) = measure("字体测量 Family", &serif);
+        assert!(
+            w1 > 0.0 && w2 > 0.0 && (w1 - w2).abs() > 0.5,
+            "不同字体族测量应不同：{w1} vs {w2}"
+        );
+    }
+
+    #[test]
+    fn remeasure_updates_text_cache_with_font() {
+        let mut kind = Kind::Text {
+            pos: Point::new(0.0, 0.0),
+            text: std::sync::Arc::from("测量"),
+            font_size: 24.0,
+            font_family: std::sync::Arc::from(DEFAULT_FAMILY),
+            bold: false,
+            italic: false,
+            size: (0.0, 0.0),
+        };
+        remeasure(&mut kind);
+        let Kind::Text { size, .. } = kind else {
+            panic!("应仍是文本")
+        };
+        assert!(size.0 > 0.0 && size.1 > 0.0, "尺寸缓存应被写入：{size:?}");
     }
 
     #[test]
@@ -248,7 +385,7 @@ mod tests {
             &mut p,
             Point::new(10.0, 10.0),
             "测试",
-            24.0,
+            &spec(24.0),
             [255, 255, 255, 255],
             Transform::identity(),
         );
@@ -261,7 +398,14 @@ mod tests {
         let mut p = Pixmap::new(200, 100).unwrap();
         p.fill(tiny_skia::Color::from_rgba8(0, 0, 0, 255));
         let tr = Transform::from_translate(50.0, 20.0);
-        draw(&mut p, Point::new(10.0, 10.0), "测试", 24.0, [255, 255, 255, 255], tr);
+        draw(
+            &mut p,
+            Point::new(10.0, 10.0),
+            "测试",
+            &spec(24.0),
+            [255, 255, 255, 255],
+            tr,
+        );
         // 平移后字形应出现在右侧区域（x ≥ 50），原位置（x < 50）应无像素
         let left = p
             .data()
@@ -283,6 +427,25 @@ mod tests {
             .count();
         assert_eq!(left, 0, "平移后左侧不应有字形");
         assert!(right > 0, "平移后右侧应有字形");
+    }
+
+    /// 未知 / 空字体族名必须回退到默认字体且不得崩溃。
+    /// 回归：`CreateTextFormat` 的族名只能按 NUL 结尾读取，缺 NUL 时会读到缓冲区外的堆内存——
+    /// 表现为换字体后仍渲染成默认字体，空串还会直接访问越界崩溃。
+    #[test]
+    fn unknown_or_empty_family_falls_back_without_crashing() {
+        let empty = FontSpec {
+            family: std::sync::Arc::from(""),
+            ..FontSpec::new(24.0)
+        };
+        let unknown = FontSpec {
+            family: std::sync::Arc::from("不存在的字体族名 xyz"),
+            ..FontSpec::new(24.0)
+        };
+        let a = measure("回退测试 Family", &empty);
+        let b = measure("回退测试 Family", &unknown);
+        assert!(a.0 > 0.0 && b.0 > 0.0);
+        assert_eq!(a, b, "未知与空族名应落到同一个默认字体：{a:?} vs {b:?}");
     }
 
     #[test]

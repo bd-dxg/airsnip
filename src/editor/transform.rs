@@ -258,6 +258,9 @@ mod tests {
             pos: Point::new(10.0, 10.0),
             text: std::sync::Arc::from("ab"),
             font_size: 20.0,
+            font_family: std::sync::Arc::from(crate::editor::DEFAULT_FONT_FAMILY),
+            bold: false,
+            italic: false,
             size: (40.0, 28.0),
         };
         let from2 = crate::editor::Bounds::around(0.0, 0.0, 50.0, 40.0, 0.0);

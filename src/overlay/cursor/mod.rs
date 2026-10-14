@@ -111,7 +111,10 @@ impl super::Overlay {
         if self.draft.is_some() {
             return Shape::Cross;
         }
-        // 工具栏是点击目标而非绘制区：鼠标在其上时用系统箭头
+        // 工具栏与字体面板是点击目标而非绘制区：鼠标在其上时用系统箭头
+        if self.over_font_list(x, y) {
+            return Shape::Arrow;
+        }
         if let Some(bar) = &self.bar
             && super::geometry::in_rect(bar.rect, x, y)
         {

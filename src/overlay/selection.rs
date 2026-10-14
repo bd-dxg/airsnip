@@ -31,9 +31,11 @@ impl super::Overlay {
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
         let old = self.selection;
         self.selection = new;
-        let old_bar = self.bar.as_ref().map(|b| b.rect);
-        self.bar = new.map(|s| toolbar::layout(s, vw, vh));
-        let new_bar = self.bar.as_ref().map(|b| b.rect);
+        // 选区变化后字体面板的位置失效（EDT-4）：收起并连旧区域一起重绘
+        let old_chrome = self.chrome_rect();
+        self.font_list = None;
+        self.bar = new.map(|s| toolbar::layout(s, vw, vh, self.text_row_visible()));
+        let new_chrome = self.chrome_rect();
 
         let mut dirty: Option<SelRect> = None;
         for r in [
@@ -41,8 +43,8 @@ impl super::Overlay {
             new.map(|n| expand_rect(n, DIRTY_PAD)),
             old.map(|o| text_rect(o, vw)),
             new.map(|n| text_rect(n, vw)),
-            old_bar.map(|b| expand_rect(b, 2)),
-            new_bar.map(|b| expand_rect(b, 2)),
+            old_chrome.map(|b| expand_rect(b, 2)),
+            new_chrome.map(|b| expand_rect(b, 2)),
         ]
         .into_iter()
         .flatten()
@@ -144,6 +146,14 @@ impl super::Overlay {
             if intersect_rect(expand_rect(bar.rect, 2), region).is_some() {
                 toolbar::draw(&mut self.display, bar, &state, self.palette);
             }
+        }
+        // 5) 字体列表面板（EDT-4）：位于工具栏之外，需单独覆盖
+        if let Some(rect) = self.font_list.as_ref().map(|p| p.rect)
+            && intersect_rect(expand_rect(rect, 2), region).is_some()
+        {
+            let (family, ..) = self.font_state();
+            let panel = self.font_list.clone().expect("已判定为 Some");
+            toolbar::fontlist::render(&mut self.display, &panel, &family, self.palette);
         }
         self.present_region(region);
     }

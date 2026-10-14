@@ -162,7 +162,8 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         format!("{} · {} px", state.hint, state.height)
     };
     let tx = (mode_rect.map(|r| r.x + r.w + 8).unwrap_or(PAD)) as f32;
-    let (tw, th) = dwrite::measure(&text, FONT);
+    let spec = dwrite::FontSpec::new(FONT);
+    let (tw, th) = dwrite::measure(&text, &spec);
     let ty = (h as f32 - th) / 2.0;
     // 文字不超出撤销按钮左侧
     let undo_x = bar
@@ -172,7 +173,7 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         .map(|(r, _)| r.x)
         .unwrap_or(w);
     if tx + tw < undo_x as f32 - 4.0 {
-        dwrite::draw(pixmap, Point::new(tx, ty), &text, FONT, p.text, Transform::identity());
+        dwrite::draw(pixmap, Point::new(tx, ty), &text, &spec, p.text, Transform::identity());
     }
 }
 

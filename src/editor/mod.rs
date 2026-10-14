@@ -82,11 +82,15 @@ pub enum Kind {
         to: Point,
     },
     /// EDT-4 文本：`pos` 为文字左上角；`text` 为内容（共享字符串，保持对象 Clone）；
-    /// `font_size` 字号（物理像素）；`size` 为测量缓存（文字宽高，不含内边距），由渲染层测量后写入。
+    /// `font_size` 字号（物理像素）；`font_family` 字体族名；`bold`/`italic` 粗体与斜体；
+    /// `size` 为测量缓存（文字宽高，不含内边距），由渲染层测量后写入。
     Text {
         pos: Point,
         text: std::sync::Arc<str>,
         font_size: f32,
+        font_family: std::sync::Arc<str>,
+        bold: bool,
+        italic: bool,
         size: (f32, f32),
     },
     /// EDT-6 高亮：对角两点，荧光笔效果（半透明色块 + Multiply 混合，不遮挡文字）。
@@ -230,6 +234,12 @@ pub const DEFAULT_BLUR_RADIUS: f32 = 16.0;
 
 /// 文本默认字号（EDT-4：物理像素，滚轮连续可调）。
 pub const DEFAULT_FONT_SIZE: f32 = 24.0;
+
+/// 文本默认字体族（Win10/11 自带；字体面板可改，EDT-4）。
+pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei UI";
+
+/// 字号可调范围（滚轮 / 第二行 −+ 共用）。
+pub const FONT_SIZE_RANGE: (f32, f32) = (10.0, 96.0);
 
 /// 颜色调色板（RGBA）。透明度由工具栏后续提供，当前固定 255。
 pub const PALETTE: [[u8; 4]; 5] = [
@@ -414,6 +424,9 @@ mod tests {
                 pos: Point::new(100.0, 50.0),
                 text: std::sync::Arc::from("测试"),
                 font_size: 24.0,
+                font_family: std::sync::Arc::from(DEFAULT_FONT_FAMILY),
+                bold: false,
+                italic: false,
                 size: (48.0, 33.0), // 渲染层测量后的缓存
             },
             style: Style::new([255, 255, 255, 255], 2.0),
@@ -437,6 +450,9 @@ mod tests {
             pos: Point::new(100.0, 50.0),
             text: std::sync::Arc::from("测试"),
             font_size: 32.0,
+            font_family: std::sync::Arc::from(DEFAULT_FONT_FAMILY),
+            bold: true,
+            italic: false,
             size: (64.0, 44.0),
         };
         let b2 = obj.bounds();

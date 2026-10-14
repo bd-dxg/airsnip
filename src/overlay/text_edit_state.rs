@@ -23,9 +23,18 @@ pub(super) struct TextEdit {
     pub pending_high: Option<u16>,
     /// 字号（物理像素）。
     pub font_size: f32,
+    /// 字体族名、粗体、斜体（EDT-4）。
+    pub font_family: std::sync::Arc<str>,
+    pub bold: bool,
+    pub italic: bool,
 }
 
 impl TextEdit {
+    /// 渲染用字体规格（EDT-4）。
+    pub fn spec(&self) -> render::text::FontSpec {
+        render::text::FontSpec::from_parts(&self.font_family, self.font_size, self.bold, self.italic)
+    }
+
     /// 完整显示文本（已确认 + 组合串）。
     pub fn display(&self) -> String {
         self.chars.iter().chain(self.comp.iter()).collect()
@@ -44,10 +53,10 @@ impl TextEdit {
         let (w, _) = if line.is_empty() {
             (0.0, 0.0)
         } else {
-            render::text::measure(line, self.font_size)
+            render::text::measure(line, &self.spec())
         };
         let comp_w = if self.caret == self.chars.len() {
-            let (cw, _) = render::text::measure(&self.comp.iter().collect::<String>(), self.font_size);
+            let (cw, _) = render::text::measure(&self.comp.iter().collect::<String>(), &self.spec());
             cw
         } else {
             0.0
@@ -62,13 +71,13 @@ impl TextEdit {
 
     /// 单行高度（测量空串，渲染与光标共用）。
     pub fn line_height(&self) -> f32 {
-        let (_, h) = render::text::measure("", self.font_size);
+        let (_, h) = render::text::measure("", &self.spec());
         h.max(self.font_size * 1.2)
     }
 
     /// 输入框占据的像素区域（含内边距，供脏区与绘制使用）。
     pub fn region(&self) -> SelRect {
-        let (w, h) = render::text::measure(&self.display(), self.font_size);
+        let (w, h) = render::text::measure(&self.display(), &self.spec());
         let h = h.max(self.line_height());
         let pad = crate::editor::text::pad(self.font_size);
         let x0 = (self.pos.x - pad).floor() as i32;
@@ -149,6 +158,9 @@ mod tests {
             caret: 2,
             pending_high: None,
             font_size: 24.0,
+            font_family: std::sync::Arc::from(crate::editor::DEFAULT_FONT_FAMILY),
+            bold: false,
+            italic: false,
         }
     }
 
@@ -226,7 +238,7 @@ mod tests {
 
     #[test]
     fn multiline_region_is_taller() {
-        let mut single = edit();
+        let single = edit();
         let mut multi = edit();
         multi.insert_char('\n');
         multi.insert_char('a');

@@ -2,7 +2,11 @@
 //! 覆盖层工具栏（EDT-7）：布局与命中测试；绘制见 `draw` 子模块。
 
 mod draw;
+pub(crate) mod fontlist;
 pub(crate) mod icons;
+mod label;
+
+use std::sync::Arc;
 
 use tiny_skia::Pixmap;
 
@@ -10,8 +14,16 @@ use crate::editor::{PALETTE, Tool};
 use crate::overlay::geometry::{INFO_OFFSET, INFO_TEXT_H, SelRect};
 use crate::theme::Palette;
 
-/// 工具栏高度（绘制与布局共用）。
+/// 第一行高度（工具 / 颜色 / 开关 / 输出按钮）。
 pub const H: i32 = 34;
+/// 文本第二行高度（EDT-4：字体族 / 粗体 / 斜体 / 字号）。
+pub const H2: i32 = 30;
+/// 两行之间的间距。
+pub const ROW_GAP: i32 = 3;
+/// 字体族按钮宽度（超出时截断加省略号）。
+pub const FONT_BTN_W: i32 = 132;
+/// 字号显示格宽度。
+pub const SIZE_W: i32 = 34;
 /// 方形按钮边长（工具、撤销、开关）。
 pub(crate) const BTN: i32 = 26;
 /// 色块边长。
@@ -26,7 +38,7 @@ pub(crate) const OFFSET: i32 = INFO_OFFSET;
 pub(crate) const PAD: i32 = 5;
 
 /// 工具栏当前状态（决定高亮与可用性）。
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct State {
     pub tool: Tool,
     pub color: usize,
@@ -36,6 +48,12 @@ pub struct State {
     pub round: bool,
     pub can_undo: bool,
     pub can_redo: bool,
+    /// 第二行（EDT-4）：当前字体族、粗体/斜体、字号与字体面板是否展开。
+    pub font_family: Arc<str>,
+    pub bold: bool,
+    pub italic: bool,
+    pub font_size: f32,
+    pub font_open: bool,
 }
 
 /// 工具栏动作。
@@ -55,12 +73,28 @@ pub enum Action {
     Copy,
     /// OUT-2：按配置的目录与格式保存（Ctrl+S 同效）。
     Save,
+    /// EDT-4：展开/收起字体列表面板。
+    FontPick,
+    /// EDT-4：粗体开关。
+    ToggleBold,
+    /// EDT-4：斜体开关。
+    ToggleItalic,
+    /// EDT-4：字号减小 / 增大（每步 2px）。
+    FontSmaller,
+    FontLarger,
+    /// EDT-4：字号数值格（仅展示，不响应点击）。
+    FontSize,
 }
 
-/// 工具栏布局：整体矩形 + 各元素命中区。
-#[derive(Clone)]
+/// 工具栏布局：整体矩形（含第二行）+ 各元素命中区。
+#[derive(Clone, Debug)]
 pub struct Toolbar {
+    /// 整个工具栏（两行的并集，绘制背景与脏区共用）。
     pub rect: SelRect,
+    /// 第一行矩形。
+    pub first: SelRect,
+    /// 第二行矩形（仅文本工具 / 选中文本对象时存在）。
+    pub second: Option<SelRect>,
     /// 命中区（draw 子模块读取所有元素）。
     pub(crate) hits: Vec<(SelRect, Action)>,
 }
@@ -93,7 +127,8 @@ impl Cursor {
 }
 
 /// 计算工具栏布局：优先放在选区下方，空间不足则放上方。
-pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32) -> Toolbar {
+/// `text_row` 为真时附上第二行（文本工具或选中文本对象，EDT-4）。
+pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool) -> Toolbar {
     let mut c = Cursor { x: PAD };
     let mut hits: Vec<(SelRect, Action)> = Vec::new();
     let mut item = |c: &mut Cursor, w: i32, h: i32, action: Action| {
@@ -121,37 +156,69 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32) -> Toolbar {
     c.sep();
     item(&mut c, BTN, BTN, Action::Copy);
     item(&mut c, BTN, BTN, Action::Save);
+    let w1 = c.x - GAP + PAD;
 
-    let w = c.x - GAP + PAD;
+    // 第二行（EDT-4）：字体族按钮 + B / I + 字号 − 数值 +
+    let mut c2 = Cursor { x: PAD };
+    let mut hits2: Vec<(SelRect, Action)> = Vec::new();
+    let mut item2 = |c: &mut Cursor, w: i32, action: Action| {
+        let x = c.next(w);
+        let y = (H2 - BTN) / 2;
+        hits2.push((SelRect { x, y, w, h: BTN }, action));
+    };
+    if text_row {
+        item2(&mut c2, FONT_BTN_W, Action::FontPick);
+        c2.sep();
+        item2(&mut c2, BTN, Action::ToggleBold);
+        item2(&mut c2, BTN, Action::ToggleItalic);
+        c2.sep();
+        item2(&mut c2, BTN, Action::FontSmaller);
+        item2(&mut c2, SIZE_W, Action::FontSize);
+        item2(&mut c2, BTN, Action::FontLarger);
+    }
+    let w2 = if text_row { c2.x - GAP + PAD } else { 0 };
+
+    let w = w1.max(w2);
+    let h = if text_row { H + ROW_GAP + H2 } else { H };
     let x = sel.x.clamp(4, (screen_w - w - 4).max(4));
     // 信息文字占位（见 overlay::text_rect）：与文字同侧时需再让出一个文字高度，避免重叠
     let text_above = sel.y > INFO_TEXT_H + INFO_OFFSET;
     let below = sel.y + sel.h + OFFSET + if text_above { 0 } else { INFO_TEXT_H };
-    let y = if below + H + 4 <= screen_h {
+    let y = if below + h + 4 <= screen_h {
         below
     } else if text_above {
-        (sel.y - INFO_OFFSET - INFO_TEXT_H - OFFSET - H).max(4)
+        // 上方优先，但屏幕空间不足时允许贴到屏幕顶部（信息文字优先不重叠，
+        // 极端小屏 + 大选区下只能重叠；此处只保证不退到负坐标）
+        (sel.y - INFO_OFFSET - INFO_TEXT_H - OFFSET - h).max(2)
     } else {
-        (sel.y - OFFSET - H).max(4)
+        (sel.y - OFFSET - h).max(2)
     };
-    let bar = SelRect { x, y, w, h: H };
+    let first = SelRect { x, y, w: w1, h: H };
+    let second = text_row.then(|| SelRect {
+        x,
+        y: y + H + ROW_GAP,
+        w: w2,
+        h: H2,
+    });
+    let rect = SelRect { x, y, w, h };
 
     // 相对坐标 → 屏幕坐标
+    let offset = |r: SelRect, dy: i32| SelRect {
+        x: r.x + x,
+        y: r.y + y + dy,
+        w: r.w,
+        h: r.h,
+    };
     let hits = hits
         .into_iter()
-        .map(|(r, a)| {
-            (
-                SelRect {
-                    x: r.x + x,
-                    y: r.y + y,
-                    w: r.w,
-                    h: r.h,
-                },
-                a,
-            )
-        })
-        .collect();
-    Toolbar { rect: bar, hits }
+        .map(|(r, a)| (offset(r, 0), a))
+        .chain(hits2.into_iter().map(|(r, a)| (offset(r, H + ROW_GAP), a)));
+    Toolbar {
+        rect,
+        first,
+        second,
+        hits: hits.collect(),
+    }
 }
 
 /// 把工具栏绘制到覆盖层像素图（委托给 draw 子模块）。
@@ -181,7 +248,7 @@ mod tests {
             sel(2400, 100, 150, 1200), // 靠右：工具栏贴右边
         ];
         for s in cases {
-            let bar = layout(s, vw, vh).rect;
+            let bar = layout(s, vw, vh, false).rect;
             let text = text_rect(s, vw);
             assert!(
                 intersect_rect(bar, text).is_none(),
@@ -192,21 +259,62 @@ mod tests {
         }
     }
 
+    /// 第二行（EDT-4）同样不能与信息文字重叠，且两行不越出屏幕。
+    #[test]
+    fn text_row_stays_inside_screen() {
+        let (vw, vh) = (1366, 768);
+        let cases = [
+            sel(100, 100, 400, 300),
+            sel(100, 4, 400, 300),
+            sel(100, 100, 900, 600),
+            sel(100, 4, 900, 700),
+            sel(1000, 300, 300, 400),
+        ];
+        for s in cases {
+            let bar = layout(s, vw, vh, true);
+            let text = text_rect(s, vw);
+            assert!(
+                intersect_rect(bar.rect, text).is_none(),
+                "工具栏 {bar:?} 与信息文字 {text:?} 重叠"
+            );
+            let second = bar.second.expect("文本工具应有第二行");
+            assert_eq!(second.y, bar.first.y + H + ROW_GAP);
+            assert!(
+                bar.rect.y >= 0 && bar.rect.y + bar.rect.h <= vh,
+                "工具栏应在屏幕内：{bar:?}"
+            );
+            assert!(
+                bar.rect.x >= 0 && bar.rect.x + bar.rect.w <= vw,
+                "工具栏应在屏幕内：{bar:?}"
+            );
+            // 第二行元素全在第二行矩形内
+            for (r, _) in bar.hits.iter().filter(|(r, _)| r.y >= second.y) {
+                assert!(
+                    r.x >= second.x && r.x + r.w <= second.x + second.w,
+                    "第二行元素 {r:?} 超出第二行 {second:?}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn toolbar_hit_maps_each_element() {
-        let bar = layout(sel(100, 100, 400, 300), 2560, 1440);
+        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, true);
         // 每个元素的中心点必须命中它自己
         for (r, action) in &bar.hits {
             let (cx, cy) = (r.x + r.w / 2, r.y + r.h / 2);
             assert_eq!(bar.hit(cx, cy), Some(*action), "元素 {action:?} 中心未命中自己");
         }
-        // 元素不重叠（命中区连续递增）
+        // 元素不重叠（命中区连续递增；第二行另起一排列，只比较同行）
+        let second_y = bar.second.expect("应有第二行").y;
         for w in bar.hits.windows(2) {
-            assert!(w[0].0.x + w[0].0.w <= w[1].0.x, "元素重叠：{:?} / {:?}", w[0].0, w[1].0);
+            if w[0].0.y >= second_y && w[1].0.y >= second_y {
+                assert!(w[0].0.x + w[0].0.w <= w[1].0.x, "元素重叠：{:?} / {:?}", w[0].0, w[1].0);
+            }
         }
-        // 元素顺序与数量（EDT-7 工具栏结构）
+        // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 19);
+        assert_eq!(actions.len(), 25);
         assert_eq!(actions[..6], Tool::ALL.map(Action::Tool));
         assert_eq!(actions[13], Action::Undo);
         assert_eq!(actions[14], Action::Redo);
@@ -214,5 +322,25 @@ mod tests {
         assert_eq!(actions[16], Action::Longshot);
         assert_eq!(actions[17], Action::Copy);
         assert_eq!(actions[18], Action::Save);
+        assert_eq!(
+            actions[19..],
+            [
+                Action::FontPick,
+                Action::ToggleBold,
+                Action::ToggleItalic,
+                Action::FontSmaller,
+                Action::FontSize,
+                Action::FontLarger
+            ]
+        );
+    }
+
+    /// 非文本场景第二行不应出现（避免占地与多余命中区）。
+    #[test]
+    fn second_row_only_when_text_row_requested() {
+        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false);
+        assert!(bar.second.is_none());
+        assert_eq!(bar.rect.h, H);
+        assert_eq!(bar.hits.len(), 19);
     }
 }

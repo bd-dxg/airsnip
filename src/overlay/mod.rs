@@ -3,18 +3,20 @@
 //! 冻结画面 + 选区暗化（预生成暗图 + 选区回贴原图），支持框选、移动与八向缩放。
 //! 选区确认后进入标注模式（EDT-1/EDT-2/EDT-7）：工具栏切换工具与样式，在选区内拖拽即绘制标注。
 //!
-//! 文件分工：`wndproc` 消息分发、`geometry` 矩形运算、`surface` 像素缓冲与上屏、
+//! 文件分工：`wndproc` 消息分发、`setup` 窗口创建、`geometry` 矩形运算、`surface` 像素缓冲与上屏、
 //! `cursor` 光标、`selection` 脏区重绘、`interaction` 鼠标交互、`pick` 对象选中与控制柄、
-//! `objedit` 对象手柄/拖动缩放/删除/层级、`annotate` 标注与输出、`toolbar` 工具栏。
+//! `objedit` 对象手柄与拖动缩放、`font` 字体设置与字体面板、`annotate` 标注与输出、`toolbar` 工具栏。
 
 mod annotate;
 mod control;
 mod cursor;
+mod font;
 pub(crate) mod geometry;
 mod interaction;
 mod objedit;
 mod pick;
 mod selection;
+mod setup;
 pub(crate) mod surface;
 mod text_edit_state;
 mod textinput;
@@ -26,7 +28,6 @@ use windows::Win32::Foundation::{HINSTANCE, HWND};
 use windows::Win32::Graphics::Gdi::{HBITMAP, HDC, InvalidateRect, UpdateWindow};
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{PCWSTR, w};
 
 use crate::capture::CapturedScreen;
 use crate::editor::{self, Document, Object, Point, Tool};
@@ -36,10 +37,7 @@ use geometry::SelRect;
 use interaction::{Drag, Phase};
 use text_edit_state::TextEdit;
 
-const WINDOW_CLASS: PCWSTR = w!("jietu.overlay");
-
-/// 覆盖层运行结果（M4 长截图视口选取复用）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 覆盖层运行结果（M4 长截图视口选取复用）。#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayResult {
     /// 截图完成（已复制/保存/贴图）。
     Done,
@@ -75,8 +73,14 @@ pub struct Overlay {
     line_width: f32,
     /// 新建模糊对象的默认半径（EDT-5）。
     blur_radius: f32,
-    /// 新建文本对象的默认字号（EDT-4，滚轮可连续调整）。
+    /// 新建文本对象的默认字号（EDT-4，滚轮 / 第二行可调）。
     font_size: f32,
+    /// 新建文本对象的默认字体族、粗体、斜体（EDT-4，第二行工具栏可改）。
+    font_family: std::sync::Arc<str>,
+    bold: bool,
+    italic: bool,
+    /// 展开中的字体列表面板（EDT-4）。
+    font_list: Option<toolbar::fontlist::FontPanel>,
     filled: bool,
     round: bool,
     /// 正在拖拽、尚未提交的标注对象。
@@ -149,6 +153,10 @@ impl Overlay {
             line_width: editor::DEFAULT_LINE_WIDTH,
             blur_radius: editor::DEFAULT_BLUR_RADIUS,
             font_size: editor::DEFAULT_FONT_SIZE,
+            font_family: std::sync::Arc::from(editor::DEFAULT_FONT_FAMILY),
+            bold: false,
+            italic: false,
+            font_list: None,
             filled: false,
             round: false,
             draft: None,
@@ -168,41 +176,7 @@ impl Overlay {
         })
     }
 
-    /// 注册窗口类并创建覆盖窗口。
-    fn create_window(hinstance: HINSTANCE) -> Result<HWND, String> {
-        unsafe {
-            let wc = WNDCLASSW {
-                // CS_DBLCLKS：否则系统不会发 WM_LBUTTONDBLCLK（双击控制柄恢复直线，EDT-3）
-                style: CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS,
-                lpfnWndProc: Some(wndproc::wndproc),
-                hInstance: hinstance,
-                hCursor: cursor::cross_cursor(),
-                hbrBackground: Default::default(),
-                lpszMenuName: PCWSTR::null(),
-                lpszClassName: WINDOW_CLASS,
-                ..Default::default()
-            };
-            let _ = RegisterClassW(&wc);
-            let hwnd = CreateWindowExW(
-                // 截图期间需接收键盘（Esc 取消 / 回车复制 / Ctrl+C 等）：不用 WS_EX_NOACTIVATE，
-                // 否则窗口无输入焦点，WM_KEYDOWN/WM_HOTKEY 之外的键（如 Esc、回车）收不到（M3）。
-                WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
-                WINDOW_CLASS,
-                w!("jietu.overlay"),
-                WS_POPUP,
-                0,
-                0,
-                0,
-                0,
-                None,
-                None,
-                Some(hinstance),
-                None,
-            )
-            .map_err(|e| format!("创建覆盖层窗口失败：{e}"))?;
-            Ok(hwnd)
-        }
-    }
+    /// 注册窗口类并创建覆盖窗口（实现见 `setup`）。
 
     /// 显示覆盖层并阻塞运行，直到截图完成、取消或触发长截图。
     /// 返回类型区分三种结果（普通截图 / 取消 / 长截图视口选取）。

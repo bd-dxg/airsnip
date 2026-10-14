@@ -64,11 +64,12 @@ pub(super) fn present(ctx: &Ctx) {
         }
         let color = p.text;
         let ty = y + (item_h - text_h) / 2;
+        let spec = dwrite::FontSpec::new(font_size);
         dwrite::draw(
             &mut pix,
             FPoint::new(pad_x as f32, ty as f32),
             it.text,
-            font_size,
+            &spec,
             color,
             tiny_skia::Transform::identity(),
         );
