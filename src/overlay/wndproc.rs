@@ -3,7 +3,7 @@
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT};
-use windows::Win32::UI::Input::Ime::ImmGetVirtualKey;
+use windows::Win32::UI::Input::Ime::{IME_COMPOSITION_STRING, ImmGetVirtualKey};
 use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
@@ -37,6 +37,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
             overlay.on_mouse_move(x, y);
+            // 字体面板悬停高亮（EDT-4）
+            overlay.on_font_list_hover(x, y);
             // 光标随鼠标位置变：手柄→方向光标、对象/曲线控制柄→移动光标（否则系统只在
             // 位置变化且命中窗口时发 WM_SETCURSOR，拖动手柄途中光标不会更新）
             overlay.apply_cursor_at(x, y);
@@ -51,7 +53,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let sx = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let sy = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
             let delta = ((wparam.0 >> 16) & 0xFFFF) as u16 as i16; // ±120 单位
-            overlay.on_mouse_wheel(sx, sy, delta, ctrl_down());
+            // 字体面板上的滚轮用于滚动列表（EDT-4），不调节字号
+            let (ox, oy) = (sx - overlay.capture.origin_x, sy - overlay.capture.origin_y);
+            if !overlay.on_font_list_wheel(ox, oy, delta) {
+                overlay.on_mouse_wheel(sx, sy, delta, ctrl_down());
+            }
             LRESULT(0)
         }
         WM_RBUTTONUP => {
@@ -132,12 +138,19 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 return LRESULT(0);
             }
             match vk {
-                0x1B => overlay.on_cancel(),              // Esc
-                0x72 => overlay.on_pin(),                 // PIN-1：F3 贴选区（截图期间全局 F3 已撤销）
-                0x0D => overlay.on_copy(),                // Enter
+                // Esc：先收起字体面板（EDT-4），否则取消截图
+                0x1B => {
+                    if overlay.font_list_open() {
+                        overlay.close_font_list();
+                    } else {
+                        overlay.on_cancel();
+                    }
+                }
+                0x72 => overlay.on_pin(),  // PIN-1：F3 贴选区（截图期间全局 F3 已撤销）
+                0x0D => overlay.on_copy(), // Enter
                 0x43 if ctrl_down() => overlay.on_copy(), // Ctrl+C
                 0x53 if ctrl_down() => overlay.on_save(), // Ctrl+S 保存（弹另存为对话框）
-                0x53 => overlay.on_longshot(),            // M4：S 长截图（当前选区为视口）
+                0x53 => overlay.on_longshot(), // M4：S 长截图（当前选区为视口）
                 0x5A if ctrl_down() => {
                     // Ctrl+Z 撤销 / Ctrl+Shift+Z 重做（EDT-7）
                     if shift_down() {
@@ -222,4 +235,25 @@ pub(super) fn shift_down() -> bool {
 /// 空格键是否按下（按住空格拖动可移动整个选区，CAP-2）。
 pub(super) fn space_down() -> bool {
     key_down(0x20)
+}
+
+/// 从 IME 上下文读取组合串/结果串（UTF-16 → String，EDT-4）。
+pub(super) fn ime_string(hwnd: HWND, what: IME_COMPOSITION_STRING) -> String {
+    unsafe {
+        use windows::Win32::UI::Input::Ime::{ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext};
+        let ctx = ImmGetContext(hwnd);
+        if ctx.0.is_null() {
+            return String::new();
+        }
+        let len = ImmGetCompositionStringW(ctx, what, None, 0);
+        let out = if len <= 0 {
+            String::new()
+        } else {
+            let mut buf = vec![0u16; (len / 2) as usize];
+            ImmGetCompositionStringW(ctx, what, Some(buf.as_mut_ptr() as *mut core::ffi::c_void), len as u32);
+            String::from_utf16_lossy(&buf)
+        };
+        let _ = ImmReleaseContext(hwnd, ctx);
+        out
+    }
 }

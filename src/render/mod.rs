@@ -12,6 +12,7 @@ use crate::editor::{
 mod bake;
 pub use bake::bake_objects;
 mod blur;
+pub mod fonts;
 pub mod text;
 mod text_bitmap;
 
@@ -45,8 +46,21 @@ pub fn draw_object_with(pixmap: &mut Pixmap, obj: &Object, transform: Transform)
         Kind::Rect { a, b, radius, filled } => draw_rect(pixmap, *a, *b, *radius, *filled, &obj.style, transform),
         Kind::Arrow { from, c1, c2, to } => draw_arrow(pixmap, *from, *c1, *c2, *to, &obj.style, transform),
         Kind::Text {
-            pos, text, font_size, ..
-        } => text::draw(pixmap, *pos, text, *font_size, obj.style.color, transform),
+            pos,
+            text,
+            font_size,
+            font_family,
+            bold,
+            italic,
+            ..
+        } => text::draw(
+            pixmap,
+            *pos,
+            text,
+            &text::FontSpec::from_parts(font_family, *font_size, *bold, *italic),
+            obj.style.color,
+            transform,
+        ),
         Kind::Highlight { a, b } => draw_highlight(pixmap, *a, *b, &obj.style, transform),
         Kind::Blur { a, b, radius } => draw_blur(pixmap, *a, *b, *radius, transform),
         // 聚光高亮：不在底图上涂色，效果由「选区暗化 + 区域恢复原图亮度」的渲染管线提供

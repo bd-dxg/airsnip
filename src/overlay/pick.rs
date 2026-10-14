@@ -81,6 +81,8 @@ impl super::Overlay {
         }
         let had = self.selected.is_some();
         self.selected = new;
+        // 选中文本对象时第二行才出现（EDT-4）
+        self.refresh_toolbar();
         if (had || new.is_some())
             && let Some(sel) = self.selection
         {
@@ -141,7 +143,7 @@ impl super::Overlay {
         self.doc.begin();
         let changed = {
             let obj = &mut self.doc.objects_mut()[i];
-            match &mut obj.kind {
+            let changed = match &mut obj.kind {
                 Kind::Rect { .. } | Kind::Arrow { .. } => {
                     let w = (obj.style.width + step).clamp(1.0, 32.0);
                     let changed = (w - obj.style.width).abs() > 0.01;
@@ -163,19 +165,22 @@ impl super::Overlay {
                 // 高亮/聚光：无可调属性
                 Kind::Highlight { .. } | Kind::Glow { .. } => false,
                 // 文本：字号连续可调，同步重建测量缓存（EDT-4）
-                Kind::Text {
-                    font_size, size, text, ..
-                } => {
-                    let fs = (*font_size + step).clamp(10.0, 96.0);
+                Kind::Text { font_size, .. } => {
+                    let fs =
+                        (*font_size + step).clamp(crate::editor::FONT_SIZE_RANGE.0, crate::editor::FONT_SIZE_RANGE.1);
                     let changed = (*font_size - fs).abs() > 0.01;
                     if changed {
                         *font_size = fs;
-                        *size = crate::render::text::measure(text, fs);
                         self.font_size = fs;
                     }
                     changed
                 }
+            };
+            // 非文本对象与未变字号下 remeasure 无操作
+            if changed {
+                crate::render::text::remeasure(&mut obj.kind);
             }
+            changed
         };
         self.doc.commit(changed);
         if !changed {
@@ -187,12 +192,11 @@ impl super::Overlay {
             self.repaint(expand_rect(d, 4));
         }
         if let Some(bar) = &self.bar {
-            // 撤销可用性变化
+            // 撤销可用性与字号显示可能变化
             self.repaint(expand_rect(bar.rect, 2));
         }
     }
 }
-
 /// 选中箭头的控制柄（EDT-3）：控制点处画圆点，与端点之间用虚线辅助线连接。
 pub(super) fn draw_curve_handles(pixmap: &mut Pixmap, obj: &Object) {
     let (Some(cps), Kind::Arrow { from, to, .. }) = (obj.kind.control_points(), &obj.kind) else {

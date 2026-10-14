@@ -6,11 +6,7 @@ use windows::Win32::Foundation::{GlobalFree, LPARAM, WPARAM};
 use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, PostMessageW, WM_CLOSE};
 
-use super::{
-    geometry::{SelRect, expand_rect},
-    surface::crop_pixmap,
-    toolbar,
-};
+use super::{geometry::SelRect, surface::crop_pixmap, toolbar};
 use crate::editor::{self, Style};
 use crate::{output, render};
 
@@ -46,6 +42,7 @@ impl super::Overlay {
     }
 
     pub(super) fn bar_state(&self) -> toolbar::State {
+        let (font_family, font_size, bold, italic) = self.font_state();
         toolbar::State {
             tool: self.tool,
             color: self.color_index,
@@ -53,6 +50,11 @@ impl super::Overlay {
             round: self.round,
             can_undo: self.doc.can_undo(),
             can_redo: self.doc.can_redo(),
+            font_family,
+            bold,
+            italic,
+            font_size,
+            font_open: self.font_list.is_some(),
         }
     }
 
@@ -90,18 +92,24 @@ impl super::Overlay {
             toolbar::Action::Copy => return self.on_copy(),
             // OUT-2：保存按钮 → 按配置保存并关闭覆盖层（不复绘）
             toolbar::Action::Save => return self.on_save(),
+            // EDT-4：文本第二行（字体族 / 粗斜体 / 字号）见 `font`
+            toolbar::Action::FontPick
+            | toolbar::Action::ToggleBold
+            | toolbar::Action::ToggleItalic
+            | toolbar::Action::FontSmaller
+            | toolbar::Action::FontLarger
+            | toolbar::Action::FontSize => return self.on_font_action(action),
         }
-        // 仅工具栏自身外观发生变化
-        let bar = self.bar.as_ref().map(|b| b.rect);
-        if let Some(rect) = bar {
-            self.repaint(expand_rect(rect, 2));
-        }
+        // 工具栏自身外观或第二行显隐可能变化
+        self.refresh_toolbar();
+        self.repaint_toolbar_chrome();
     }
 
     /// 撤销（Ctrl+Z）。
     pub(super) fn on_undo(&mut self) {
         if self.doc.undo() {
             self.selected = None; // 索引已变，控制柄不再对应
+            self.refresh_toolbar(); // 选中文本对象消失时第二行随之收起（EDT-4）
             self.repaint_after_history();
         }
     }
@@ -110,6 +118,7 @@ impl super::Overlay {
     pub(super) fn on_redo(&mut self) {
         if self.doc.redo() {
             self.selected = None;
+            self.refresh_toolbar();
             self.repaint_after_history();
         }
     }

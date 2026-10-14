@@ -75,12 +75,7 @@ impl super::super::Overlay {
                     obj.kind = orig.kind.clone();
                     obj.kind.remap(frame, target);
                     // 文本：几何缩放只给出字号比例，尺寸缓存用渲染层重新测量（EDT-4）
-                    if let Kind::Text {
-                        text, font_size, size, ..
-                    } = &mut obj.kind
-                    {
-                        *size = crate::render::text::measure(text, *font_size);
-                    }
+                    crate::render::text::remeasure(&mut obj.kind);
                 }
             }
         }
@@ -175,11 +170,9 @@ impl super::super::Overlay {
         }
     }
 
-    /// 重绘工具栏（撤销/重做可用性与层级按钮状态可能变化）。
+    /// 重绘工具栏（撤销/重做可用性与第二行字体状态可能变化）。
     fn repaint_toolbar(&mut self) {
-        if let Some(rect) = self.bar.as_ref().map(|b| b.rect) {
-            self.repaint(expand_rect(rect, 2));
-        }
+        self.repaint_toolbar_chrome();
     }
 }
 

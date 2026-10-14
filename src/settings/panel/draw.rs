@@ -191,7 +191,7 @@ fn draw_keycap(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let text = keycap_text(panel, row.id);
     let size = 13.0 * s;
     let color = if capturing { p.accent } else { p.text };
-    let (w, _) = dwrite::measure(&text, size);
+    let (w, _) = dwrite::measure(&text, &dwrite::FontSpec::new(size));
     let x = c.x as f32 + (c.w as f32 - w) / 2.0;
     let y = kb.y as f32 + (kh as f32 - size * 1.2) / 2.0;
     draw_text(pixmap, x, y, &text, size, color);
@@ -269,7 +269,7 @@ fn draw_readonly(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row)
         _ => "",
     };
     let size = 13.0 * s;
-    let (w, _) = dwrite::measure(text, size);
+    let (w, _) = dwrite::measure(text, &dwrite::FontSpec::new(size));
     let x = row.control.x + row.control.w as i32 - w as i32;
     let y = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
     draw_text(pixmap, x as f32, y, text, size, p.text_dim);
@@ -281,7 +281,7 @@ fn draw_about(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let s = panel.scale;
     let text = format!("v{} · GPL-3.0", env!("CARGO_PKG_VERSION"));
     let size = 13.0 * s;
-    let (w, _) = dwrite::measure(&text, size);
+    let (w, _) = dwrite::measure(&text, &dwrite::FontSpec::new(size));
     let x = row.control.x + row.control.w as i32 - w as i32;
     let y = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
     draw_text(pixmap, x as f32, y, &text, size, p.text_dim);
@@ -289,5 +289,6 @@ fn draw_about(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
 
 /// 经 DirectWrite 栅格化文本（位置为左上角物理像素）。
 fn draw_text(pixmap: &mut Pixmap, x: f32, y: f32, text: &str, size: f32, color: [u8; 4]) {
-    dwrite::draw(pixmap, Point::new(x, y), text, size, color, Transform::identity());
+    let spec = dwrite::FontSpec::new(size);
+    dwrite::draw(pixmap, Point::new(x, y), text, &spec, color, Transform::identity());
 }

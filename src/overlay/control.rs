@@ -59,9 +59,9 @@ impl super::Overlay {
             .map(|c| c[index] != orig)
             .unwrap_or(false);
         self.doc.commit(moved);
-        if moved && let Some(bar) = &self.bar {
+        if moved {
             // 撤销按钮可用性可能变化
-            self.repaint(expand_rect(bar.rect, 2));
+            self.repaint_toolbar_chrome();
         }
     }
 
