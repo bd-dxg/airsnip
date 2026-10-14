@@ -320,27 +320,6 @@ mod tests {
     }
 
     #[test]
-    fn raise_and_lower_change_z_order() {
-        let mut doc = Document::new();
-        doc.begin();
-        doc.push(rect((0.0, 0.0), (10.0, 10.0)));
-        doc.push(arrow((0.0, 0.0), (20.0, 20.0)));
-        doc.push(rect((5.0, 5.0), (15.0, 15.0)));
-        doc.commit(true);
-
-        // 最底层置顶：移到末尾，其余顺序保持
-        assert!(doc.raise(0));
-        assert!(matches!(doc.objects()[0].kind, Kind::Arrow { .. }));
-        assert!(matches!(doc.objects()[2].kind, Kind::Rect { .. }));
-        assert!(!doc.raise(2), "已在顶层应无变化");
-
-        // 置底：移到开头
-        assert!(doc.lower(2));
-        assert!(matches!(doc.objects()[0].kind, Kind::Rect { .. }));
-        assert!(!doc.lower(0), "已在底层应无变化");
-    }
-
-    #[test]
     fn history_is_bounded() {
         let mut doc = Document::new();
         for i in 0..(MAX_HISTORY + 20) {

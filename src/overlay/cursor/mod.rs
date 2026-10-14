@@ -10,7 +10,8 @@ pub(in crate::overlay) use paint::cross_cursor;
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, HCURSOR, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, LoadCursorW, SetCursor,
+    GetCursorPos, HCURSOR, IDC_ARROW, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, LoadCursorW,
+    SetCursor,
 };
 use windows::core::PCWSTR;
 
@@ -18,9 +19,11 @@ use super::objedit::ObjHandle;
 use super::pick::Handle;
 use super::wndproc::space_down;
 
-/// 光标形状：十字（默认）、抓手（空格移动选区）、移动与四个方向缩放。
+/// 光标形状：箭头（工具栏）、十字（默认）、抓手（空格移动选区）、移动与四个方向缩放。
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum Shape {
+    /// 系统箭头：覆盖层工具栏上（按钮是点击目标，不是绘制区）。
+    Arrow,
     Cross,
     Hand,
     /// 四向移动（对象本体、曲线控制柄、选区移动）。
@@ -34,6 +37,7 @@ pub(super) enum Shape {
 impl Shape {
     fn cursor(self) -> HCURSOR {
         match self {
+            Shape::Arrow => load(IDC_ARROW),
             Shape::Cross => cross_cursor(),
             Shape::Hand => paint::hand_cursor(),
             Shape::Move => load(IDC_SIZEALL),
@@ -106,6 +110,12 @@ impl super::Overlay {
         }
         if self.draft.is_some() {
             return Shape::Cross;
+        }
+        // 工具栏是点击目标而非绘制区：鼠标在其上时用系统箭头
+        if let Some(bar) = &self.bar
+            && super::geometry::in_rect(bar.rect, x, y)
+        {
+            return Shape::Arrow;
         }
         if let Some(sel) = self.selection {
             if let Some(i) = self.selected

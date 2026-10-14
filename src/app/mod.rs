@@ -4,7 +4,7 @@
 
 pub mod autostart;
 pub mod filedlg;
-mod hotkey;
+pub(crate) mod hotkey;
 pub mod popmenu;
 mod tray;
 

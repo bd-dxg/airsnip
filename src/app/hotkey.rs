@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 全局热键（SYS-2）：注册、冲突提示、无修饰键风险首次提示。
+//! 全局热键（SYS-2）：注册、冲突提示、无修饰键风险首次提示；窗口内方向键步进。
 
 use windows::Win32::Foundation::GetLastError;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -67,6 +67,19 @@ impl App {
     }
 }
 
+/// 方向键微调步进（EDT-7 / CAP-2 / PIN-1）：1px，按住 Shift 5px。
+/// 覆盖层（移动选中对象 / 选区框）与贴图窗口（移动窗口）共用。
+pub(crate) fn arrow_step(vk: u32, shift: bool) -> Option<(i32, i32)> {
+    let s = if shift { 5 } else { 1 };
+    match vk {
+        0x25 => Some((-s, 0)), // VK_LEFT
+        0x26 => Some((0, -s)), // VK_UP
+        0x27 => Some((s, 0)),  // VK_RIGHT
+        0x28 => Some((0, s)),  // VK_DOWN
+        _ => None,
+    }
+}
+
 /// 组装热键修饰键位标志。
 fn mod_flags(modifiers: u32) -> HOT_KEY_MODIFIERS {
     let mut m = HOT_KEY_MODIFIERS(0);
@@ -84,4 +97,20 @@ fn mod_flags(modifiers: u32) -> HOT_KEY_MODIFIERS {
     }
     m |= MOD_NOREPEAT;
     m
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn arrow_step_uses_one_pixel_or_five_with_shift() {
+        assert_eq!(arrow_step(0x25, false), Some((-1, 0)));
+        assert_eq!(arrow_step(0x26, false), Some((0, -1)));
+        assert_eq!(arrow_step(0x27, false), Some((1, 0)));
+        assert_eq!(arrow_step(0x28, false), Some((0, 1)));
+        assert_eq!(arrow_step(0x25, true), Some((-5, 0)));
+        assert_eq!(arrow_step(0x28, true), Some((0, 5)));
+        assert_eq!(arrow_step(0x41, false), None, "非方向键不产生步进");
+    }
 }

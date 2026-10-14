@@ -53,8 +53,6 @@ impl super::Overlay {
             round: self.round,
             can_undo: self.doc.can_undo(),
             can_redo: self.doc.can_redo(),
-            // 层级/删除按钮需要选中对象才可用（EDT-7）
-            has_selection: self.selected.is_some(),
         }
     }
 
@@ -81,10 +79,7 @@ impl super::Overlay {
                     self.style_selected();
                 }
             }
-            // EDT-7：层级调整与删除（与 Ctrl+] / Ctrl+[ / Del 同一条路径）
-            toolbar::Action::Raise => return self.reorder_selected(true),
-            toolbar::Action::Lower => return self.reorder_selected(false),
-            toolbar::Action::Delete => return self.delete_selected(),
+            // EDT-7：无删除/层级按钮（用户取舍：删除仅能靠 Ctrl+Z 撤销）
             toolbar::Action::Undo => return self.on_undo(),
             toolbar::Action::Redo => return self.on_redo(),
             // PIN-1：贴图按钮 → 选区贴图后覆盖层自行关闭（不复绘）

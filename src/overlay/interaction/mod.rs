@@ -32,6 +32,40 @@ pub(super) struct Drag {
 }
 
 impl super::Overlay {
+    /// 方向键微调（EDT-7 / CAP-2）：有选中对象 → 移动该对象（限制在选区内）；
+    /// 否则 → 移动选区框（标注不跟随，允许落到选区外，导出以选区为准）。
+    /// 每次按键 = 一步撤销。
+    pub(super) fn nudge(&mut self, dx: i32, dy: i32) {
+        // 拖动/绘制中忽略：这些流程每帧从按下时的几何重算，微调会被覆盖
+        if self.obj_drag.is_some() || self.ctrl_drag.is_some() || self.drag.is_some() || self.draft.is_some() {
+            return;
+        }
+        if self.selected.is_some() {
+            self.nudge_object(dx, dy);
+            return;
+        }
+        self.nudge_selection(dx, dy);
+    }
+
+    /// 微调选区框位置（CAP-2）：限制在虚拟屏幕内，工具栏随之重排。
+    fn nudge_selection(&mut self, dx: i32, dy: i32) {
+        let Some(sel) = self.selection else {
+            return;
+        };
+        let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
+        let x = (sel.x + dx).clamp(0, (vw - sel.w).max(0));
+        let y = (sel.y + dy).clamp(0, (vh - sel.h).max(0));
+        if x == sel.x && y == sel.y {
+            return;
+        }
+        self.set_selection(Some(SelRect {
+            x,
+            y,
+            w: sel.w,
+            h: sel.h,
+        }));
+    }
+
     pub(super) fn on_lbutton_down(&mut self, x: i32, y: i32) {
         // 工具栏优先（EDT-7）：点在工具栏上只切换状态，不开始绘制
         let bar = self.bar.clone();
