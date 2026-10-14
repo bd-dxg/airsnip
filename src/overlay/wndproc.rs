@@ -147,11 +147,12 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                     }
                 }
                 0x59 if ctrl_down() => overlay.on_redo(), // Ctrl+Y
-                // EDT-7：删除选中对象 / 层级调整（Ctrl+] 置顶、Ctrl+[ 置底）
-                0x2E => overlay.delete_selected(),
-                0xDD if ctrl_down() => overlay.reorder_selected(true),
-                0xDB if ctrl_down() => overlay.reorder_selected(false),
                 _ => {
+                    // 方向键微调（EDT-7 / CAP-2）：1px，Shift 5px；优先于工具切换键
+                    if let Some((dx, dy)) = crate::app::hotkey::arrow_step(vk, shift_down()) {
+                        overlay.nudge(dx, dy);
+                        return LRESULT(0);
+                    }
                     // 工具切换键（M3）：任意键都查映射（不限于数字键），
                     // 以便设置面板可把工具键改为字母等
                     if let Some(t) = overlay.tool_by_key(vk) {

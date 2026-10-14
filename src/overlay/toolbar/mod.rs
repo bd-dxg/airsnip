@@ -36,8 +36,6 @@ pub struct State {
     pub round: bool,
     pub can_undo: bool,
     pub can_redo: bool,
-    /// 是否有选中对象（层级/删除按钮可用性，EDT-7）。
-    pub has_selection: bool,
 }
 
 /// 工具栏动作。
@@ -49,12 +47,6 @@ pub enum Action {
     ToggleRound,
     Undo,
     Redo,
-    /// EDT-7：选中对象置顶（最上层）。
-    Raise,
-    /// EDT-7：选中对象置底（最下层）。
-    Lower,
-    /// EDT-7：删除选中对象（Del 同效）。
-    Delete,
     /// PIN-1：把选区（含标注）贴为置顶窗口。
     Pin,
     /// M4：把当前选区作为滚动视口，进入长截图拼接（S 键同效）。
@@ -123,11 +115,6 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32) -> Toolbar {
     c.sep();
     item(&mut c, BTN, BTN, Action::Undo);
     item(&mut c, BTN, BTN, Action::Redo);
-    c.sep();
-    // EDT-7：对象层级与删除（需选中对象）
-    item(&mut c, BTN, BTN, Action::Raise);
-    item(&mut c, BTN, BTN, Action::Lower);
-    item(&mut c, BTN, BTN, Action::Delete);
     c.sep();
     item(&mut c, BTN, BTN, Action::Pin);
     item(&mut c, BTN, BTN, Action::Longshot);
@@ -219,16 +206,13 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 22);
+        assert_eq!(actions.len(), 19);
         assert_eq!(actions[..6], Tool::ALL.map(Action::Tool));
         assert_eq!(actions[13], Action::Undo);
         assert_eq!(actions[14], Action::Redo);
-        assert_eq!(actions[15], Action::Raise);
-        assert_eq!(actions[16], Action::Lower);
-        assert_eq!(actions[17], Action::Delete);
-        assert_eq!(actions[18], Action::Pin);
-        assert_eq!(actions[19], Action::Longshot);
-        assert_eq!(actions[20], Action::Copy);
-        assert_eq!(actions[21], Action::Save);
+        assert_eq!(actions[15], Action::Pin);
+        assert_eq!(actions[16], Action::Longshot);
+        assert_eq!(actions[17], Action::Copy);
+        assert_eq!(actions[18], Action::Save);
     }
 }

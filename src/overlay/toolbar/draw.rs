@@ -18,8 +18,8 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
 
     // 组分隔线：画在每个组首个元素左侧的空白处
     // 组划分（hits 索引）：[工具 0-5][颜色 6-10][填充 11 圆角 12][撤销 13 重做 14]
-    // [置顶 15 置底 16 删除 17][贴图 18 长截图 19][复制 20 保存 21]
-    for &index in &[6usize, 11, 13, 15, 18, 20] {
+    // [贴图 15 长截图 16][复制 17 保存 18]
+    for &index in &[6usize, 11, 13, 15, 17] {
         let Some((first, _)) = bar.hits.get(index) else {
             continue;
         };
@@ -87,10 +87,6 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
             }
             Action::Undo => draw_undo_icon(pixmap, *r, if state.can_undo { p.icon } else { p.icon_dim }, false),
             Action::Redo => draw_undo_icon(pixmap, *r, if state.can_redo { p.icon } else { p.icon_dim }, true),
-            // EDT-7：层级调整与删除（无选中对象时置灰）
-            Action::Raise => layer_icon(pixmap, *r, if state.has_selection { p.icon } else { p.icon_dim }, true),
-            Action::Lower => layer_icon(pixmap, *r, if state.has_selection { p.icon } else { p.icon_dim }, false),
-            Action::Delete => trash_icon(pixmap, *r, if state.has_selection { p.icon } else { p.icon_dim }),
             // PIN-1：贴图（图钉）
             Action::Pin => pin_icon(pixmap, *r, p.icon),
             // M4：长截图（向下展开的页面 + 箭头）

@@ -74,6 +74,20 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let vk = wparam.0 as u32;
             if vk == 0x1B {
                 let _ = unsafe { post_close(hwnd) };
+            } else if let Some((dx, dy)) = crate::app::hotkey::arrow_step(vk, held_modifiers() & 4 != 0) {
+                // 方向键微调窗口位置（PIN-1）：1px，Shift 5px
+                let rect = unsafe { window_rect(hwnd) };
+                let _ = unsafe {
+                    SetWindowPos(
+                        hwnd,
+                        Some(HWND_TOPMOST),
+                        rect.left + dx,
+                        rect.top + dy,
+                        0,
+                        0,
+                        SWP_NOSIZE | SWP_NOACTIVATE,
+                    )
+                };
             } else if let (bk, bm) = super::border_key()
                 && bk != 0
                 && vk == bk

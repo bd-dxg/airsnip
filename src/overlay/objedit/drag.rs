@@ -101,39 +101,32 @@ impl super::super::Overlay {
         }
     }
 
-    /// Del / 工具栏删除按钮：删除选中对象（EDT-7）。
-    pub(in crate::overlay) fn delete_selected(&mut self) {
+    /// 方向键微调选中对象（EDT-7）：`dx`/`dy` 为像素增量（1px，Shift 5px）。
+    /// 与拖动一致地限制在选区内；每次按键 = 一步撤销。
+    pub(in crate::overlay) fn nudge_object(&mut self, dx: i32, dy: i32) {
         let Some(i) = self.selected else {
+            return;
+        };
+        let Some(sel) = self.selection else {
             return;
         };
         let before = self.selected_clip();
         self.doc.begin();
-        self.doc.remove(i);
-        self.doc.commit(true);
-        self.set_selected(None);
-        if let Some(b) = before {
-            self.repaint(expand_rect(b, 10));
-        }
-        self.repaint_toolbar();
-    }
-
-    /// 置顶 / 置底（EDT-7 层级调整）；`up` 为 true 表示置顶。
-    pub(in crate::overlay) fn reorder_selected(&mut self, up: bool) {
-        let Some(i) = self.selected else {
-            return;
+        let changed = {
+            let obj = &mut self.doc.objects_mut()[i];
+            let frame = obj.bounds();
+            let target = shifted_frame(frame, sel, dx, dy);
+            let (mx, my) = (target.x0 - frame.x0, target.y0 - frame.y0);
+            let moved = mx.abs() > 0.01 || my.abs() > 0.01;
+            if moved {
+                obj.kind.translate(mx, my);
+            }
+            moved
         };
-        self.doc.begin();
-        let moved = if up { self.doc.raise(i) } else { self.doc.lower(i) };
-        self.doc.commit(moved);
-        if !moved {
-            return;
+        self.doc.commit(changed);
+        if changed {
+            self.repaint_selected(before);
         }
-        // 索引随层级变化：置顶落到末尾、置底落到开头，保持选中
-        self.selected = Some(if up { self.doc.objects().len() - 1 } else { 0 });
-        if let Some(sel) = self.selection {
-            self.repaint(sel);
-        }
-        self.repaint_toolbar();
     }
 
     /// 工具栏样式（颜色 / 填充 / 圆角）实时作用于选中对象（EDT-7）。
