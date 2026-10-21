@@ -8,7 +8,9 @@
 
 ## 项目状态
 
-- 当前处于 **M0–M4 全部交付，M5a 阶段 A/B/B′ 已合并**：M0/M1/M2/M2b/M3/M4 均已交付（M4 已合并 PR #23，用户复验通过）；M4 自动化验证（`cargo test` 95 项全绿；`Task/verify-m4.ps1` GUI 端到端 PIL 验证 PASS：自建可滚动目标窗口 → F1 → 框选 → S（工具栏按钮/快捷键）→ 自动滚动拼接 → 输出 PNG 844x1901 > 视口 641）。关键实现：全重叠区一致性拼接（`stitch`）、固定页眉/页脚检测（`engine`）、视口蓝框（`border`）、执行窗口 `WS_EX_NOACTIVATE` + `AttachThreadInput` 激活目标后发真实滚轮（`scroll`）、`ImmGetVirtualKey` 解决输入法吞键。**当前进度：M5a 阶段 A（保存，PR #24）、阶段 B（对象二次编辑，PR #26）、阶段 B′（交互打磨，PR #27）、阶段 C（文本字体）均已交付，**PR #29 已开、待合并**（分支 `feat/text-font`，`main` 停在 `b1e7e0c`）——阶段 C 交付：系统字体枚举（`render::fonts`）+ 工具栏第二行（字体族 / 粗体 / 斜体 / 字号「− 数值 +」）+ 覆盖层自绘可滚动字体面板（每行用自身字体渲染）+ 字体变更作用于输入态 / 选中文本对象 / 新建默认值；`cargo test` 136 项绿、`fmt` 通过；决策见 `docs/adr/0008-font-picker.md`；下一步：合并 PR #29 → M5 打磨**——阶段 B 交付：选中对象包围框 + 八向控制柄、箭头两端点手柄（无包围框）、拖动/缩放（`overlay/objedit/`）、工具栏颜色/填充/圆角同步作用于选中对象、`Shift` 约束（矩形正方形 / 箭头方向吸附 / 移动轴向锁定 / 角手柄等比，`editor/transform.rs`）、光标随鼠标位置变化（`overlay/cursor/`）；阶段 B′ 交付：工具栏鼠标改系统箭头、**下线「删除 + 层级调整」**（按钮与 `Del` / `Ctrl+[` / `Ctrl+]` 一并移除，PRD EDT-7 已同步，决策见 `docs/adr/0007-drop-delete-and-layering.md`）、方向键微调（选区框 / 全部标注对象 / 贴图窗口，1px、`Shift` 5px）；剩余：阶段 C（文本字体）。- 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
+- 当前处于 **M5 打磨进行中**：M0–M4 与 M5a 全部交付并合并（阶段 A 保存 PR #24、阶段 B 对象二次编辑 PR #26、阶段 B′ 交互打磨 PR #27、阶段 C 文本字体 PR #29），`main` 头 `9c02349`，工作区干净。M5a 交付要点：另存为对话框（PNG / JPEG / WebP 无损 + 文件名模板）、选中对象包围框与八向手柄 + `Shift` 约束（`overlay/objedit/`、`editor/transform.rs`）、方向键微调（1px / `Shift` 5px）、系统字体枚举 + 工具栏第二行字体面板（`render::fonts`、`overlay::font`、`overlay::toolbar::fontlist`）；决策见 `docs/adr/0007-drop-delete-and-layering.md`、`0008-font-picker.md`；`cargo test` 136 项绿。
+- M5 打磨进度：✅ 许可证合规（`deny.toml` + `cargo deny check` 四类全绿；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 生成；设置面板「关于」页可打开声明）；⬜ 性能剖析、多屏混合 DPI 测试、打包分发、图标验证。
+- 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
 - 开发由 AI 驱动，本文件是进入此仓库的 agent 的上下文。
 
 ## 技术栈
@@ -21,10 +23,11 @@
 ## 常用命令
 
 - 编译检查：`cargo check`
-- 运行：`cargo run`（GUI 桌面程序，需 Windows 桌面会话；当前骨架阶段无可见界面）
+- 运行：`cargo run`（GUI 桌面程序，需 Windows 桌面会话；启动后托盘常驻，F1 截图 / F3 贴图）
 - 构建发布版：`cargo build --release`（已配 `lto="fat"`、`opt-level="z"`、`panic="abort"`、`strip=true`）
 - 测试：`cargo test`（当前 136 个：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量与字体（粗斜体渲染、族间测量、未知族名回退）/系统字体枚举/长截图拼接/WebP/变换与手柄/光标映射/布局/字体面板）
 - 格式化检查：`cargo fmt --check`（提交前必须通过）
+- 许可证与依赖检查：`cargo deny check`（配置在 `deny.toml`；依赖变更后重跑 `scripts/gen-third-party.ps1` 更新 `THIRD-PARTY.md`）
 
 ## 开发流程（AI 驱动约定）
 
@@ -60,4 +63,4 @@
 - 长截图（M4）是最大风险点：优先自动滚动 + 手动兜底，拼接要处理固定区域（页眉/页脚），失败提供撤销最后一段入口。
 - 贴图窗口用 `WS_EX_TOPMOST | WS_EX_TOOLWINDOW` 分层窗口，窗口静止时禁止任何重绘。
 - 二期 OCR/翻译涉及第三方服务：默认关闭、首次显式授权、密钥用 DPAPI 加密、不留存请求内容。
-- 发布前用 `cargo-deny` / `cargo-about` 检查依赖许可证，生成第三方声明。
+- 发布前跑 `cargo deny check`（配置 `deny.toml`）；依赖变更后用 `scripts/gen-third-party.ps1` 重新生成 `THIRD-PARTY.md`。
