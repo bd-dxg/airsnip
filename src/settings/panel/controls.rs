@@ -89,6 +89,8 @@ pub enum RowId {
     NameDate,
     /// 关于（版本与许可）。
     About,
+    /// 第三方组件声明入口（M5，PRD §9）。
+    Licenses,
 }
 
 /// 行控件类型。
@@ -104,6 +106,8 @@ pub enum RowKind {
     Readonly,
     /// 关于块：左侧产品名、右侧版本与许可。
     About,
+    /// 外部链接：右侧强调色文字，点击用浏览器打开。
+    Link,
 }
 
 /// 布局项：导航项或内容行。
@@ -199,6 +203,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
         }
         Section::About => {
             push(RowId::About, RowKind::About, "jietu 截图工具", &mut y, items);
+            push(RowId::Licenses, RowKind::Link, "第三方许可", &mut y, items);
         }
     }
 }
@@ -290,7 +295,7 @@ mod tests {
                 ],
                 Section::Save => vec![RowId::NameDateTime, RowId::NameTimestamp, RowId::NameDate],
                 Section::Appearance => vec![RowId::ThemeFollow, RowId::ThemeLight, RowId::ThemeDark],
-                Section::About => vec![RowId::About],
+                Section::About => vec![RowId::About, RowId::Licenses],
             };
             assert_eq!(rows, expected, "节 {sec:?} 行集合错误");
         }

@@ -211,7 +211,7 @@ ocr/        （二期）Provider 抽象、WinHTTP 客户端、密钥存储
 | M2b 贴图与导出格式 | 贴图窗口、F3 双入口流程（已实装；WebP 编码未做） | M |
 | M3 设置面板 | 自绘面板、全部一期设置项、深浅色（已实装，含工具快捷键/冲突检测） | M |
 | M4 长截图 | 自动 / 手动滚动、拼接、固定区域、失败处理 | L |
-| M5 打磨 | 性能剖析、多屏混合 DPI 测试、打包、图标、文档 | M |
+| M5 打磨 | 性能剖析、多屏混合 DPI 测试、打包、图标、文档（许可证合规已实装：`deny.toml` + `THIRD-PARTY.md` + 关于页入口） | M |
 | 二期 | 渐变样式、OCR / 翻译 Provider、本地 OCR 备选 | M |
 
 ## 8. 风险与对策
@@ -230,7 +230,7 @@ ocr/        （二期）Provider 抽象、WinHTTP 客户端、密钥存储
 ## 9. 开源与许可
 - 项目开源，协议确定为 **GPL-3.0-only**。
 - 仓库根目录放置 `LICENSE`（GPL-3.0 全文），源文件头标注 `SPDX-License-Identifier: GPL-3.0-only`；发布二进制时同时提供对应源码的获取方式。
-- 当前计划使用的依赖（windows-rs、tiny-skia、png、libwebp 等）均为宽松许可证，可并入 GPL-3.0 项目；发布前用 `cargo-deny` / `cargo-about` 检查依赖许可证并生成第三方声明，在「关于」页展示。
+- 当前依赖（windows-rs、tiny-skia、png、image-webp、jpeg-encoder 等 71 个 crate）均为宽松许可证（MIT / Apache-2.0 / BSD / Zlib / 0BSD / Unlicense / Unicode-3.0 / IJG），与 GPL-3.0 兼容。已实装：根目录 `deny.toml` + `cargo deny check`（许可证 / 安全公告 / 来源 / 重复版本四类检查，全绿）；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 从 `cargo metadata` 生成；设置面板「关于」页提供「第三方许可 → 查看清单」入口（浏览器打开仓库中的声明）。
 - 后续引入新依赖须确认与 GPL-3.0 兼容（MIT、BSD、Apache-2.0 兼容；仅限 GPL-2.0-only 的代码不兼容）。
 - 若接受外部贡献，需在仓库中明确贡献协议（如 DCO 或 CLA）。
 

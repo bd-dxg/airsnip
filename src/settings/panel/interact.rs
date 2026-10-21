@@ -137,6 +137,11 @@ impl Panel {
                 self.end_capture();
                 self.config.name_style = crate::settings::NameStyle::Date;
             }
+            // 第三方组件声明（M5）：用浏览器打开仓库中的 THIRD-PARTY.md
+            RowId::Licenses => {
+                self.end_capture();
+                crate::app::open::url(crate::app::open::THIRD_PARTY_URL);
+            }
             _ => self.end_capture(),
         }
     }

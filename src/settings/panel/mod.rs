@@ -8,6 +8,7 @@
 mod controls;
 mod draw;
 mod interact;
+mod link;
 
 use tiny_skia::Pixmap;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
