@@ -127,6 +127,7 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
         RowKind::Radio => draw_radio(pixmap, panel, row),
         RowKind::Readonly => draw_readonly(pixmap, panel, row),
         RowKind::About => draw_about(pixmap, panel, row),
+        RowKind::Link => super::link::draw_link(pixmap, panel, row),
     }
 }
 

@@ -1,0 +1,39 @@
+# cargo-deny 配置（PRD §9）：依赖许可证、安全公告与来源检查。
+# 运行：cargo deny check
+# 许可白名单与 THIRD-PARTY.md 的分组保持一致；新增依赖若不在白名单内会直接报错。
+
+[graph]
+targets = [{ triple = "x86_64-pc-windows-msvc" }]
+
+[advisories]
+version = 2
+# 已下架（yanked）的版本给出警告而非阻断，避免上游下架导致构建中断
+yanked = "warn"
+
+[licenses]
+version = 2
+# 全部为宽松许可，与 GPL-3.0-only 兼容（PRD §9）
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "Unicode-3.0",
+    "Zlib",
+    "0BSD",
+    "Unlicense",
+    "IJG",
+    # 本项目自身（GPL-3.0-only）；依赖白名单只放宽容许可
+    "GPL-3.0-only",
+]
+confidence-threshold = 0.9
+
+[bans]
+# 同一 crate 多版本共存允许（windows-rs 生态常见），wildcard 版本禁止
+multiple-versions = "allow"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
