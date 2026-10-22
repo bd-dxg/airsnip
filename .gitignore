@@ -1,4 +1,5 @@
 /target
+/dist
 
 # 本地会话记录（planning-with-files），不入库
 /Task/
