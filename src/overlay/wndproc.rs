@@ -4,11 +4,16 @@
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT};
 use windows::Win32::UI::Input::Ime::{IME_COMPOSITION_STRING, ImmGetVirtualKey};
-use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::Overlay;
 use super::geometry::SelRect;
+
+/// 自定义消息：显示后异步设置前台与输入焦点。
+/// `SetForegroundWindow` 在窗口刚显示时同步调用会阻塞至 ~45ms（前台锁定），
+/// 改到消息循环里执行，让画面先出现（M5 性能）。
+pub(super) const WM_FOCUS_OVERLAY: u32 = WM_APP + 1;
 
 pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_NCCREATE {
@@ -112,6 +117,14 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             LRESULT(0)
         }
         WM_ERASEBKGND => LRESULT(1),
+        // 显示后的异步焦点：避开 SetForegroundWindow 的前台锁定阻塞
+        WM_FOCUS_OVERLAY => {
+            unsafe {
+                let _ = SetForegroundWindow(hwnd);
+                let _ = SetFocus(Some(hwnd));
+            }
+            LRESULT(0)
+        }
         // 光标形状随鼠标位置决定（手柄方向 / 对象移动 / 十字），见 `cursor::cursor_at`
         WM_SETCURSOR => {
             overlay.apply_cursor_now(hwnd);

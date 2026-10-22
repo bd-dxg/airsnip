@@ -8,6 +8,7 @@ pub mod longshot;
 pub mod ocr; // 二期
 pub mod output;
 pub mod overlay;
+pub mod perf;
 pub mod pin;
 pub mod render;
 pub mod settings;
