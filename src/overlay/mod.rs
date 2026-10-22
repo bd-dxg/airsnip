@@ -24,9 +24,8 @@ pub(crate) mod toolbar;
 mod wndproc;
 
 use tiny_skia::Pixmap;
-use windows::Win32::Foundation::{HINSTANCE, HWND};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{HBITMAP, HDC, InvalidateRect, UpdateWindow};
-use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use crate::capture::CapturedScreen;
@@ -53,6 +52,8 @@ pub struct Overlay {
     pub original: Pixmap,
     pub dimmed: Pixmap,
     pub display: Pixmap,
+    /// 首帧标记：首帧 `display` 已是暗图，跳过回贴（M5 性能）。
+    pub first_paint: bool,
     /// 当前主题调色板（截图开始时由设置解析，M3）。
     pub palette: &'static Palette,
     pub selection: Option<SelRect>,
@@ -127,13 +128,26 @@ impl Overlay {
         };
         let rgba = std::mem::take(&mut capture.rgba);
         let original = Pixmap::from_vec(rgba, size).ok_or("创建原图像素图失败")?;
+        let timing = crate::perf::enabled();
+        let t_init = std::time::Instant::now();
         let mut dimmed = original.clone();
+        let t_clone1 = t_init.elapsed();
         // 暗化（CAP-3：预生成暗图）：覆盖黑色 alpha=120，多线程分块整数乘法
         surface::dim_pixmap(&mut dimmed, 255 - 120);
+        let t_dim = t_init.elapsed();
         let display = dimmed.clone();
+        let t_clone2 = t_init.elapsed();
 
         // 创建上屏用 DIB section（BGRA、top-down），像素直接写入其内存。
         let (mem_dc, dib_bmp, dib_bits) = surface::create_dib_surface(w, h)?;
+        if timing {
+            eprintln!(
+                "[jietu] 初始化：原图 clone {t_clone1:?}，暗化 {:?}，暗图 clone {:?}，DIB {:?}",
+                t_dim - t_clone1,
+                t_clone2 - t_dim,
+                t_init.elapsed() - t_clone2
+            );
+        }
 
         Ok(Self {
             capture,
@@ -142,6 +156,7 @@ impl Overlay {
             display,
             palette,
             selection: None,
+            first_paint: true,
             phase: Phase::Adjusting,
             drag: None,
             doc: Document::new(),
@@ -193,6 +208,7 @@ impl Overlay {
         let t_show = std::time::Instant::now();
         let (origin_x, origin_y) = (capture.origin_x, capture.origin_y);
         let (vw, vh) = (capture.width as i32, capture.height as i32);
+        let t_win = std::time::Instant::now();
         let hwnd = match Self::create_window(hinstance) {
             Ok(h) => h,
             Err(e) => {
@@ -210,23 +226,35 @@ impl Overlay {
                 return OverlayResult::Cancelled;
             }
         };
+        let t_init_done = std::time::Instant::now();
         overlay.hwnd = hwnd;
         overlay.main_hwnd = main_hwnd;
         let raw = Box::into_raw(Box::new(overlay));
 
         unsafe {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, raw as isize);
+            let t_pos = std::time::Instant::now();
             let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), origin_x, origin_y, vw, vh, SWP_SHOWWINDOW);
+            let pos = t_pos.elapsed();
             // 显示后强制整窗重绘：隐藏窗口的 DC 内容在显示时会丢失，
             // 用 InvalidateRect + UpdateWindow 同步触发 WM_PAINT 全窗绘制，避免闪烁。
             let _ = InvalidateRect(Some(hwnd), None, false);
             let _ = UpdateWindow(hwnd);
-            let _ = SetForegroundWindow(hwnd);
-            // 显式把输入焦点交给覆盖层，确保 Esc/回车/快捷键生效（WS_EX_NOACTIVATE 已移除）
-            let _ = SetFocus(Some(hwnd));
+            let paint = t_pos.elapsed() - pos;
+            // 前台与焦点改为异步（消息循环处理）：同步调用会阻塞至 ~45ms（M5 性能）
+            let _ = PostMessageW(Some(hwnd), wndproc::WM_FOCUS_OVERLAY, WPARAM(0), LPARAM(0));
+            if crate::perf::enabled() {
+                eprintln!(
+                    "[jietu] 显示分解：建窗+初始化 {:?}，SetWindowPos {pos:?}，首帧 {paint:?}，前台+焦点 {:?}",
+                    t_init_done - t_win,
+                    t_pos.elapsed() - pos - paint
+                );
+            }
             if std::env::var_os("JIETU_TIMING").is_some() {
                 eprintln!("[jietu] 覆盖层创建到显示完成 {:?}", t_show.elapsed());
             }
+            // M5 性能剖析：热键 → 可见总耗时（含抓屏、线程创建与首帧绘制）
+            crate::perf::log_overlay_shown();
         }
 
         // 局部消息循环：WM_DESTROY 由 wndproc 调 PostQuitMessage(0) 结束（独立线程，
@@ -247,6 +275,7 @@ impl Overlay {
         }
 
         // 记录本会话最后使用的工具（下次截图默认沿用，首次为矩形，M3）
+        crate::perf::log_frames_summary();
         crate::settings::last_tool_store(unsafe { (*raw).tool });
 
         let cancelled = unsafe { (*raw).cancelled };

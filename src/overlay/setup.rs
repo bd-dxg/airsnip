@@ -30,6 +30,7 @@ impl Overlay {
                 ..Default::default()
             };
             let _ = RegisterClassW(&wc);
+            let t_reg = std::time::Instant::now();
             let hwnd = CreateWindowExW(
                 // 截图期间需接收键盘（Esc 取消 / 回车复制 / Ctrl+C 等）：不用 WS_EX_NOACTIVATE，
                 // 否则窗口无输入焦点，WM_KEYDOWN/WM_HOTKEY 之外的键（如 Esc、回车）收不到（M3）。
@@ -47,6 +48,9 @@ impl Overlay {
                 None,
             )
             .map_err(|e| format!("创建覆盖层窗口失败：{e}"))?;
+            if crate::perf::enabled() {
+                eprintln!("[jietu] 建窗：CreateWindowEx {:?}", t_reg.elapsed());
+            }
             Ok(hwnd)
         }
     }

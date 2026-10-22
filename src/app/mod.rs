@@ -146,6 +146,7 @@ fn acquire_single_instance() -> bool {
 
 impl App {
     pub fn start_capture(&self) {
+        crate::perf::mark_capture_start();
         let hinstance = self.hinstance.0 as usize;
         let main_hwnd = self.hwnd.0 as usize; // HWND 非 Send，跨线程传原生值
         let max_height = self.config.longshot_max_height;

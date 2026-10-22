@@ -184,6 +184,8 @@ pub fn capture_virtual_screen() -> Result<CapturedScreen, String> {
         };
 
         let _ = SelectObject(hdc_mem, hbmp.into());
+        let timing = std::env::var_os("JIETU_TIMING").is_some();
+        let t_blt = std::time::Instant::now();
         if BitBlt(
             hdc_mem,
             0,
@@ -202,12 +204,18 @@ pub fn capture_virtual_screen() -> Result<CapturedScreen, String> {
             let _ = ReleaseDC(None, hdc_screen);
             return Err("BitBlt 失败".into());
         }
+        let blt = t_blt.elapsed();
 
+        let t_copy = std::time::Instant::now();
         let len = (vw * vh * 4) as usize;
         let mut rgba = vec![0u8; len];
         std::ptr::copy_nonoverlapping(bits as *const u8, rgba.as_mut_ptr(), len);
         // BGRA（DIB）→ RGBA：批量交换 R/B（截图 alpha 不透明，预乘与直通相同）
         swap_rb_parallel(&mut rgba);
+        let copy = t_copy.elapsed();
+        if timing {
+            eprintln!("[jietu] BitBlt {blt:?}，拷贝+交换 {copy:?}");
+        }
 
         let _ = DeleteObject(hbmp.into());
         let _ = DeleteDC(hdc_mem);

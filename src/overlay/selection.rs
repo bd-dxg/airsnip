@@ -59,6 +59,7 @@ impl super::Overlay {
     /// 重绘指定区域并上屏（PRD 6.3.2 脏矩形）：
     /// 1) 底图复位（选区外恢复暗图、选区内回贴原图）2) 重绘标注 3) 选区装饰 4) 工具栏。
     pub(super) fn repaint(&mut self, r: SelRect) {
+        let _frame = crate::perf::frame();
         let r = self.expand_for_objects(r);
         let r = self.expand_for_selected(r);
         let (w, h) = (self.display.width() as i32, self.display.height() as i32);
@@ -77,9 +78,14 @@ impl super::Overlay {
         };
 
         // 1) 底图复位（CAP-3：预生成暗图 + 选区回贴原图）
+        // 首帧例外：`display` 初始内容就是 `dimmed`，无需回贴（省一次全屏拷贝）。
         // 聚光模式：选区内保持暗图，仅聚光对象/草稿区域恢复原图亮度（其余区域继续暗化）。
         // 判断包含正在拖拽的草稿，保证第一笔拖动时即进入暗化状态。
-        restore_region(&mut self.display, &self.dimmed, region);
+        let first_paint = self.first_paint;
+        self.first_paint = false;
+        if !first_paint {
+            restore_region(&mut self.display, &self.dimmed, region);
+        }
         if let Some(sel) = self.selection {
             if let Some(overlap) = intersect_rect(region, sel) {
                 let glow_on = self
