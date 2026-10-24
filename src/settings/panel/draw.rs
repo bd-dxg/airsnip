@@ -34,7 +34,8 @@ pub(super) fn render(pixmap: &mut Pixmap, panel: &Panel, layout: &Layout) {
     draw_content_header(pixmap, panel);
     // 导航与内容分隔线
     let h = layout.height;
-    if let Some(rect) = Rect::from_xywh(NAV_W as f32 - 1.0, 0.0, 1.0, h as f32) {
+    let nav_w = (NAV_W as f32 * panel.scale) as f32;
+    if let Some(rect) = Rect::from_xywh(nav_w - 1.0, 0.0, 1.0, h as f32) {
         pixmap.fill_rect(rect, &paint_of(p.divider), Transform::identity(), None);
     }
 }
@@ -47,7 +48,7 @@ fn draw_nav_item(pixmap: &mut Pixmap, panel: &Panel, sec: Section, idx: usize) {
     let rect = SelRect {
         x: 0,
         y: idx as i32 * h,
-        w: super::controls::NAV_W,
+        w: (super::controls::NAV_W as f32 * s) as i32,
         h,
     };
     let selected = panel.section == sec;
@@ -85,7 +86,7 @@ fn draw_nav_item(pixmap: &mut Pixmap, panel: &Panel, sec: Section, idx: usize) {
     }
     let size = 14.0 * s;
     let color = if selected { p.accent } else { p.text };
-    let x = super::controls::PAD as f32 * 0.7;
+    let x = super::controls::PAD as f32 * 0.7 * s;
     let y = rect.y as f32 + (rect.h as f32 - size * 1.2) / 2.0;
     draw_text(pixmap, x, y, sec.title(), size, color);
 }
@@ -95,7 +96,7 @@ fn draw_content_header(pixmap: &mut Pixmap, panel: &Panel) {
     let p = panel.palette;
     let s = panel.scale;
     let size = 17.0 * s;
-    let x = super::controls::NAV_W as f32 + super::controls::PAD as f32;
+    let x = (super::controls::NAV_W as f32 + super::controls::PAD as f32) * s;
     draw_text(pixmap, x, (12.0 * s).max(4.0), panel.section.title(), size, p.text);
 }
 
@@ -118,7 +119,7 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
         );
     }
     let size = 14.0 * s;
-    let lx = row.rect.x as f32 + super::controls::PAD as f32;
+    let lx = row.rect.x as f32 + super::controls::PAD as f32 * s;
     let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
     draw_text(pixmap, lx, ly, row.label, size, p.text);
     match row.kind {

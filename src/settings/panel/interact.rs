@@ -2,28 +2,24 @@
 //! 设置面板交互（M3）：悬停/点击/热键捕获/冲突检测/窗口自适应。
 //! 窗口过程与绘制见 `wnd` 与 `draw`，消息循环见 `super::run`。
 
-use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::UI::Input::Ime::{HIMC, ImmAssociateContext};
 use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
-use windows::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, GetWindowRect, MB_ICONWARNING, MB_OK, SWP_NOZORDER, SetWindowPos,
-};
+use windows::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK};
 
 use crate::app::message_box;
 use crate::overlay::geometry::in_rect;
-use crate::overlay::surface::create_dib_surface;
 use crate::settings::ThemeSetting;
 use crate::theme::{self};
 
+use super::Panel;
 use super::controls::{
-    Item, MOD_ALT_BIT, MOD_CTRL_BIT, MOD_SHIFT_BIT, MOD_WIN_BIT, NAV_H, NAV_W, RowId, Section, conflict_for,
+    Item, MOD_ALT_BIT, MOD_CTRL_BIT, MOD_SHIFT_BIT, MOD_WIN_BIT, NAV_H, RowId, Section, conflict_for,
 };
-use super::{Panel, W};
 
 impl Panel {
     /// 命中：导航区 → (分类, None)；内容区 → (None, 行下标)。
     pub(super) fn hover_at(&self, x: i32, y: i32) -> (Option<Section>, Option<usize>) {
-        if x < NAV_W {
+        if x < self.nav_w() {
             let nh = (NAV_H as f32 * self.scale) as i32;
             return (Section::ALL.get((y / nh.max(1)) as usize).copied(), None);
         }
@@ -47,7 +43,7 @@ impl Panel {
 
     pub(super) fn on_click(&mut self, x: i32, y: i32) {
         // 左侧导航：切换分类
-        if x < NAV_W {
+        if x < self.nav_w() {
             let nh = (NAV_H as f32 * self.scale) as i32;
             if let Some(sec) = Section::ALL.get((y / nh.max(1)) as usize).copied() {
                 self.section = sec;
@@ -236,36 +232,6 @@ impl Panel {
             }
         }
         self.capturing = None;
-    }
-
-    /// 窗口尺寸贴紧当前节内容：客户区高 = 节内容高（切换节后调用，消除底部留白），
-    /// 非客户区高度用 GetWindowRect/GetClientRect 实测差值补齐，并重建上屏 DIB。
-    pub(super) fn fit_window(&mut self, hwnd: HWND) {
-        let ch = super::controls::layout(self.section, self.scale).height;
-        unsafe {
-            if !self.dib_bmp.0.is_null() {
-                let _ = windows::Win32::Graphics::Gdi::DeleteObject(self.dib_bmp.into());
-            }
-            if !self.mem_dc.0.is_null() {
-                let _ = windows::Win32::Graphics::Gdi::DeleteDC(self.mem_dc);
-            }
-        }
-        match create_dib_surface(W as u32, ch as u32) {
-            Ok((dc, bmp, bits)) => {
-                self.mem_dc = dc;
-                self.dib_bmp = bmp;
-                self.dib_bits = bits;
-            }
-            Err(_) => return,
-        }
-        unsafe {
-            let mut wr = RECT::default();
-            let mut cr = RECT::default();
-            let _ = GetWindowRect(hwnd, &mut wr);
-            let _ = GetClientRect(hwnd, &mut cr);
-            let nc_h = (wr.bottom - wr.top) - (cr.bottom - cr.top);
-            let _ = SetWindowPos(hwnd, None, wr.left, wr.top, W, ch + nc_h, SWP_NOZORDER);
-        }
     }
 }
 
