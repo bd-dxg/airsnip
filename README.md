@@ -54,7 +54,7 @@
 ```powershell
 cargo run                 # 开发版（不提权，可调试）
 cargo build --release     # 发布版（manifest 要求管理员权限，单文件）
-cargo test                # 单测（136 项）
+cargo test                # 单测（138 项）
 cargo fmt --check         # 格式化检查
 cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
 ```
