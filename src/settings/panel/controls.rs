@@ -6,8 +6,11 @@ use crate::overlay::geometry::SelRect;
 mod keys;
 pub use keys::*;
 
-/// 窗口内容总宽。
-pub const W: i32 = 520;
+/// 窗口内容总宽（横向桌面窗口，宽高比约 1.4）。
+pub const W: i32 = 720;
+/// 窗口内容总高：固定值，避免切换分类时窗口上下跳动；
+/// 内容更高的分类（快捷键 10 行）按实际内容兜底。
+pub const H: i32 = 520;
 /// 左侧导航栏宽。
 pub const NAV_W: i32 = 124;
 /// 左右边距。
@@ -138,20 +141,24 @@ pub struct Layout {
 
 /// 内容行几何（`s` 为 DPI 缩放系数，x 从导航栏右缘开始）。
 fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row {
+    // 横向几何同样按 DPI 缩放，否则高 DPI 下内容区宽度不变、行高变大（比例失真）
     let h = (ROW_H as f32 * s) as i32;
+    let w = (W as f32 * s) as i32;
+    let nav_w = (NAV_W as f32 * s) as i32;
+    let pad = (PAD as f32 * s) as i32;
     let cw = (150.0 * s) as i32;
     Row {
         id,
         kind,
         label,
         rect: SelRect {
-            x: NAV_W,
+            x: nav_w,
             y,
-            w: W - NAV_W - PAD,
+            w: w - nav_w - pad,
             h,
         },
         control: SelRect {
-            x: W - PAD - cw,
+            x: w - pad - cw,
             y,
             w: cw,
             h,
@@ -208,7 +215,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
     }
 }
 
-/// 构建布局：导航项 + 当前节内容；高度取两者的最大值（窗口刚好包住内容）。
+/// 构建布局：导航项 + 当前节内容；高度固定为 `H`（内容更高时按内容兜底）。
 pub fn layout(section: Section, scale: f32) -> Layout {
     let s = scale;
     let mut items = Vec::new();
@@ -227,9 +234,10 @@ pub fn layout(section: Section, scale: f32) -> Layout {
     section_rows(section, (CONTENT_HEADER_H as f32 * s) as i32, s, &mut items);
 
     let nav_h = (NAV_H as f32 * s) as i32 * Section::ALL.len() as i32;
+    let fixed_h = (H as f32 * s) as i32;
     Layout {
         items,
-        height: nav_h.max(max_content),
+        height: fixed_h.max(max_content).max(nav_h),
     }
 }
 
@@ -307,6 +315,31 @@ mod tests {
         for item in &l.items {
             if let Item::Row(r) = item {
                 assert!(r.rect.x >= NAV_W, "内容行不得进入导航区：{r:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn window_is_wider_than_tall() {
+        for sec in Section::ALL {
+            let l = layout(sec, 1.0);
+            assert!(W > l.height, "{sec:?} 窗口应横向（宽 {W} vs 高 {}）", l.height);
+        }
+    }
+
+    #[test]
+    fn rows_fit_inside_window_at_any_scale() {
+        for scale in [1.0f32, 1.25, 1.5, 2.0] {
+            let w = (W as f32 * scale) as i32;
+            for sec in Section::ALL {
+                let l = layout(sec, scale);
+                for item in &l.items {
+                    if let Item::Row(r) = item {
+                        assert!(r.rect.x + r.rect.w <= w, "{sec:?} 行超出右边界");
+                        assert!(r.rect.y + r.rect.h <= l.height, "{sec:?} 行超出下边界");
+                        assert!(r.control.x >= r.rect.x, "控件区应在行内");
+                    }
+                }
             }
         }
     }

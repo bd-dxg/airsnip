@@ -3,20 +3,20 @@
 //! 布局为左侧分类导航 + 右侧内容区；主线程模态运行，交互只改工作副本 `config`，
 //! 关闭时经 `App::apply_panel_config` 统一写回、保存并重注册热键；
 //! 主题与开机自启即时生效（面板自身重绘 + schtasks 调用）。
-//! 窗口高度随分类页自适应（内容多少决定高度），避免底部留白。
+//! 窗口尺寸固定为横向矩形（宽 > 高），切换分类页不改变窗口大小。
 
 mod controls;
 mod draw;
 mod interact;
 mod link;
+mod window;
 
 use tiny_skia::Pixmap;
-use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, DeleteDC, DeleteObject, EndPaint, GetDC, HBITMAP, HDC, InvalidateRect, PAINTSTRUCT, ReleaseDC,
     SRCCOPY, UpdateWindow,
 };
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::Ime::HIMC;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
@@ -92,7 +92,7 @@ pub fn run(app: &mut App) {
         dib_bits: std::ptr::null_mut(),
     };
 
-    let hwnd = match create_window(hinstance, &mut panel) {
+    let hwnd = match window::create_window(hinstance, &mut panel) {
         Ok(h) => h,
         Err(e) => {
             message_box(None, &e, MB_OK | MB_ICONERROR);
@@ -136,62 +136,6 @@ pub fn run(app: &mut App) {
 }
 
 /// 创建设置窗口：初始按 scale=1 粗建，创建后按真实 DPI 校正。
-fn create_window(hinstance: HINSTANCE, panel: &mut Panel) -> Result<HWND, String> {
-    unsafe {
-        let wc = WNDCLASSW {
-            style: CS_HREDRAW | CS_VREDRAW,
-            lpfnWndProc: Some(wndproc),
-            hInstance: hinstance,
-            hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
-            hbrBackground: Default::default(),
-            lpszMenuName: PCWSTR::null(),
-            lpszClassName: WINDOW_CLASS,
-            ..Default::default()
-        };
-        if RegisterClassW(&wc) == 0 {
-            // 面板可多次打开：类已注册不算错误
-            if windows::Win32::Foundation::GetLastError().0 != 1410 {
-                return Err("设置窗口类注册失败".into());
-            }
-        }
-
-        // 固定尺寸窗口：标题栏 + 系统菜单 + 最小化（禁调整大小，避免黑边）
-        const STYLE: WINDOW_STYLE = WINDOW_STYLE(WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0);
-        let (cw, ch) = (W, controls::layout(Section::General, 1.0).height);
-        let mut rect = RECT {
-            left: 0,
-            top: 0,
-            right: cw,
-            bottom: ch,
-        };
-        let _ = AdjustWindowRectEx(&mut rect, STYLE, false, WINDOW_EX_STYLE(0));
-        let (sw, sh) = (rect.right - rect.left, rect.bottom - rect.top);
-        let cx = (GetSystemMetrics(SM_CXSCREEN) - sw) / 2;
-        let cy = (GetSystemMetrics(SM_CYSCREEN) - sh) / 2;
-
-        let hwnd = CreateWindowExW(
-            WINDOW_EX_STYLE(0),
-            WINDOW_CLASS,
-            w!("jietu 设置"),
-            STYLE,
-            cx,
-            cy,
-            sw,
-            sh,
-            None,
-            None,
-            Some(hinstance),
-            None,
-        )
-        .map_err(|e| format!("创建设置窗口失败：{e}"))?;
-
-        let dpi = GetDpiForWindow(hwnd);
-        panel.scale = dpi as f32 / 96.0;
-        panel.fit_window(hwnd);
-        Ok(hwnd)
-    }
-}
-
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_NCCREATE {
         return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
@@ -272,7 +216,8 @@ fn app_from(hwnd: HWND) -> Option<&'static mut Panel> {
 /// 全量重绘：tiny-skia 绘制 → RGBA→BGRA → BitBlt 上屏。
 fn repaint_full(hwnd: HWND, panel: &Panel) {
     let layout = controls::layout(panel.section, panel.scale);
-    let Some(mut pixmap) = Pixmap::new(W as u32, layout.height as u32) else {
+    let pw = (W as f32 * panel.scale) as u32;
+    let Some(mut pixmap) = Pixmap::new(pw, layout.height as u32) else {
         return;
     };
     draw::render(&mut pixmap, panel, &layout);
