@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 外部链接（M5）：用系统默认浏览器打开 URL。
-//! 仅用于设置面板「关于」页的第三方许可声明入口。
+//! 用于设置面板「关于」页的项目地址与第三方许可声明入口。
 
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 use windows::core::PCWSTR;
+
+/// 项目主页（设置面板「关于」页入口）。
+pub const REPO_URL: &str = "https://github.com/bd-dxg/jietu";
 
 /// 第三方组件声明（设置面板「关于」页入口，见仓库根目录 `THIRD-PARTY.md`）。
 pub const THIRD_PARTY_URL: &str = "https://github.com/bd-dxg/jietu/blob/main/THIRD-PARTY.md";

@@ -133,6 +133,11 @@ impl Panel {
                 self.end_capture();
                 self.config.name_style = crate::settings::NameStyle::Date;
             }
+            // 项目主页（关于页）：用浏览器打开
+            RowId::Repo => {
+                self.end_capture();
+                crate::app::open::url(crate::app::open::REPO_URL);
+            }
             // 第三方组件声明（M5）：用浏览器打开仓库中的 THIRD-PARTY.md
             RowId::Licenses => {
                 self.end_capture();
@@ -142,14 +147,16 @@ impl Panel {
         }
     }
 
-    /// 修改主题并即时刷新面板配色。
+    /// 修改主题并即时刷新面板配色（含系统标题栏）。
     fn set_theme(&mut self, t: ThemeSetting) {
         if self.config.theme == t {
             return;
         }
         self.config.theme = t;
         self.config_dirty = true;
-        self.palette = theme::palette(theme::resolve(t));
+        let resolved = theme::resolve(t);
+        self.palette = theme::palette(resolved);
+        super::window::apply_dark_titlebar(self.hwnd, resolved == theme::Theme::Dark);
     }
 
     /// 热键捕获键盘输入。

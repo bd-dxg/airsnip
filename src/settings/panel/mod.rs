@@ -9,6 +9,7 @@ mod controls;
 mod draw;
 mod interact;
 mod link;
+mod reward;
 mod window;
 
 use tiny_skia::Pixmap;
@@ -100,6 +101,8 @@ pub fn run(app: &mut App) {
         }
     };
     panel.hwnd = hwnd;
+    // 标题栏由 DWM 绘制：创建后先按当前主题着色（切换主题时在 `set_theme` 里更新）
+    window::apply_dark_titlebar(hwnd, theme::resolve(panel.config.theme) == theme::Theme::Dark);
     let raw = Box::into_raw(Box::new(panel));
     unsafe {
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, raw as isize);

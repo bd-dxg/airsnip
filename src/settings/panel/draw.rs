@@ -84,7 +84,7 @@ fn draw_nav_item(pixmap: &mut Pixmap, panel: &Panel, sec: Section, idx: usize) {
             None,
         );
     }
-    let size = 14.0 * s;
+    let size = 16.0 * s;
     let color = if selected { p.accent } else { p.text };
     let x = super::controls::PAD as f32 * 0.7 * s;
     let y = rect.y as f32 + (rect.h as f32 - size * 1.2) / 2.0;
@@ -95,7 +95,7 @@ fn draw_nav_item(pixmap: &mut Pixmap, panel: &Panel, sec: Section, idx: usize) {
 fn draw_content_header(pixmap: &mut Pixmap, panel: &Panel) {
     let p = panel.palette;
     let s = panel.scale;
-    let size = 17.0 * s;
+    let size = 20.0 * s;
     let x = (super::controls::NAV_W as f32 + super::controls::PAD as f32) * s;
     draw_text(pixmap, x, (12.0 * s).max(4.0), panel.section.title(), size, p.text);
 }
@@ -118,10 +118,13 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
             None,
         );
     }
-    let size = 14.0 * s;
+    let size = 16.0 * s;
     let lx = row.rect.x as f32 + super::controls::PAD as f32 * s;
-    let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
-    draw_text(pixmap, lx, ly, row.label, size, p.text);
+    // 支持项目块的标签由 `reward::draw_block` 自己画（高行顶对齐），此处不重复绘制
+    if row.kind != RowKind::Qr {
+        let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
+        draw_text(pixmap, lx, ly, row.label, size, p.text);
+    }
     match row.kind {
         RowKind::Toggle => draw_toggle(pixmap, panel, row),
         RowKind::KeyCap => draw_keycap(pixmap, panel, row),
@@ -129,6 +132,7 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
         RowKind::Readonly => draw_readonly(pixmap, panel, row),
         RowKind::About => draw_about(pixmap, panel, row),
         RowKind::Link => super::link::draw_link(pixmap, panel, row),
+        RowKind::Qr => super::reward::draw_block(pixmap, panel, row),
     }
 }
 
@@ -175,7 +179,7 @@ fn draw_keycap(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let s = panel.scale;
     let capturing = panel.capturing == Some(row.id);
     let c = &row.control;
-    let kh = (26.0 * s) as i32;
+    let kh = (30.0 * s) as i32;
     let kb = SelRect {
         x: c.x,
         y: c.y + (c.h - kh) / 2,
@@ -191,7 +195,7 @@ fn draw_keycap(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     rounded_rect(pixmap, kb, (6.0 * s) as f32, fill, Some(border));
 
     let text = keycap_text(panel, row.id);
-    let size = 13.0 * s;
+    let size = 16.0 * s;
     let color = if capturing { p.accent } else { p.text };
     let (w, _) = dwrite::measure(&text, &dwrite::FontSpec::new(size));
     let x = c.x as f32 + (c.w as f32 - w) / 2.0;
@@ -270,7 +274,7 @@ fn draw_readonly(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row)
         RowId::Widenote => "无修饰键会覆盖其他程序按键，建议 Ctrl/Alt",
         _ => "",
     };
-    let size = 13.0 * s;
+    let size = 16.0 * s;
     let (w, _) = dwrite::measure(text, &dwrite::FontSpec::new(size));
     let x = row.control.x + row.control.w as i32 - w as i32;
     let y = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
@@ -282,7 +286,7 @@ fn draw_about(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let p = panel.palette;
     let s = panel.scale;
     let text = format!("v{} · GPL-3.0", env!("CARGO_PKG_VERSION"));
-    let size = 13.0 * s;
+    let size = 16.0 * s;
     let (w, _) = dwrite::measure(&text, &dwrite::FontSpec::new(size));
     let x = row.control.x + row.control.w as i32 - w as i32;
     let y = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
