@@ -21,6 +21,8 @@ pub const NAV_H: i32 = 44;
 pub const CONTENT_HEADER_H: i32 = 40;
 /// 内容行高度。
 pub const ROW_H: i32 = 46;
+/// 支持项目行高度（文案 + 赞赏码，高于标准行）。
+pub const QR_ROW_H: i32 = 200;
 
 /// 分类页。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -92,8 +94,12 @@ pub enum RowId {
     NameDate,
     /// 关于（版本与许可）。
     About,
+    /// 项目地址（关于页，点击用浏览器打开）。
+    Repo,
     /// 第三方组件声明入口（M5，PRD §9）。
     Licenses,
+    /// 支持项目（关于页：文案 + 微信赞赏码）。
+    Reward,
 }
 
 /// 行控件类型。
@@ -111,6 +117,8 @@ pub enum RowKind {
     About,
     /// 外部链接：右侧强调色文字，点击用浏览器打开。
     Link,
+    /// 支持项目块：高行（左侧文案 + 右侧赞赏码）。
+    Qr,
 }
 
 /// 布局项：导航项或内容行。
@@ -146,7 +154,7 @@ fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row 
     let w = (W as f32 * s) as i32;
     let nav_w = (NAV_W as f32 * s) as i32;
     let pad = (PAD as f32 * s) as i32;
-    let cw = (150.0 * s) as i32;
+    let cw = (260.0 * s) as i32;
     Row {
         id,
         kind,
@@ -164,6 +172,14 @@ fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row 
             h,
         },
     }
+}
+
+/// 高行：高度按内容给（支持项目块），几何与标准行一致。
+fn mk_row_tall(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32, h: i32) -> Row {
+    let mut row = mk_row(id, kind, label, y, s);
+    row.rect.h = h;
+    row.control.h = h;
+    row
 }
 
 /// 指定分类的内容行。
@@ -210,7 +226,10 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
         }
         Section::About => {
             push(RowId::About, RowKind::About, "jietu 截图工具", &mut y, items);
+            push(RowId::Repo, RowKind::Link, "项目地址", &mut y, items);
             push(RowId::Licenses, RowKind::Link, "第三方许可", &mut y, items);
+            let qh = (QR_ROW_H as f32 * s) as i32;
+            items.push(Item::Row(mk_row_tall(RowId::Reward, RowKind::Qr, "支持项目", y, s, qh)));
         }
     }
 }
@@ -303,7 +322,7 @@ mod tests {
                 ],
                 Section::Save => vec![RowId::NameDateTime, RowId::NameTimestamp, RowId::NameDate],
                 Section::Appearance => vec![RowId::ThemeFollow, RowId::ThemeLight, RowId::ThemeDark],
-                Section::About => vec![RowId::About, RowId::Licenses],
+                Section::About => vec![RowId::About, RowId::Repo, RowId::Licenses, RowId::Reward],
             };
             assert_eq!(rows, expected, "节 {sec:?} 行集合错误");
         }
@@ -317,6 +336,21 @@ mod tests {
                 assert!(r.rect.x >= NAV_W, "内容行不得进入导航区：{r:?}");
             }
         }
+    }
+
+    #[test]
+    fn about_reward_row_is_taller_than_standard() {
+        let l = layout(Section::About, 1.0);
+        let reward = l
+            .items
+            .iter()
+            .find_map(|i| match i {
+                Item::Row(r) if r.id == RowId::Reward => Some(r),
+                _ => None,
+            })
+            .expect("关于页应有支持项目行");
+        assert_eq!(reward.rect.h, QR_ROW_H, "赞赏码行高度应为 QR_ROW_H");
+        assert_eq!(reward.control.h, QR_ROW_H, "控件区高度应与行一致");
     }
 
     #[test]

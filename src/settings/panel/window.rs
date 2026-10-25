@@ -3,6 +3,7 @@
 //! 上屏 DIB 重建。窗口过程见 `super::wndproc`，交互见 `interact`。
 
 use windows::Win32::Foundation::{HINSTANCE, HWND, RECT};
+use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
@@ -82,6 +83,20 @@ pub(super) fn create_window(hinstance: HINSTANCE, panel: &mut Panel) -> Result<H
         panel.scale = dpi as f32 / 96.0;
         panel.fit_window(hwnd);
         Ok(hwnd)
+    }
+}
+
+/// 深色主题下让系统标题栏跟随（`DWMWA_USE_IMMERSIVE_DARK_MODE`，Win10 20H1+）。
+/// 标题栏由 DWM 绘制，自绘只能覆盖客户区，必须显式告知主题。
+pub(super) fn apply_dark_titlebar(hwnd: HWND, dark: bool) {
+    let value: i32 = i32::from(dark);
+    unsafe {
+        let _ = DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_USE_IMMERSIVE_DARK_MODE,
+            &value as *const i32 as *const core::ffi::c_void,
+            std::mem::size_of::<i32>() as u32,
+        );
     }
 }
 
