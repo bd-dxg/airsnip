@@ -8,9 +8,21 @@ use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::core::w;
 
 use super::{App, ID_TRAY, IDM_EXIT, IDM_SETTINGS, IDM_SHOT, WM_TRAY, icon_resource, popmenu, wide_array};
 use std::mem::size_of;
+use std::sync::OnceLock;
+
+/// `TaskbarCreated` 广播消息 ID（惰性注册，会话内全局唯一）。
+static TASKBAR_CREATED: OnceLock<u32> = OnceLock::new();
+
+/// 是否为 `TaskbarCreated` 广播：explorer 启动或重启后任务栏通知区重建。
+/// 开机自启早于 explorer 就绪时首次 `NIM_ADD` 会失败且不报错，收到该广播时补加图标（SYS-1）。
+pub fn is_taskbar_created(msg: u32) -> bool {
+    let id = *TASKBAR_CREATED.get_or_init(|| unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) });
+    id != 0 && msg == id
+}
 
 impl App {
     /// 添加托盘图标（SYS-1）。
@@ -83,5 +95,19 @@ impl App {
             },
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 注册得到的 TaskbarCreated 消息 ID 能被识别，普通消息不会误判。
+    #[test]
+    fn taskbar_created_message_is_recognized() {
+        let id = unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) };
+        assert_ne!(id, 0, "TaskbarCreated 应能注册成功");
+        assert!(is_taskbar_created(id), "注册消息 ID 应被识别为 TaskbarCreated");
+        assert!(!is_taskbar_created(WM_TRAY), "托盘回调消息不应误判");
     }
 }

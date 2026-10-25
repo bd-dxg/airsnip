@@ -130,7 +130,31 @@ pub fn system_theme() -> Theme {
 }
 
 /// 判断 `WM_SETTINGCHANGE` 的 lParam 是否表示主题变更（"ImmersiveColorSet"）。
+/// lParam 为 0 表示「非特定设置变更」，系统与第三方程序广播时常见；此时不能当
+/// 宽字符串读：`PCWSTR::to_string` 内部走 `wcslen`，对 NULL 会访问冲突（0xC0000005）
+/// 直接杀掉常驻进程 —— 登录阶段收到这种广播会让托盘图标随进程一起消失。
 pub fn is_theme_change(lparam: usize) -> bool {
+    if lparam == 0 {
+        return false;
+    }
     let ptr = PCWSTR::from_raw(lparam as *const u16);
     unsafe { ptr.to_string().is_ok_and(|s| s == "ImmersiveColorSet") }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// lParam 为 0（无设置名）时必须安全返回 false，不能解引用空指针。
+    #[test]
+    fn null_lparam_is_not_theme_change() {
+        assert!(!is_theme_change(0));
+    }
+
+    /// 非 0 的合法字符串仍能识别主题变更。
+    #[test]
+    fn immersive_color_set_is_theme_change() {
+        let name: Vec<u16> = "ImmersiveColorSet\0".encode_utf16().collect();
+        assert!(is_theme_change(name.as_ptr() as usize));
+    }
 }
