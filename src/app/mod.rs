@@ -278,6 +278,13 @@ fn create_message_window(hinstance: HINSTANCE) -> Result<HWND, String> {
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    // explorer 启动/重启后任务栏通知区重建：重新添加托盘图标（开机自启早于 explorer 就绪时）。
+    if tray::is_taskbar_created(msg) {
+        if let Some(app) = app_from(hwnd) {
+            app.init_tray();
+        }
+        return LRESULT(0);
+    }
     match msg {
         WM_DESTROY => {
             unsafe { PostQuitMessage(0) };
