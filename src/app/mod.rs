@@ -42,6 +42,9 @@ static OVERLAY_RUNNING: AtomicBool = AtomicBool::new(false);
 /// 覆盖层保存时选定的格式扩展名（OUT-2）：覆盖层线程写，主线程在截图结束时写回配置。
 static LAST_SAVE_EXT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
 
+/// 覆盖层保存时选定的目录（OUT-2）：覆盖层线程写，主线程在截图结束时写回配置。
+static LAST_SAVE_DIR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
 /// 记录本次保存用的格式扩展名（覆盖层线程调用）。
 pub fn last_save_ext_store(ext: &str) {
     if let Ok(mut g) = LAST_SAVE_EXT.lock() {
@@ -52,6 +55,18 @@ pub fn last_save_ext_store(ext: &str) {
 /// 取出并清空记录的扩展名（主线程写回配置用）。
 fn last_save_ext_take() -> Option<String> {
     LAST_SAVE_EXT.lock().ok().and_then(|mut g| g.take())
+}
+
+/// 记录本次保存所在的目录（覆盖层线程调用，OUT-2）。
+pub fn last_save_dir_store(dir: &std::path::Path) {
+    if let Ok(mut g) = LAST_SAVE_DIR.lock() {
+        *g = Some(dir.to_string_lossy().into_owned());
+    }
+}
+
+/// 取出并清空记录的目录（主线程写回配置用）。
+fn last_save_dir_take() -> Option<String> {
+    LAST_SAVE_DIR.lock().ok().and_then(|mut g| g.take())
 }
 
 pub const ID_TRAY: u32 = 1;
@@ -161,9 +176,12 @@ impl App {
         // 长截图键（覆盖层内按下，默认 S）
         let longshot_key = self.config.hotkey.longshot_key;
         let default_tool = crate::settings::last_tool();
-        // 命名模板与上次保存格式（OUT-2）：保存对话框预填文件名与默认筛选器用
-        let name_style = self.config.name_style;
-        let last_save_ext = self.config.last_save_ext.clone();
+        // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名、默认筛选器与初始位置
+        let save = crate::settings::SavePrefs {
+            name_style: self.config.name_style,
+            last_ext: self.config.last_save_ext.clone(),
+            last_dir: self.config.last_save_dir.clone(),
+        };
         std::thread::spawn(move || {
             let hinstance = HINSTANCE(hinstance as *mut _);
             let main_hwnd = HWND(main_hwnd as *mut _);
@@ -175,8 +193,7 @@ impl App {
                         tool_keys,
                         longshot_key,
                         default_tool,
-                        name_style,
-                        last_save_ext,
+                        save,
                         hinstance,
                         main_hwnd,
                     );
@@ -210,10 +227,12 @@ impl App {
 
     /// 应用设置面板的工作副本：写回配置、保存、重注册热键。
     pub fn apply_panel_config(&mut self, cfg: &Config) {
-        // 保存格式是运行时记忆（面板里没有对应设置项），不能被面板的旧副本覆盖（OUT-2）
+        // 保存格式与目录是运行时记忆（面板里没有对应设置项），不能被面板的旧副本覆盖（OUT-2）
         let last_save_ext = self.config.last_save_ext.clone();
+        let last_save_dir = self.config.last_save_dir.clone();
         self.config = cfg.clone();
         self.config.last_save_ext = last_save_ext;
+        self.config.last_save_dir = last_save_dir;
         self.config.save();
         self.register_hotkeys();
         // 贴图内边框快捷键（M2b）：立即下发给贴图窗口（含已存在的）

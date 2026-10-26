@@ -21,8 +21,7 @@ impl Overlay {
         tool_keys: crate::settings::ToolKeys,
         longshot_key: u32,
         default_tool: Tool,
-        name_style: crate::settings::NameStyle,
-        last_save_ext: Option<String>,
+        save: crate::settings::SavePrefs,
     ) -> Result<Self, String> {
         let (w, h) = (capture.width, capture.height);
         let Some(size) = tiny_skia::IntSize::from_wh(w, h) else {
@@ -65,8 +64,7 @@ impl Overlay {
             tool: default_tool, // 记住上次工具（M3），首次为矩形
             tool_keys,
             longshot_key,
-            name_style,
-            last_save_ext,
+            save,
             color_index: 1, // 默认红色
             line_width: editor::DEFAULT_LINE_WIDTH,
             blur_radius: editor::DEFAULT_BLUR_RADIUS,

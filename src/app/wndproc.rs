@@ -9,7 +9,7 @@ use windows::core::{PCWSTR, w};
 
 use super::{
     App, WINDOW_CLASS, WM_OVERLAY_DONE, WM_PIN_BORDER_CHANGED, WM_PIN_FROM_EDITOR, WM_TRAY, icon_resource,
-    last_save_ext_take, tray,
+    last_save_dir_take, last_save_ext_take, tray,
 };
 
 /// 注册消息窗口类并创建窗口（隐藏）。
@@ -101,9 +101,17 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_OVERLAY_DONE => {
             if let Some(app) = app_from(hwnd) {
                 app.register_hotkeys(); // 重注册截图期间撤销的贴图热键
-                // 本次保存用过对话框的话，记住格式供下次默认选中（OUT-2）
+                // 本次保存用过对话框的话，记住格式与目录供下次默认（OUT-2）
+                let mut changed = false;
                 if let Some(ext) = last_save_ext_take() {
                     app.config.last_save_ext = Some(ext);
+                    changed = true;
+                }
+                if let Some(dir) = last_save_dir_take() {
+                    app.config.last_save_dir = Some(dir);
+                    changed = true;
+                }
+                if changed {
                     app.config.save();
                 }
             }
