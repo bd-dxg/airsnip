@@ -8,7 +8,8 @@ use tiny_skia::{Pixmap, Transform};
 
 use crate::editor::Point;
 use crate::overlay::geometry::SelRect;
-use crate::overlay::toolbar::icons::{paint_of, rounded_path, rounded_rect};
+use crate::overlay::shape::{paint_of, rounded_path, rounded_rect};
+use crate::render::icon::{self, Icon};
 use crate::render::text as dwrite;
 use crate::theme::Palette;
 
@@ -118,18 +119,16 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         );
     }
 
-    // 撤销
-    if let Some(r) = bar.hits.iter().find(|(_, b)| *b == Button::Undo).map(|(r, _)| *r) {
-        let c = if state.can_undo { p.icon } else { p.icon_dim };
-        draw_undo_icon(pixmap, r, c);
-    }
-    // 完成（对勾）
-    if let Some(r) = bar.hits.iter().find(|(_, b)| *b == Button::Done).map(|(r, _)| *r) {
-        draw_check(pixmap, r, p.icon);
-    }
-    // 取消（叉）
-    if let Some(r) = bar.hits.iter().find(|(_, b)| *b == Button::Cancel).map(|(r, _)| *r) {
-        draw_cross(pixmap, r, p.icon);
+    // 右侧按钮：图标与覆盖层工具栏同源（`render::icon`），不再各画一套
+    for (r, button) in &bar.hits {
+        let (glyph, color) = match button {
+            Button::Undo => (Icon::Undo, if state.can_undo { p.icon } else { p.icon_dim }),
+            Button::Done => (Icon::Check, p.icon),
+            Button::Cancel => (Icon::Cross, p.icon),
+        };
+        let cx = r.x as f32 + r.w as f32 / 2.0;
+        let cy = r.y as f32 + r.h as f32 / 2.0;
+        icon::draw(pixmap, glyph, cx, cy, r.w.min(r.h) as f32, color);
     }
 
     // 中间提示文字（像素数不再显示：右侧预览窗已给出拼接结果，LNG-3）
@@ -151,86 +150,6 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         .unwrap_or(w);
     if tx + tw < undo_x as f32 - 4.0 {
         dwrite::draw(pixmap, Point::new(tx, ty), text, &spec, p.text, Transform::identity());
-    }
-}
-
-/// 撤销图标：左上弧 + 箭头。
-fn draw_undo_icon(pixmap: &mut Pixmap, r: SelRect, color: [u8; 4]) {
-    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0 + 1.0);
-    let rad = 6.0;
-    let mut pb = tiny_skia::PathBuilder::new();
-    let steps = 18;
-    for i in 0..=steps {
-        let t = std::f32::consts::PI * i as f32 / steps as f32;
-        let (x, y) = (cx + rad * t.cos(), cy - rad * t.sin());
-        if i == 0 {
-            pb.move_to(x, y);
-        } else {
-            pb.line_to(x, y);
-        }
-    }
-    if let Some(path) = pb.finish() {
-        let stroke = tiny_skia::Stroke {
-            width: 2.0,
-            line_cap: tiny_skia::LineCap::Round,
-            ..Default::default()
-        };
-        pixmap.stroke_path(&path, &paint_of(color), &stroke, Transform::identity(), None);
-    }
-    let tip_x = cx - rad;
-    let mut tri = tiny_skia::PathBuilder::new();
-    tri.move_to(tip_x, cy + 4.0);
-    tri.line_to(tip_x - 3.0, cy - 2.0);
-    tri.line_to(tip_x + 3.0, cy - 2.0);
-    tri.close();
-    if let Some(path) = tri.finish() {
-        pixmap.fill_path(
-            &path,
-            &paint_of(color),
-            tiny_skia::FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-}
-
-/// 完成图标：对勾。
-fn draw_check(pixmap: &mut Pixmap, r: SelRect, color: [u8; 4]) {
-    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
-    let mut pb = tiny_skia::PathBuilder::new();
-    pb.move_to(cx - 6.0, cy);
-    pb.line_to(cx - 1.5, cy + 5.0);
-    pb.line_to(cx + 6.0, cy - 5.0);
-    if let Some(path) = pb.finish() {
-        let stroke = tiny_skia::Stroke {
-            width: 2.2,
-            line_cap: tiny_skia::LineCap::Round,
-            line_join: tiny_skia::LineJoin::Round,
-            ..Default::default()
-        };
-        pixmap.stroke_path(&path, &paint_of(color), &stroke, Transform::identity(), None);
-    }
-}
-
-/// 取消图标：叉。
-fn draw_cross(pixmap: &mut Pixmap, r: SelRect, color: [u8; 4]) {
-    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
-    let d = 5.0;
-    let stroke = tiny_skia::Stroke {
-        width: 2.0,
-        line_cap: tiny_skia::LineCap::Round,
-        ..Default::default()
-    };
-    for (a, b) in [
-        ((cx - d, cy - d), (cx + d, cy + d)),
-        ((cx + d, cy - d), (cx - d, cy + d)),
-    ] {
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.move_to(a.0, a.1);
-        pb.line_to(b.0, b.1);
-        if let Some(path) = pb.finish() {
-            pixmap.stroke_path(&path, &paint_of(color), &stroke, Transform::identity(), None);
-        }
     }
 }
 

@@ -9,7 +9,7 @@ use crate::overlay::SelRect;
 use crate::render::text::{self as dwrite, FontSpec};
 use crate::theme::Palette;
 
-use super::icons::paint_of as paint;
+use crate::overlay::shape::paint_of as paint;
 
 /// 工具栏文字尺寸（字体名 / B / I / 字号）。
 pub(super) const LABEL_SIZE: f32 = 13.0;

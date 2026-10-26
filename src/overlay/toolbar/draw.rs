@@ -1,18 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 工具栏绘制：把工具栏渲染到覆盖层像素图。
+//! 按钮图标统一由 `crate::render::icon` 绘制（资源见 `assets/icons/ui/`），
+//! 这里只负责背景、选中态与文字类控件。
 
-use tiny_skia::{Pixmap, Rect, Transform};
+use tiny_skia::Pixmap;
 
 use crate::editor::{PALETTE, Tool};
 use crate::overlay::SelRect;
+use crate::overlay::shape::{rounded_rect, rounded_rect_outline};
 use crate::overlay::toolbar::{Action, FONT_BTN_W, GAP, H, H2, State, Toolbar};
-use crate::render;
+use crate::render::icon::{self, Icon};
 use crate::render::text::FontSpec;
 use crate::theme::Palette;
 
-use super::icons::paint_of as paint;
-use super::icons::*;
 use super::label::{LABEL_SIZE, centered_text, divider, fit_name, left_text};
+
+/// 高亮工具图标的固定色（荧光黄，与色板解耦；见 `assets/icons/ui/README.md` 的颜色白名单）。
+const HIGHLIGHT: [u8; 3] = [255, 230, 0];
 
 /// 绘制工具栏到像素图。
 pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
@@ -43,22 +47,15 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                 if active {
                     rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
                 }
-                match tool {
-                    Tool::Rect => {
-                        let icon = rect_icon(*r, 0.0, false, if active { p.icon } else { p.icon_dim });
-                        render::draw_object(pixmap, &icon);
-                    }
-                    Tool::Arrow => {
-                        let icon = arrow_icon(*r, if active { p.icon } else { p.icon_dim });
-                        render::draw_object(pixmap, &icon);
-                    }
-                    // 文本图标：字母 T（EDT-4）
-                    Tool::Text => text_icon(pixmap, *r, if active { p.icon } else { p.icon_dim }),
-                    // 高亮图标固定荧光黄（激活时更浓）
-                    Tool::Highlight => highlight_icon(pixmap, *r, if active { 230 } else { 150 }),
-                    Tool::Blur => blur_icon(pixmap, *r, if active { p.icon } else { p.icon_dim }),
-                    Tool::Glow => glow_icon(pixmap, *r, if active { p.icon } else { p.icon_dim }),
-                }
+                let color = if tool == Tool::Highlight {
+                    // 高亮固定荧光黄（激活时更浓）
+                    [HIGHLIGHT[0], HIGHLIGHT[1], HIGHLIGHT[2], if active { 235 } else { 160 }]
+                } else if active {
+                    p.icon
+                } else {
+                    p.icon_dim
+                };
+                draw_icon(pixmap, tool_icon(tool), *r, color);
             }
             Action::Color(i) => {
                 let inset = 2;
@@ -73,35 +70,28 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     rounded_rect_outline(pixmap, *r, 4.0, p.accent);
                 }
             }
+            // 文本工具无背景功能：填充开关置灰禁用
             Action::ToggleFill => {
-                // 文本工具无背景功能：填充开关置灰禁用（同圆角）
                 let enabled = state.tool != Tool::Text;
                 if enabled && state.filled {
                     rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
                 }
-                let icon = rect_icon(*r, 0.0, state.filled, if enabled { p.icon } else { p.icon_dim });
-                render::draw_object(pixmap, &icon);
+                draw_icon(pixmap, Icon::Fill, *r, toggle_color(enabled, state.filled, p));
             }
+            // 文本工具下圆角开关无意义：置灰禁用
             Action::ToggleRound => {
-                // 文本工具下圆角开关无意义：置灰禁用
                 let enabled = state.tool != Tool::Text;
                 if enabled && state.round {
                     rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
                 }
-                let color = if enabled { p.icon } else { p.icon_dim };
-                let icon = rect_icon(*r, 6.0, false, color);
-                render::draw_object(pixmap, &icon);
+                draw_icon(pixmap, Icon::Round, *r, toggle_color(enabled, state.round, p));
             }
-            Action::Undo => draw_undo_icon(pixmap, *r, if state.can_undo { p.icon } else { p.icon_dim }, false),
-            Action::Redo => draw_undo_icon(pixmap, *r, if state.can_redo { p.icon } else { p.icon_dim }, true),
-            // PIN-1：贴图（图钉）
-            Action::Pin => pin_icon(pixmap, *r, p.icon),
-            // M4：长截图（向下展开的页面 + 箭头）
-            Action::Longshot => longshot_icon(pixmap, *r, p.icon),
-            // OUT-1：复制（两张叠放的纸）
-            Action::Copy => copy_icon(pixmap, *r, p.icon),
-            // OUT-2：保存（软盘）
-            Action::Save => save_icon(pixmap, *r, p.icon),
+            Action::Undo => draw_icon(pixmap, Icon::Undo, *r, if state.can_undo { p.icon } else { p.icon_dim }),
+            Action::Redo => draw_icon(pixmap, Icon::Redo, *r, if state.can_redo { p.icon } else { p.icon_dim }),
+            Action::Pin => draw_icon(pixmap, Icon::Pin, *r, p.icon),
+            Action::Longshot => draw_icon(pixmap, Icon::Longshot, *r, p.icon),
+            Action::Copy => draw_icon(pixmap, Icon::Copy, *r, p.icon),
+            Action::Save => draw_icon(pixmap, Icon::Save, *r, p.icon),
             // EDT-4：字体族按钮（展开/收起字体列表），名字过长截断加省略号
             Action::FontPick => {
                 if state.font_open {
@@ -112,23 +102,10 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                 let name = fit_name(&state.font_family, (FONT_BTN_W - 12) as f32, &spec);
                 left_text(pixmap, *r, 6, &name, &spec, color);
             }
-            Action::ToggleBold => {
-                let spec = FontSpec {
-                    bold: true,
-                    ..FontSpec::new(LABEL_SIZE + 1.0)
-                };
-                toggle_label(pixmap, *r, "B", &spec, state.bold, p);
-            }
-            Action::ToggleItalic => {
-                let spec = FontSpec {
-                    italic: true,
-                    ..FontSpec::new(LABEL_SIZE + 1.0)
-                };
-                toggle_label(pixmap, *r, "I", &spec, state.italic, p);
-            }
-            // 字号：− 数值 +（每个元素各占一格）
-            Action::FontSmaller => glyph_icon(pixmap, *r, Glyph::Minus, p.icon),
-            Action::FontLarger => glyph_icon(pixmap, *r, Glyph::Plus, p.icon),
+            Action::ToggleBold => toggle_icon(pixmap, Icon::Bold, *r, state.bold, p),
+            Action::ToggleItalic => toggle_icon(pixmap, Icon::Italic, *r, state.italic, p),
+            Action::FontSmaller => draw_icon(pixmap, Icon::Minus, *r, p.icon),
+            Action::FontLarger => draw_icon(pixmap, Icon::Plus, *r, p.icon),
             Action::FontSize => {
                 let spec = FontSpec::new(LABEL_SIZE);
                 let text = format!("{}", state.font_size.round() as i32);
@@ -138,31 +115,40 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
     }
 }
 
-/// B / I 开关按钮：开启时强调底色 + 强调色文字。
-fn toggle_label(pixmap: &mut Pixmap, r: SelRect, text: &str, spec: &FontSpec, on: bool, p: &Palette) {
+/// 工具 → 图标。
+fn tool_icon(tool: Tool) -> Icon {
+    match tool {
+        Tool::Rect => Icon::Rect,
+        Tool::Arrow => Icon::Arrow,
+        Tool::Text => Icon::Text,
+        Tool::Highlight => Icon::Highlight,
+        Tool::Blur => Icon::Blur,
+        Tool::Glow => Icon::Glow,
+    }
+}
+
+/// 在矩形中心按边长绘制图标（活动区由 `render::icon` 统一归一化）。
+fn draw_icon(pixmap: &mut Pixmap, icon: Icon, r: SelRect, color: [u8; 4]) {
+    let cx = r.x as f32 + r.w as f32 / 2.0;
+    let cy = r.y as f32 + r.h as f32 / 2.0;
+    icon::draw(pixmap, icon, cx, cy, r.w.min(r.h) as f32, color);
+}
+
+/// 开关类按钮的图标颜色：禁用置灰、开启用强调色、关闭用主色。
+fn toggle_color(enabled: bool, on: bool, p: &Palette) -> [u8; 4] {
+    if !enabled {
+        p.icon_dim
+    } else if on {
+        p.accent
+    } else {
+        p.icon
+    }
+}
+
+/// B / I 开关按钮：开启时强调底色 + 强调色图标。
+fn toggle_icon(pixmap: &mut Pixmap, icon: Icon, r: SelRect, on: bool, p: &Palette) {
     if on {
         rounded_rect(pixmap, r, 5.0, p.accent_soft, None);
     }
-    let color = if on { p.accent } else { p.icon };
-    centered_text(pixmap, r, text, spec, color);
-}
-
-/// 字号 − / + 图形（不依赖字体，用矩形拼）。
-enum Glyph {
-    Minus,
-    Plus,
-}
-
-fn glyph_icon(pixmap: &mut Pixmap, r: SelRect, glyph: Glyph, color: [u8; 4]) {
-    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
-    let len = 10.0;
-    let thick = 1.6;
-    if let Some(rect) = Rect::from_xywh(cx - len / 2.0, cy - thick / 2.0, len, thick) {
-        pixmap.fill_rect(rect, &paint(color), Transform::identity(), None);
-    }
-    if matches!(glyph, Glyph::Plus)
-        && let Some(rect) = Rect::from_xywh(cx - thick / 2.0, cy - len / 2.0, thick, len)
-    {
-        pixmap.fill_rect(rect, &paint(color), Transform::identity(), None);
-    }
+    draw_icon(pixmap, icon, r, if on { p.accent } else { p.icon });
 }

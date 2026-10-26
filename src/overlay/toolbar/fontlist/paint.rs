@@ -9,9 +9,9 @@ use crate::overlay::SelRect;
 use crate::render::text::FontSpec;
 use crate::theme::Palette;
 
-use super::super::icons::rounded_rect;
 use super::super::label::{LABEL_SIZE, centered_text, fit_name};
 use super::FontPanel;
+use crate::overlay::shape::rounded_rect;
 
 /// 绘制面板；`current` 为当前字体族（高亮该行）。
 pub(in crate::overlay) fn render(pixmap: &mut Pixmap, panel: &FontPanel, current: &str, p: &Palette) {
