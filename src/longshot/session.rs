@@ -179,6 +179,11 @@ impl Session {
         self.canvas.height()
     }
 
+    /// 生成整图缩略图（预览窗用，LNG-3）。
+    pub fn thumbnail(&self, max_w: u32, max_h: u32) -> Option<tiny_skia::Pixmap> {
+        self.canvas.thumbnail(max_w, max_h)
+    }
+
     /// 是否有可撤销的段。
     pub fn can_undo(&self) -> bool {
         self.canvas.can_undo()

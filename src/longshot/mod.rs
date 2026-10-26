@@ -2,13 +2,15 @@
 //! 长截图（LNG-1/3/4/5/6/7/10/11）：框选滚动视口 → 用户手动滚动 → 条带拼接 → 输出。
 //!
 //! 模块分工：`stitch` 条带匹配纯函数、`rows` 行缓冲画布、`engine` 拼接状态机、
-//! `session` 会话状态机、`window` 执行窗口、`present` 状态条上屏。
+//! `session` 会话状态机、`window` 执行窗口、`bar` 状态条绘制、`present` 上屏、
+//! `preview` 拼接结果预览窗。
 
 mod bar;
 mod border;
 mod debug;
 mod engine;
 mod present;
+mod preview;
 mod rows;
 mod session;
 mod stitch;

@@ -11,6 +11,32 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use super::window::Win;
 
+/// 绘制状态条并提交到分层窗口。
+pub(super) fn redraw(hwnd: HWND) {
+    let Some(win) = win_from(hwnd) else {
+        return;
+    };
+    let Some(mut pixmap) = tiny_skia::Pixmap::new(win.w as u32, win.h as u32) else {
+        return;
+    };
+    let state = super::bar::State {
+        can_undo: win.session.can_undo(),
+        hint: win.session.hint(),
+    };
+    super::bar::render(&mut pixmap, &win.bar, &state, win.palette);
+    // 预览窗：拼接高度变化时才重算缩略图（update 内部按高度短路）
+    if let Some(preview) = win.preview.as_mut() {
+        preview.update(&win.session);
+    }
+    // RGBA → premultiplied BGRA 写入 DIB（tiny-skia 像素本就是 premultiplied）。
+    let bgra = premul_bgra(pixmap.data());
+    unsafe {
+        std::ptr::copy_nonoverlapping(bgra.as_ptr(), win.dib_bits, bgra.len());
+        present(hwnd, win.mem_dc);
+    }
+    win.dirty = false;
+}
+
 /// UpdateLayeredWindow 提交（窗口位置不变，只更新像素）。
 pub(super) unsafe fn present(hwnd: HWND, mem_dc: HDC) {
     unsafe {

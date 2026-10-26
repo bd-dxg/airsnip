@@ -13,10 +13,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{HOT_KEY_MODIFIERS, MOD_CONTROL
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use super::bar::{self, Bar, Button, State};
+use super::bar::{self, Bar, Button};
 use super::border;
-use super::present::{ctrl_down, premul_bgra, present, win_from};
+use super::present::{ctrl_down, redraw, win_from};
+use super::preview::Preview;
 use super::session::Session;
+use crate::overlay::geometry::SelRect;
 use crate::theme::Palette;
 
 /// 定时器 ID。
@@ -47,23 +49,26 @@ fn unregister_hotkeys(hwnd: HWND) {
 }
 
 /// 执行窗口运行时状态。
+/// 字段为 `pub(super)`：绘制/上屏在 `present` 模块中实现（控制单文件规模）。
 pub(super) struct Win {
-    session: Box<Session>,
+    pub(super) session: Box<Session>,
     /// 视口边框窗口（M4，让用户看清截取范围）。
-    border_hwnd: Option<HWND>,
+    pub(super) border_hwnd: Option<HWND>,
+    /// 拼接结果预览窗（LNG-3，屏幕左右剩余空间放不下时为 None）。
+    pub(super) preview: Option<Preview>,
     /// 状态条几何。
-    bar: Bar,
+    pub(super) bar: Bar,
     /// 主题调色板（与工具栏一致）。
-    palette: &'static Palette,
+    pub(super) palette: &'static Palette,
     /// 上屏用内存 DC 与其 DIB。
-    mem_dc: HDC,
-    dib_bmp: HBITMAP,
-    dib_bits: *mut u8,
+    pub(super) mem_dc: HDC,
+    pub(super) dib_bmp: HBITMAP,
+    pub(super) dib_bits: *mut u8,
     /// 状态条像素尺寸。
-    w: i32,
-    h: i32,
+    pub(super) w: i32,
+    pub(super) h: i32,
     /// 是否有待上屏的变更。
-    dirty: bool,
+    pub(super) dirty: bool,
 }
 
 impl Drop for Win {
@@ -113,6 +118,18 @@ pub fn run(
 
         let screen_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
         let bar = bar::layout(x, w, y, h, screen_h);
+        // 预览窗：在视口左右剩余空间显示拼接缩略图（放不下则不显示，长截图照常）。
+        // 先于状态条创建，让状态条在 Z 序上位于预览之上。
+        let preview = Preview::spawn(
+            SelRect {
+                x,
+                y,
+                w: w as i32,
+                h: h as i32,
+            },
+            hinstance,
+            palette,
+        );
         let (bw, bh) = (bar.rect.w, bar.rect.h);
         let (bx, by) = (bar.rect.x, bar.rect.y);
 
@@ -143,6 +160,7 @@ pub fn run(
         let win = Box::new(Win {
             session: Box::new(session),
             border_hwnd,
+            preview,
             bar,
             palette,
             mem_dc,
@@ -194,31 +212,7 @@ fn finish(win: &mut Win) {
     win.session.finished = true;
 }
 
-/// 绘制状态条并提交到分层窗口。
-fn redraw(hwnd: HWND) {
-    let Some(win) = win_from(hwnd) else {
-        return;
-    };
-    let (w, h) = (win.w, win.h);
-    let mut pixmap = match tiny_skia::Pixmap::new(w as u32, h as u32) {
-        Some(p) => p,
-        None => return,
-    };
-    let state = State {
-        height: win.session.height(),
-        can_undo: win.session.can_undo(),
-        hint: win.session.hint(),
-    };
-    bar::render(&mut pixmap, &win.bar, &state, win.palette);
-    // RGBA → premultiplied BGRA 写入 DIB（tiny-skia 像素本就是 premultiplied）。
-    let bgra = premul_bgra(pixmap.data());
-    unsafe {
-        std::ptr::copy_nonoverlapping(bgra.as_ptr(), win.dib_bits, bgra.len());
-        present(hwnd, win.mem_dc);
-    }
-    win.dirty = false;
-}
-
+/// 绘制状态条并提交到分层窗口（实现见 `present::redraw`）。
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_DESTROY => {

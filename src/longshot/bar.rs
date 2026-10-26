@@ -59,8 +59,6 @@ impl Bar {
 
 /// 状态条要显示的状态。
 pub struct State {
-    /// 已拼接像素高度。
-    pub height: u32,
     /// 是否可撤销。
     pub can_undo: bool,
     /// 提示文字（拼接失败等）。
@@ -134,15 +132,15 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         draw_cross(pixmap, r, p.icon);
     }
 
-    // 中间进度文字
+    // 中间提示文字（像素数不再显示：右侧预览窗已给出拼接结果，LNG-3）
     let text = if state.hint.is_empty() {
-        format!("滚轮滚动页面 · 已拼 {} px", state.height)
+        "滚轮滚动页面 · Enter 完成"
     } else {
-        format!("{} · {} px", state.hint, state.height)
+        state.hint
     };
     let tx = PAD as f32;
     let spec = dwrite::FontSpec::new(FONT);
-    let (tw, th) = dwrite::measure(&text, &spec);
+    let (tw, th) = dwrite::measure(text, &spec);
     let ty = (h as f32 - th) / 2.0;
     // 文字不超出撤销按钮左侧
     let undo_x = bar
@@ -152,7 +150,7 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         .map(|(r, _)| r.x)
         .unwrap_or(w);
     if tx + tw < undo_x as f32 - 4.0 {
-        dwrite::draw(pixmap, Point::new(tx, ty), &text, &spec, p.text, Transform::identity());
+        dwrite::draw(pixmap, Point::new(tx, ty), text, &spec, p.text, Transform::identity());
     }
 }
 
@@ -270,7 +268,6 @@ mod tests {
         let bar = layout(0, 600, 0, 400, 1080);
         let mut px = Pixmap::new(bar.rect.w as u32, bar.rect.h as u32).unwrap();
         let state = State {
-            height: 1234,
             can_undo: true,
             hint: "",
         };

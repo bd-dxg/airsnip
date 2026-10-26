@@ -25,8 +25,7 @@ impl RowBuffer {
         self.rows.len() as u32
     }
 
-    /// 取第 `y` 行（调用方保证 `y < height`；仅测试使用）。
-    #[cfg(test)]
+    /// 取第 `y` 行（调用方保证 `y < height`）。
     pub fn row(&self, y: u32) -> &[u8] {
         &self.rows[y as usize]
     }
