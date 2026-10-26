@@ -236,15 +236,19 @@ impl super::Overlay {
             return;
         };
         // 预填文件名按设置里的命名模板；格式用上次保存的（首次为 PNG）
-        let ext = self.last_save_ext.as_deref().unwrap_or("png").to_string();
-        let name = format!("{}.{ext}", output::base_name(self.name_style));
-        // 初始目录用默认截图目录（不存在时交给系统记住的上次位置）
-        let dir = output::default_save_dir();
-        let chosen = if dir.is_dir() {
-            crate::app::filedlg::pick_save_file(self.hwnd, Some(&dir), &name, &ext)
-        } else {
-            crate::app::filedlg::pick_save_file(self.hwnd, None, &name, &ext)
-        };
+        let ext = self.save.last_ext.as_deref().unwrap_or("png").to_string();
+        let name = format!("{}.{ext}", output::base_name(self.save.name_style));
+        // 初始目录：上次保存过的目录优先（OUT-2），否则默认截图目录；
+        // 都不存在时传 None，交给系统自己记住的位置。
+        let dir = self
+            .save
+            .last_dir
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .filter(|p| p.is_dir())
+            .unwrap_or_else(output::default_save_dir);
+        let dir = dir.is_dir().then_some(dir);
+        let chosen = crate::app::filedlg::pick_save_file(self.hwnd, dir.as_deref(), &name, &ext);
         // 对话框盖在覆盖层之上：关闭后整屏重绘，否则留下对话框残影
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
         self.repaint(SelRect {
@@ -256,9 +260,12 @@ impl super::Overlay {
         let Some(path) = chosen else {
             return;
         };
-        // 记住本次格式：下次打开对话框时默认选中它（连拍时不必反复切筛选器）
+        // 记住本次格式与目录：下次打开对话框时默认选中/定位（OUT-2）
         if let Some(e) = path.extension().and_then(|e| e.to_str()) {
             crate::app::last_save_ext_store(e);
+        }
+        if let Some(parent) = path.parent() {
+            crate::app::last_save_dir_store(parent);
         }
         let Some(cropped) = self.baked_selection(sel) else {
             return;

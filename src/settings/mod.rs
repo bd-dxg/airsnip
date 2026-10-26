@@ -137,6 +137,18 @@ impl NameStyle {
     }
 }
 
+/// 保存相关运行时偏好（OUT-2）：文件名模板 + 上次格式 + 上次目录。
+/// 截图开始时从配置快照后传入覆盖层线程（`HWND` 不可跨线程，值可以）。
+#[derive(Debug, Clone, Default)]
+pub struct SavePrefs {
+    /// 保存文件名模板。
+    pub name_style: NameStyle,
+    /// 上次保存的格式扩展名（下次对话框默认选中该格式）。
+    pub last_ext: Option<String>,
+    /// 上次保存的目录（下次对话框初始位置；目录已不存在时回退默认目录）。
+    pub last_dir: Option<String>,
+}
+
 /// 根配置。所有字段带默认值，旧配置文件缺字段时自动补齐。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -159,6 +171,8 @@ pub struct Config {
     pub name_style: NameStyle,
     /// 上次保存用的格式扩展名（OUT-2，运行时记忆）：保存对话框下次默认选中该格式。
     pub last_save_ext: Option<String>,
+    /// 上次保存的目录（OUT-2，运行时记忆）：保存对话框下次的初始位置。
+    pub last_save_dir: Option<String>,
     /// 长截图拼接高度上限（像素，LNG-7，默认 30000）。
     pub longshot_max_height: u32,
 }
@@ -176,6 +190,7 @@ impl Default for Config {
             pin_border: true,
             name_style: NameStyle::DateTime,
             last_save_ext: None,
+            last_save_dir: None,
             longshot_max_height: 30000,
         }
     }
@@ -289,5 +304,19 @@ mod tests {
         };
         let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
         assert_eq!(back.hotkey.longshot_key, 0x4C);
+    }
+
+    /// 上次保存目录（OUT-2）：旧配置缺字段回退 None，新值能往返。
+    #[test]
+    fn last_save_dir_roundtrip() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.last_save_dir, None, "旧配置应无上次保存目录");
+
+        let cfg = Config {
+            last_save_dir: Some(r"D:\shots".to_string()),
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.last_save_dir.as_deref(), Some(r"D:\shots"));
     }
 }

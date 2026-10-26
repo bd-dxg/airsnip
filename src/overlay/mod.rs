@@ -70,10 +70,8 @@ pub struct Overlay {
     tool_keys: crate::settings::ToolKeys,
     /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
     longshot_key: u32,
-    /// 保存文件名模板（OUT-2）：保存对话框预填文件名用。
-    name_style: crate::settings::NameStyle,
-    /// 上次保存的格式扩展名（OUT-2）：保存对话框默认选中的筛选器。
-    last_save_ext: Option<String>,
+    /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
+    save: crate::settings::SavePrefs,
     color_index: usize,
     /// 新建对象的默认线宽（滚轮 / 二级工具栏可连续调整）。
     line_width: f32,
@@ -131,8 +129,7 @@ impl Overlay {
         tool_keys: crate::settings::ToolKeys,
         longshot_key: u32,
         default_tool: Tool,
-        name_style: crate::settings::NameStyle,
-        last_save_ext: Option<String>,
+        save: crate::settings::SavePrefs,
         hinstance: HINSTANCE,
         main_hwnd: HWND,
     ) -> OverlayResult {
@@ -148,15 +145,7 @@ impl Overlay {
             }
         };
 
-        let mut overlay = match Self::new(
-            capture,
-            palette,
-            tool_keys,
-            longshot_key,
-            default_tool,
-            name_style,
-            last_save_ext,
-        ) {
+        let mut overlay = match Self::new(capture, palette, tool_keys, longshot_key, default_tool, save) {
             Ok(o) => o,
             Err(_) => {
                 unsafe {
