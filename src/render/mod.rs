@@ -13,6 +13,7 @@ mod bake;
 pub use bake::bake_objects;
 mod blur;
 pub mod fonts;
+pub mod icon;
 pub mod text;
 mod text_bitmap;
 

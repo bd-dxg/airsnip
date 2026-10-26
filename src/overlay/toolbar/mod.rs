@@ -3,7 +3,6 @@
 
 mod draw;
 pub(crate) mod fontlist;
-pub(crate) mod icons;
 mod label;
 
 use std::sync::Arc;

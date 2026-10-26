@@ -8,7 +8,7 @@ use crate::editor::{Kind, Object, Point};
 
 use super::super::geometry::SelRect;
 use super::super::pick::dashed_line;
-use super::super::toolbar::icons::rounded_path;
+use super::super::shape::rounded_path;
 use super::{ObjHandle, frame_of, handle_point};
 
 /// 手柄边长（物理像素）。

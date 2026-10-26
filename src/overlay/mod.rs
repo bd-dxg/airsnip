@@ -19,6 +19,7 @@ mod objedit;
 mod pick;
 mod selection;
 mod setup;
+pub(crate) mod shape;
 pub(crate) mod surface;
 mod text_edit_state;
 mod textinput;

@@ -6,7 +6,7 @@ use tiny_skia::{Pixmap, Rect, Transform};
 
 use crate::editor::Point;
 use crate::overlay::geometry::SelRect;
-use crate::overlay::toolbar::icons::{paint_of, rounded_rect, rounded_rect_outline};
+use crate::overlay::shape::{paint_of, rounded_rect, rounded_rect_outline};
 use crate::render::text as dwrite;
 use crate::settings::ThemeSetting;
 
