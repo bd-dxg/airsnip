@@ -166,6 +166,53 @@ impl Canvas {
         true
     }
 
+    /// 取整图第 `y` 行（含页眉与页脚）。
+    fn row_at(&self, y: u32) -> Option<&[u8]> {
+        let stride = self.w as usize * 4;
+        if y < self.header_h {
+            let o = y as usize * stride;
+            return self.header.get(o..o + stride);
+        }
+        let y = y - self.header_h;
+        if y < self.content_rows {
+            return Some(self.rows.row(y));
+        }
+        let y = y - self.content_rows;
+        if y < self.footer_h {
+            let o = y as usize * stride;
+            return self.footer.get(o..o + stride);
+        }
+        None
+    }
+
+    /// 生成整图缩略图（LNG-3 预览）：最近邻抽样，等比缩放到 `max_w × max_h` 内。
+    /// 成本只与目标尺寸相关，与拼接图高度无关（不先合成整张大图）。
+    pub fn thumbnail(&self, max_w: u32, max_h: u32) -> Option<tiny_skia::Pixmap> {
+        let (sw, sh) = (self.w, self.height());
+        if sw == 0 || sh == 0 || max_w == 0 || max_h == 0 {
+            return None;
+        }
+        // 等比缩放：宽高都不超过上限
+        let scale = (max_w as f32 / sw as f32).min(max_h as f32 / sh as f32);
+        let tw = ((sw as f32 * scale) as u32).clamp(1, max_w);
+        let th = ((sh as f32 * scale) as u32).clamp(1, max_h);
+        let mut out = vec![0u8; (tw * th * 4) as usize];
+        let dst_stride = tw as usize * 4;
+        for y in 0..th {
+            let sy = (y as u64 * sh as u64 / th as u64) as u32;
+            let Some(row) = self.row_at(sy) else { continue };
+            let dst = y as usize * dst_stride;
+            for x in 0..tw {
+                let sx = (x as u64 * sw as u64 / tw as u64) as usize * 4;
+                let d = dst + x as usize * 4;
+                if let Some(px) = row.get(sx..sx + 4) {
+                    out[d..d + 4].copy_from_slice(px);
+                }
+            }
+        }
+        tiny_skia::Pixmap::from_vec(out, tiny_skia::IntSize::from_wh(tw, th)?)
+    }
+
     /// 导出画布像素（页眉 + 内容 + 页脚）。
     pub fn to_pixmap(&self) -> Option<tiny_skia::Pixmap> {
         let mut out = RowBuffer::new(self.w);
@@ -369,5 +416,36 @@ mod tests {
     fn view(page: &[u8], w: u32, y0: u32, h: u32) -> Vec<u8> {
         let stride = w as usize * 4;
         page[y0 as usize * stride..(y0 + h) as usize * stride].to_vec()
+    }
+
+    /// 预览缩略图（LNG-3）：尺寸不超上限、保持长宽比、内容可区分。
+    #[test]
+    fn thumbnail_scales_within_bounds() {
+        let w = 64u32;
+        let view_h = 60u32;
+        let page = make_page(w, 0, 200, 0);
+        let mut c = Canvas::new(w, params(), 30000);
+        c.seed(&view(&page, w, 0, view_h));
+        // 每次滚 20 行（不超过内容区一半，locate 才能定位）
+        c.push(&view(&page, w, 20, view_h), view_h);
+        c.push(&view(&page, w, 40, view_h), view_h);
+        assert_eq!(c.height(), 100);
+
+        // 高度上限 90 → 按高度等比缩（64×100 → 57×90）
+        let t = c.thumbnail(1000, 90).expect("可生成缩略图");
+        assert!(t.width() <= 1000 && t.height() <= 90, "不得超出上限");
+        assert_eq!(t.height(), 90, "应缩到高度上限");
+        assert!(
+            (t.width() as i32 - 57).abs() <= 1,
+            "宽度应保持长宽比，实际 {}",
+            t.width()
+        );
+
+        // 宽度受限时按宽度缩（64×100 → 16×25）
+        let t2 = c.thumbnail(16, 1000).expect("可生成缩略图");
+        assert_eq!((t2.width(), t2.height()), (16, 25), "应等比缩放到宽度上限");
+
+        // 内容不透明（页面每行 alpha=255）
+        assert_eq!(t.data()[3], 255, "缩略图像素应不透明");
     }
 }

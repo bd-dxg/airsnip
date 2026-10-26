@@ -47,13 +47,6 @@ impl Default for Params {
     }
 }
 
-/// 统计两帧中内容不同的行数（供滚动稳定检测用；容忍光标/动画等少量行变化）。
-pub fn diff_rows(a: &[u8], b: &[u8], w: u32, h: u32) -> u32 {
-    let ha = row_hashes(a, w, h);
-    let hb = row_hashes(b, w, h);
-    ha.iter().zip(hb.iter()).filter(|(x, y)| x != y).count() as u32
-}
-
 /// 拼接结果。
 #[derive(Debug, Clone, Copy)]
 pub struct Match {

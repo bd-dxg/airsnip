@@ -214,6 +214,7 @@ fn keycap_text(panel: &Panel, id: RowId) -> String {
         RowId::HotkeyShot => key_name(hk.screenshot_key, hk.screenshot_modifiers),
         RowId::HotkeyPin => key_name(hk.pin_key, hk.pin_modifiers),
         RowId::HotkeyBorder => key_name(hk.border_key, hk.border_modifiers),
+        RowId::HotkeyLongshot => key_name(hk.longshot_key, 0),
         RowId::ToolRect => key_name(tk.rect, 0),
         RowId::ToolArrow => key_name(tk.arrow, 0),
         RowId::ToolText => key_name(tk.text, 0),
@@ -267,30 +268,27 @@ fn draw_radio(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
 
 /// 只读行：右侧说明文本。
 fn draw_readonly(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
-    let p = panel.palette;
-    let s = panel.scale;
     let text = match row.id {
         RowId::Lang => "简体中文",
         RowId::Widenote => "无修饰键会覆盖其他程序按键，建议 Ctrl/Alt",
         _ => "",
     };
-    let size = 16.0 * s;
-    let (w, _) = dwrite::measure(text, &dwrite::FontSpec::new(size));
-    let x = row.control.x + row.control.w as i32 - w as i32;
-    let y = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
-    draw_text(pixmap, x as f32, y, text, size, p.text_dim);
+    draw_right_text(pixmap, panel, row, text);
 }
 
 /// 关于行：右侧版本与许可。
 fn draw_about(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
-    let p = panel.palette;
-    let s = panel.scale;
     let text = format!("v{} · GPL-3.0", env!("CARGO_PKG_VERSION"));
-    let size = 16.0 * s;
-    let (w, _) = dwrite::measure(&text, &dwrite::FontSpec::new(size));
+    draw_right_text(pixmap, panel, row, &text);
+}
+
+/// 右侧对齐的说明文本（只读行 / 关于行共用）。
+fn draw_right_text(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, text: &str) {
+    let size = 16.0 * panel.scale;
+    let (w, _) = dwrite::measure(text, &dwrite::FontSpec::new(size));
     let x = row.control.x + row.control.w as i32 - w as i32;
     let y = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
-    draw_text(pixmap, x as f32, y, &text, size, p.text_dim);
+    draw_text(pixmap, x as f32, y, text, size, panel.palette.text_dim);
 }
 
 /// 经 DirectWrite 栅格化文本（位置为左上角物理像素）。

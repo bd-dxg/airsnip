@@ -158,6 +158,8 @@ impl App {
         let palette = crate::theme::palette(crate::theme::resolve(self.config.theme));
         // 工具切换键配置 + 默认工具（记住上次使用，M3）
         let tool_keys = self.config.tool_keys.clone();
+        // 长截图键（覆盖层内按下，默认 S）
+        let longshot_key = self.config.hotkey.longshot_key;
         let default_tool = crate::settings::last_tool();
         // 命名模板与上次保存格式（OUT-2）：保存对话框预填文件名与默认筛选器用
         let name_style = self.config.name_style;
@@ -171,13 +173,14 @@ impl App {
                         screen,
                         palette,
                         tool_keys,
+                        longshot_key,
                         default_tool,
                         name_style,
                         last_save_ext,
                         hinstance,
                         main_hwnd,
                     );
-                    // M4：工具栏长截图按钮 / S 键返回视口选区，进入长截图拼接。
+                    // M4：工具栏长截图按钮 / 长截图键返回视口选区，进入长截图拼接。
                     if let crate::overlay::OverlayResult::Viewport((x, y, w, h)) = result {
                         crate::longshot::run(x, y, w, h, hinstance, max_height, palette);
                     }

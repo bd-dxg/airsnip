@@ -30,6 +30,7 @@ impl super::Overlay {
             italic: self.italic,
         };
         self.text_edit = Some(edit);
+        self.set_ime_enabled(true);
         self.repaint_text_edit();
     }
 
@@ -66,6 +67,7 @@ impl super::Overlay {
             bold,
             italic,
         });
+        self.set_ime_enabled(true);
         // 原对象隐藏、输入框登场，立即重绘
         self.repaint_text_edit();
         true
@@ -80,6 +82,7 @@ impl super::Overlay {
     /// 修改文档前才建撤销快照（begin），避免输入期间其它 begin 覆盖；结束后重绘整个选区。
     pub(super) fn commit_text(&mut self) {
         let Some(edit) = self.text_edit.take() else { return };
+        self.set_ime_enabled(false);
         if edit.chars.is_empty() {
             // 编辑已有对象时全部删掉 = 删除该对象；新建时空文本直接丢弃
             if let Some(i) = edit.obj_index {
@@ -124,6 +127,7 @@ impl super::Overlay {
     /// 取消当前输入（Esc，EDT-4）：编辑已有对象时不入撤销栈，原对象恢复显示。
     pub(super) fn cancel_text(&mut self) {
         let Some(_edit) = self.text_edit.take() else { return };
+        self.set_ime_enabled(false);
         self.doc.commit(false);
         self.repaint_whole_selection();
     }

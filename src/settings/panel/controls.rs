@@ -9,7 +9,7 @@ pub use keys::*;
 /// 窗口内容总宽（横向桌面窗口，宽高比约 1.4）。
 pub const W: i32 = 720;
 /// 窗口内容总高：固定值，避免切换分类时窗口上下跳动；
-/// 内容更高的分类（快捷键 10 行）按实际内容兜底。
+/// 内容更高的分类（快捷键 11 行）按实际内容兜底。
 pub const H: i32 = 520;
 /// 左侧导航栏宽。
 pub const NAV_W: i32 = 124;
@@ -67,6 +67,8 @@ pub enum RowId {
     HotkeyPin,
     /// 贴图边框切换热键（M2b，默认 Ctrl+F3）。
     HotkeyBorder,
+    /// 长截图键（覆盖层内按下，默认 S）。
+    HotkeyLongshot,
     /// 工具切换键（M3）：矩形 / 箭头 / 文本 / 模糊 / 荧光笔 / 高亮。
     ToolRect,
     ToolArrow,
@@ -200,6 +202,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             push(RowId::HotkeyShot, RowKind::KeyCap, "截图", &mut y, items);
             push(RowId::HotkeyPin, RowKind::KeyCap, "贴图", &mut y, items);
             push(RowId::HotkeyBorder, RowKind::KeyCap, "贴图边框·窗口内", &mut y, items);
+            push(RowId::HotkeyLongshot, RowKind::KeyCap, "长截图·截图内", &mut y, items);
             push(RowId::ToolRect, RowKind::KeyCap, "工具·矩形", &mut y, items);
             push(RowId::ToolArrow, RowKind::KeyCap, "工具·箭头", &mut y, items);
             push(RowId::ToolText, RowKind::KeyCap, "工具·文本", &mut y, items);
@@ -312,6 +315,7 @@ mod tests {
                     RowId::HotkeyShot,
                     RowId::HotkeyPin,
                     RowId::HotkeyBorder,
+                    RowId::HotkeyLongshot,
                     RowId::ToolRect,
                     RowId::ToolArrow,
                     RowId::ToolText,

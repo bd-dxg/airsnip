@@ -71,6 +71,7 @@ pub fn conflict_for(
         RowId::HotkeyShot => (hk.screenshot_key, hk.screenshot_modifiers),
         RowId::HotkeyPin => (hk.pin_key, hk.pin_modifiers),
         RowId::HotkeyBorder => (hk.border_key, hk.border_modifiers),
+        RowId::HotkeyLongshot => (hk.longshot_key, 0),
         RowId::ToolRect => (tk.rect, 0),
         RowId::ToolArrow => (tk.arrow, 0),
         RowId::ToolText => (tk.text, 0),
@@ -80,10 +81,12 @@ pub fn conflict_for(
         _ => (u32::MAX, u32::MAX),
     };
     // 已配置键位：热键按「键+修饰」比较，工具键按「虚拟键」比较
-    let pairs: [(&str, u32, u32, bool); 9] = [
+    let pairs: [(&str, u32, u32, bool); 10] = [
         ("截图", hk.screenshot_key, hk.screenshot_modifiers, true),
         ("贴图", hk.pin_key, hk.pin_modifiers, true),
         ("贴图边框", hk.border_key, hk.border_modifiers, true),
+        // 长截图键在覆盖层内无修饰键，与工具键同组
+        ("长截图", hk.longshot_key, 0, false),
         ("工具·矩形", tk.rect, 0, false),
         ("工具·箭头", tk.arrow, 0, false),
         ("工具·文本", tk.text, 0, false),
@@ -117,5 +120,20 @@ mod tests {
         assert_eq!(vk_name(0x70), "F1");
         assert_eq!(key_name(0x43, MOD_CTRL_BIT), "Ctrl+C");
         assert_eq!(vk_name(0x1B), "Esc");
+    }
+
+    /// 长截图键：默认 S 不冲突；改成工具键或截图热键的键位应报冲突。
+    #[test]
+    fn longshot_key_conflicts() {
+        let hk = crate::settings::HotkeyConfig::default();
+        let tk = crate::settings::ToolKeys::default();
+        assert_eq!(conflict_for(&hk, &tk, RowId::HotkeyLongshot, 0x53, 0), None);
+        assert_eq!(
+            conflict_for(&hk, &tk, RowId::HotkeyLongshot, 0x31, 0),
+            Some("工具·矩形")
+        );
+        assert_eq!(conflict_for(&hk, &tk, RowId::HotkeyLongshot, 0x70, 0), Some("截图"));
+        // 反向：工具键改为 S 时也应被长截图键拦下
+        assert_eq!(conflict_for(&hk, &tk, RowId::ToolRect, 0x53, 0), Some("长截图"));
     }
 }

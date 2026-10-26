@@ -1,32 +1,33 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 长截图执行窗口（LNG-2/3/6）：置顶**分层**状态条，风格与截图工具栏一致
-//! （tiny-skia 绘制，见 `bar`）。键位：Enter 完成、Esc 取消、Ctrl+Z 撤销、空格 切换模式；
-//! 也可用鼠标点条上的按钮。定时器每 ~90ms 驱动 `Session::tick`。
+//! 长截图执行窗口（LNG-1/3/6）：置顶**分层**状态条，风格与截图工具栏一致
+//! （tiny-skia 绘制，见 `bar`）。键位：Enter 完成、Esc 取消、Ctrl+Z 撤销；
+//! 也可用鼠标点条上的按钮。定时器每 ~90ms 驱动 `Session::tick` 抓帧拼接。
 //!
-//! 执行窗口用 `WS_EX_NOACTIVATE` 不抢焦点（滚轮需发给目标页面），键盘走注册到本窗口的全局热键。
+//! 用户自行在目标页面上滚动鼠标滚轮（不做自动滚动）；执行窗口用 `WS_EX_NOACTIVATE`
+//! 不抢焦点，键盘走注册到本窗口的全局热键。
 
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, SIZE, WPARAM};
-use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, DeleteDC, DeleteObject, HBITMAP, HDC};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Graphics::Gdi::{DeleteDC, DeleteObject, HBITMAP, HDC};
 use windows::Win32::UI::Input::Ime::{HIMC, ImmAssociateContext};
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, HOT_KEY_MODIFIERS, MOD_CONTROL, RegisterHotKey, UnregisterHotKey,
-};
+use windows::Win32::UI::Input::KeyboardAndMouse::{HOT_KEY_MODIFIERS, MOD_CONTROL, RegisterHotKey, UnregisterHotKey};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use super::bar::{self, Bar, Button, State};
+use super::bar::{self, Bar, Button};
 use super::border;
+use super::present::{ctrl_down, redraw, win_from};
+use super::preview::Preview;
 use super::session::Session;
+use crate::overlay::geometry::SelRect;
 use crate::theme::Palette;
 
 /// 定时器 ID。
 const TIMER_ID: usize = 1;
 
-/// 全局热键 ID（执行窗口无焦点，键盘走全局热键；Enter/Esc/空格/Ctrl+Z）。
+/// 全局热键 ID（执行窗口无焦点，键盘走全局热键；Enter/Esc/Ctrl+Z）。
 const HK_ENTER: i32 = 301;
 const HK_ESC: i32 = 302;
-const HK_SPACE: i32 = 303;
-const HK_UNDO: i32 = 304;
+const HK_UNDO: i32 = 303;
 /// 每拍间隔（毫秒）。
 const TICK_MS: u32 = 90;
 
@@ -35,7 +36,6 @@ fn register_hotkeys(hwnd: HWND) {
     unsafe {
         let _ = RegisterHotKey(Some(hwnd), HK_ENTER, HOT_KEY_MODIFIERS(0), 0x0D);
         let _ = RegisterHotKey(Some(hwnd), HK_ESC, HOT_KEY_MODIFIERS(0), 0x1B);
-        let _ = RegisterHotKey(Some(hwnd), HK_SPACE, HOT_KEY_MODIFIERS(0), 0x20);
         let _ = RegisterHotKey(Some(hwnd), HK_UNDO, MOD_CONTROL, 0x5A);
     }
 }
@@ -44,29 +44,31 @@ fn unregister_hotkeys(hwnd: HWND) {
     unsafe {
         let _ = UnregisterHotKey(Some(hwnd), HK_ENTER);
         let _ = UnregisterHotKey(Some(hwnd), HK_ESC);
-        let _ = UnregisterHotKey(Some(hwnd), HK_SPACE);
         let _ = UnregisterHotKey(Some(hwnd), HK_UNDO);
     }
 }
 
 /// 执行窗口运行时状态。
-struct Win {
-    session: Box<Session>,
+/// 字段为 `pub(super)`：绘制/上屏在 `present` 模块中实现（控制单文件规模）。
+pub(super) struct Win {
+    pub(super) session: Box<Session>,
     /// 视口边框窗口（M4，让用户看清截取范围）。
-    border_hwnd: Option<HWND>,
+    pub(super) border_hwnd: Option<HWND>,
+    /// 拼接结果预览窗（LNG-3，屏幕左右剩余空间放不下时为 None）。
+    pub(super) preview: Option<Preview>,
     /// 状态条几何。
-    bar: Bar,
+    pub(super) bar: Bar,
     /// 主题调色板（与工具栏一致）。
-    palette: &'static Palette,
+    pub(super) palette: &'static Palette,
     /// 上屏用内存 DC 与其 DIB。
-    mem_dc: HDC,
-    dib_bmp: HBITMAP,
-    dib_bits: *mut u8,
+    pub(super) mem_dc: HDC,
+    pub(super) dib_bmp: HBITMAP,
+    pub(super) dib_bits: *mut u8,
     /// 状态条像素尺寸。
-    w: i32,
-    h: i32,
+    pub(super) w: i32,
+    pub(super) h: i32,
     /// 是否有待上屏的变更。
-    dirty: bool,
+    pub(super) dirty: bool,
 }
 
 impl Drop for Win {
@@ -116,12 +118,24 @@ pub fn run(
 
         let screen_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
         let bar = bar::layout(x, w, y, h, screen_h);
+        // 预览窗：在视口左右剩余空间显示拼接缩略图（放不下则不显示，长截图照常）。
+        // 先于状态条创建，让状态条在 Z 序上位于预览之上。
+        let preview = Preview::spawn(
+            SelRect {
+                x,
+                y,
+                w: w as i32,
+                h: h as i32,
+            },
+            hinstance,
+            palette,
+        );
         let (bw, bh) = (bar.rect.w, bar.rect.h);
         let (bx, by) = (bar.rect.x, bar.rect.y);
 
         let hwnd = CreateWindowExW(
             // WS_EX_LAYERED：UpdateLayeredWindow 提交带圆角透明的像素（与工具栏一致）；
-            // WS_EX_NOACTIVATE：不抢焦点（滚轮须发给目标页面，键盘走全局热键）。
+            // WS_EX_NOACTIVATE：不抢焦点（手动模式下用户自行在目标页面滚动，状态条不抢焦点）。
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             w!("jietu.longshot"),
             w!("长截图"),
@@ -146,6 +160,7 @@ pub fn run(
         let win = Box::new(Win {
             session: Box::new(session),
             border_hwnd,
+            preview,
             bar,
             palette,
             mem_dc,
@@ -191,75 +206,13 @@ pub fn run(
     }
 }
 
-/// 绘制状态条并提交到分层窗口。
-fn redraw(hwnd: HWND) {
-    let Some(win) = win_from(hwnd) else {
-        return;
-    };
-    let (w, h) = (win.w, win.h);
-    let mut pixmap = match tiny_skia::Pixmap::new(w as u32, h as u32) {
-        Some(p) => p,
-        None => return,
-    };
-    let state = State {
-        auto: win.session.auto,
-        height: win.session.height(),
-        can_undo: win.session.can_undo(),
-        hint: win.session.hint(),
-    };
-    bar::render(&mut pixmap, &win.bar, &state, win.palette);
-    // RGBA → premultiplied BGRA 写入 DIB（tiny-skia 像素本就是 premultiplied）。
-    let bgra = premul_bgra(pixmap.data());
-    unsafe {
-        std::ptr::copy_nonoverlapping(bgra.as_ptr(), win.dib_bits, bgra.len());
-        present(hwnd, win.mem_dc);
-    }
-    win.dirty = false;
+/// 完成：先补抓一帧（用户滚动后立刻按 Enter 时，最后一屏还没被定时拍捕获），再收尾。
+fn finish(win: &mut Win) {
+    win.session.tick();
+    win.session.finished = true;
 }
 
-/// UpdateLayeredWindow 提交（窗口位置不变，只更新像素）。
-unsafe fn present(hwnd: HWND, mem_dc: HDC) {
-    unsafe {
-        let mut rect = windows::Win32::Foundation::RECT::default();
-        let _ = GetWindowRect(hwnd, &mut rect);
-        let ppt_dst = POINT {
-            x: rect.left,
-            y: rect.top,
-        };
-        let psize = SIZE {
-            cx: rect.right - rect.left,
-            cy: rect.bottom - rect.top,
-        };
-        let ppt_src = POINT { x: 0, y: 0 };
-        let blend = BLENDFUNCTION {
-            BlendOp: AC_SRC_OVER as u8,
-            BlendFlags: 0,
-            SourceConstantAlpha: 255,
-            AlphaFormat: AC_SRC_ALPHA as u8,
-        };
-        let _ = UpdateLayeredWindow(
-            hwnd,
-            None,
-            Some(&ppt_dst),
-            Some(&psize),
-            Some(mem_dc),
-            Some(&ppt_src),
-            COLORREF(0),
-            Some(&blend),
-            ULW_ALPHA,
-        );
-    }
-}
-
-/// RGBA（premultiplied）→ BGRA。
-fn premul_bgra(rgba: &[u8]) -> Vec<u8> {
-    let mut out = Vec::with_capacity(rgba.len());
-    for px in rgba.chunks_exact(4) {
-        out.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
-    }
-    out
-}
-
+/// 绘制状态条并提交到分层窗口（实现见 `present::redraw`）。
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         WM_DESTROY => {
@@ -291,9 +244,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
                 let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
                 match win.bar.hit(x, y) {
-                    Some(Button::Mode) => win.session.toggle_mode(),
                     Some(Button::Undo) => win.session.undo(),
-                    Some(Button::Done) => win.session.finished = true,
+                    Some(Button::Done) => finish(win),
                     Some(Button::Cancel) => win.session.cancelled = true,
                     None => {}
                 }
@@ -310,9 +262,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_KEYDOWN => {
             if let Some(win) = win_from(hwnd) {
                 match wparam.0 as u32 {
-                    0x0D => win.session.finished = true,
+                    0x0D => finish(win),
                     0x1B => win.session.cancelled = true,
-                    0x20 => win.session.toggle_mode(),
                     0x5A if ctrl_down() => win.session.undo(),
                     _ => {}
                 }
@@ -324,9 +275,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_HOTKEY => {
             if let Some(win) = win_from(hwnd) {
                 match wparam.0 as i32 {
-                    HK_ENTER => win.session.finished = true,
+                    HK_ENTER => finish(win),
                     HK_ESC => win.session.cancelled = true,
-                    HK_SPACE => win.session.toggle_mode(),
                     HK_UNDO => win.session.undo(),
                     _ => {}
                 }
@@ -336,16 +286,5 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
-    }
-}
-
-fn ctrl_down() -> bool {
-    unsafe { GetKeyState(0x11) as u16 & 0x8000 != 0 }
-}
-
-fn win_from(hwnd: HWND) -> Option<&'static mut Win> {
-    unsafe {
-        let ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
-        if ptr == 0 { None } else { Some(&mut *(ptr as *mut Win)) }
     }
 }
