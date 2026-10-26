@@ -51,6 +51,8 @@ pub struct HotkeyConfig {
     pub border_key: u32,
     /// 贴图边框开关热键修饰键位标志
     pub border_modifiers: u32,
+    /// 长截图键虚拟键码（截图覆盖层内按下，默认 S = 0x53；无修饰键，与工具切换键同组）
+    pub longshot_key: u32,
     /// 遗留字段（旧版本两键共享修饰键，TOML 键名仍为 `modifiers`）：仅加载迁移用，不再写入。
     #[serde(default, skip_serializing, rename = "modifiers")]
     pub legacy_modifiers: u32,
@@ -65,6 +67,7 @@ impl Default for HotkeyConfig {
             pin_modifiers: 0,
             border_key: 0x72,    // Ctrl+F3
             border_modifiers: 2, // MOD_CONTROL
+            longshot_key: 0x53,  // S
             legacy_modifiers: 0,
         }
     }
@@ -268,5 +271,23 @@ mod tests {
         let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
         assert_eq!(back.name_style, NameStyle::Date);
         assert_eq!(back.name_style.title(), "仅日期");
+    }
+
+    /// 长截图键（M5）：默认 S；旧配置缺字段时回退默认值，新值能往返。
+    #[test]
+    fn longshot_key_defaults_and_roundtrip() {
+        assert_eq!(HotkeyConfig::default().longshot_key, 0x53, "默认长截图键应为 S");
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.hotkey.longshot_key, 0x53, "旧配置应回退默认长截图键");
+
+        let cfg = Config {
+            hotkey: HotkeyConfig {
+                longshot_key: 0x4C, // L
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.hotkey.longshot_key, 0x4C);
     }
 }

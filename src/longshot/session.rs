@@ -1,47 +1,35 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 长截图会话（LNG-2/3/6/10）：自动滚动走「滚轮 → 等待稳定 → 抓帧 → 拼接」，
-//! 手动模式由用户滚动、每拍抓帧拼接；到底检测、撤销与输出。
+//! 长截图会话（LNG-1/3/6/10）：纯手动模式 —— 用户自己滚动页面，会话每拍抓帧拼接；
+//! 完成/取消/撤销由状态条或按键驱动。
+//!
+//! 自动滚动模式已移除（M5 按用户反馈取消）：自动模式靠「连续静帧」判定到底，
+//! 页面加载停顿或平滑滚动途中就会被误判为到底，拼接提前结束、内容缺失。
 
 use super::engine::{Canvas, Step};
 use super::stitch::Params;
 use crate::capture::capture_region;
 
-/// 自动模式滚轮增量（WHEEL_DELTA 单位）。
-const WHEEL_STEP: i32 = 120;
+/// 连续定位失败达到该拍数时在状态条提示「放慢滚动」。
+const FAIL_HINT: u32 = 2;
 
-/// 等待画面稳定的最大拍数（每拍 ~90ms）。
-const MAX_WAIT_TICKS: u32 = 22;
-/// 连续静帧判定「到底」的阈值（LNG-6）：需要连续多帧无位移，避免动画/加载停顿误判。
-const END_STILL: u32 = 4;
-
-/// 帧源抽象：截取当前视口帧 + 发送滚动。真实实现走屏幕抓取与 SendInput，
-/// 测试实现模拟一个可滚动的长页面（无需 GUI 即可验证拼接循环）。
+/// 帧源抽象：截取当前视口帧。真实实现走屏幕抓取，测试实现模拟一个可滚动长页面
+/// （无需 GUI 即可验证拼接循环）。
 pub trait Source {
     /// 截取当前视口像素（长度 = w*h*4）。
     fn capture(&mut self) -> Result<Vec<u8>, String>;
-    /// 发送一次滚动（负值 = 向下滚，内容上移）。
-    fn scroll(&mut self, delta: i32);
 }
 
-/// 真实帧源：屏幕区域抓取 + 真实滚轮（首次滚动前激活目标）。
+/// 真实帧源：屏幕区域抓取。
 pub struct ScreenSource {
     x: i32,
     y: i32,
     w: u32,
     h: u32,
-    /// 是否已激活目标窗口（只点一次，避免反复点击）。
-    activated: bool,
 }
 
 impl ScreenSource {
     pub fn new(x: i32, y: i32, w: u32, h: u32) -> Self {
-        Self {
-            x,
-            y,
-            w,
-            h,
-            activated: false,
-        }
+        Self { x, y, w, h }
     }
 }
 
@@ -53,14 +41,6 @@ impl Source for ScreenSource {
         }
         Ok(screen.rgba)
     }
-
-    fn scroll(&mut self, delta: i32) {
-        if !self.activated {
-            super::scroll::activate(self.x, self.y, self.w, self.h);
-            self.activated = true;
-        }
-        super::scroll::wheel(self.x, self.y, self.w, self.h, delta);
-    }
 }
 
 /// 长截图会话状态。
@@ -70,27 +50,14 @@ pub struct Session {
     canvas: Canvas,
     /// 帧源（真实屏幕或测试模拟）。
     source: Box<dyn Source>,
-    /// 自动模式（true）或手动模式（false）。
-    pub auto: bool,
-    /// 自动模式：滚轮发出后等待稳定的中间态。
-    rolling: bool,
-    wait_last: Vec<u8>,
-    wait_stable: u32,
-    wait_ticks: u32,
-    /// 自动模式连续静帧数。
-    still: u32,
-    /// 本轮滚动后画面是否已开始变化（先动再稳，避免拿旧帧拼接）。
-    moved: bool,
-    /// 最近一次采集到的帧（滚动开始时作为基准，用于检测“画面已变化”）。
-    last_frame: Vec<u8>,
     /// 是否已采集首帧（不能用 canvas.height()==0 判断：seed 只缓冲、高度仍为 0）。
     seeded: bool,
+    /// 连续定位失败拍数（仅用于状态条提示）。
+    fail_run: u32,
     pub finished: bool,
     pub cancelled: bool,
-    /// 最近一条状态文本（供窗口绘制）。
+    /// 最近一条状态文本（调试/测试用）。
     pub status: String,
-    /// 累计发送的滚动次数（调试/测试用）。
-    pub scroll_count: u32,
     /// 抓帧序号（调试用）。
     frame_seq: u32,
 }
@@ -110,19 +77,11 @@ impl Session {
             h,
             canvas: Canvas::new(w, Params::default(), max_height),
             source,
-            auto: true,
-            rolling: false,
-            wait_last: Vec::new(),
-            wait_stable: 0,
-            wait_ticks: 0,
-            still: 0,
-            moved: false,
-            last_frame: Vec::new(),
             seeded: false,
+            fail_run: 0,
             finished: false,
             cancelled: false,
             status: String::new(),
-            scroll_count: 0,
             frame_seq: 0,
         })
     }
@@ -153,170 +112,60 @@ impl Session {
         Ok(frame)
     }
 
-    /// 一拍（定时器回调）：自动模式驱滚动流程，手动模式直接抓帧拼接。
+    /// 一拍（定时器回调）：首帧只缓冲，之后每拍抓帧拼接。
     /// 返回是否需要重绘状态条。
     pub fn tick(&mut self) -> bool {
         if self.finished || self.cancelled {
             return false;
         }
         if !self.seeded {
-            // 首帧：先缓冲，下一拍起才能检测固定区域与定位。
-            match self.capture() {
-                Ok(frame) => {
-                    self.canvas.seed(&frame);
-                    self.last_frame = frame;
-                    self.seeded = true;
-                    self.status = format!(
-                        "{} · 已拼 {} px · Enter 完成 / Esc 取消 / Ctrl+Z 撤销 / 空格 切换模式",
-                        if self.auto { "自动" } else { "手动" },
-                        self.canvas.height()
-                    );
-                    return true;
-                }
-                Err(e) => {
-                    self.cancelled = true;
-                    self.status = format!("抓屏失败：{e}");
-                    return true;
-                }
-            }
+            return self.seed();
         }
-
-        if self.auto {
-            self.tick_auto()
-        } else {
-            self.tick_manual()
-        }
+        self.tick_frame()
     }
 
-    /// 自动模式：滚动 → 等画面开始变化 → 等画面稳定 → 拼接。
-    ///
-    /// 不可在滚动后立即判断「稳定」：滚动输入有延迟，刚开始几帧画面还没动，
-    /// 直接判稳定会拿旧帧拼接（offset=0，实测无效果）。必须先观察到变化。
-    fn tick_auto(&mut self) -> bool {
-        if !self.rolling {
-            // 开始新一轮滚动：负增量 = 滚轮向下 = 页面内容上移、新内容出现在底部。
-            self.source.scroll(-WHEEL_STEP);
-            self.scroll_count += 1;
-            self.rolling = true;
-            self.moved = false;
-            // 基准 = 滚动前的帧：首次采集如与它不同，即说明画面已开始变化。
-            self.wait_last = self.last_frame.clone();
-            self.wait_stable = 0;
-            self.wait_ticks = 0;
-            return false;
-        }
-        let frame = match self.capture() {
-            Ok(f) => f,
+    fn seed(&mut self) -> bool {
+        match self.capture() {
+            Ok(frame) => {
+                self.canvas.seed(&frame);
+                self.seeded = true;
+                self.status = format!("已拼 {} px · 滚轮滚动页面，Enter 完成", self.canvas.height());
+            }
             Err(e) => {
                 self.cancelled = true;
                 self.status = format!("抓屏失败：{e}");
-                return true;
-            }
-        };
-        self.last_frame = frame.clone();
-        let threshold = (self.h / 33).max(2); // ≈3% 行允许不同
-        if self.wait_last.is_empty() {
-            self.wait_last = frame.clone();
-        } else {
-            let diff = super::stitch::diff_rows(&self.wait_last, &frame, self.w, self.h);
-            if diff > threshold {
-                // 画面在变：标记已动，重置稳定计数
-                self.moved = true;
-                self.wait_stable = 0;
-                self.wait_last = frame.clone();
-            } else if self.moved {
-                // 已动过且现在连续两拍不变 → 稳定，准备拼接
-                self.wait_stable += 1;
             }
         }
-        self.wait_ticks += 1;
-        let settled = self.moved && self.wait_stable >= 2;
-        let timeout = self.wait_ticks >= MAX_WAIT_TICKS;
-        if !settled && !timeout {
-            return false;
-        }
-        self.rolling = false;
-        if self.moved {
-            self.stitch_auto(&frame)
-        } else {
-            // 整轮都没动（已到页底或滚动无效）：计入静帧计数
-            self.still += 1;
-            self.status = "自动 · 页面未滚动…".to_string();
-            super::debug::log(&format!("no movement this round (still={})", self.still));
-            if self.still >= END_STILL {
-                self.finished = true;
-                self.status = "已到页底，长截图完成".to_string();
-            }
-            true
-        }
+        true
     }
 
-    fn stitch_auto(&mut self, frame: &[u8]) -> bool {
-        match self.canvas.push(frame, self.h) {
-            Step::Appended { rows, .. } => {
-                self.still = 0;
-                self.status = format!(
-                    "自动 · 已拼 {} px(+{rows}) · Enter 完成 / Esc 取消 / Ctrl+Z 撤销",
-                    self.canvas.height()
-                );
-                super::debug::log(&format!("appended +{rows} rows, total {}", self.canvas.height()));
-                true
-            }
-            Step::Still => {
-                self.still += 1;
-                self.status = "自动 · 等待页面滚动…".to_string();
-                if self.still >= END_STILL {
-                    self.finished = true;
-                    self.status = "已到页底，长截图完成".to_string();
-                    super::debug::log("ended: no movement");
-                }
-                true
-            }
-            Step::Failed => {
-                self.still += 1;
-                self.status = "自动 · 拼接定位失败，请放慢或切手动模式".to_string();
-                super::debug::log(&format!("failed: locate mismatch (still={})", self.still));
-                // 连续失败也视为无法继续（避免无限循环），保留已拼内容结束。
-                if self.still >= END_STILL {
-                    self.finished = true;
-                    self.status = format!("拼接定位失败，已完成 {} px", self.canvas.height());
-                }
-                true
-            }
-            Step::Limit => {
-                self.finished = true;
-                self.status = "已达高度上限，长截图完成".to_string();
-                true
-            }
-        }
-    }
-
-    fn tick_manual(&mut self) -> bool {
+    /// 抓一帧并拼入画布（用户手动滚动后画面变化即被检测到）。
+    fn tick_frame(&mut self) -> bool {
         match self.capture() {
-            Ok(frame) => {
-                self.last_frame = frame.clone();
-                match self.canvas.push(&frame, self.h) {
-                    Step::Appended { rows, .. } => {
-                        self.status = format!(
-                            "手动 · 已拼 {} px(+{rows}) · Enter 完成 / Esc 取消 / Ctrl+Z 撤销",
-                            self.canvas.height()
-                        );
-                        super::debug::log(&format!("manual appended +{rows}, total {}", self.canvas.height()));
-                    }
-                    Step::Still => {
-                        self.status = format!("手动 · 已拼 {} px · 请自行滚动，Enter 完成", self.canvas.height());
-                    }
-                    Step::Failed => {
-                        // 画面变了但定位失败：提示放慢滚动
-                        self.status = "手动 · 检测到滚动但拼接失败，请放慢滚动速度".to_string();
-                        super::debug::log("manual failed: mismatch");
-                    }
-                    Step::Limit => {
-                        self.finished = true;
-                        self.status = "已达高度上限，长截图完成".to_string();
-                    }
+            Ok(frame) => match self.canvas.push(&frame, self.h) {
+                Step::Appended { rows, .. } => {
+                    self.fail_run = 0;
+                    self.status = format!(
+                        "已拼 {} px(+{rows}) · Enter 完成 / Esc 取消 / Ctrl+Z 撤销",
+                        self.canvas.height()
+                    );
+                    super::debug::log(&format!("appended +{rows}, total {}", self.canvas.height()));
                 }
-            }
+                Step::Still => {
+                    // 画面静止：之前的错位已不相关，清掉失败提示
+                    self.fail_run = 0;
+                    self.status = format!("已拼 {} px · 滚轮滚动页面，Enter 完成", self.canvas.height());
+                }
+                Step::Failed => {
+                    self.fail_run += 1;
+                    self.status = "检测到滚动但拼接失败，请放慢滚动速度".to_string();
+                    super::debug::log("failed: locate mismatch");
+                }
+                Step::Limit => {
+                    self.finished = true;
+                    self.status = "已达高度上限，长截图完成".to_string();
+                }
+            },
             Err(e) => {
                 self.cancelled = true;
                 self.status = format!("抓屏失败：{e}");
@@ -341,28 +190,17 @@ impl Session {
             "已取消"
         } else if self.finished {
             "已完成"
-        } else if self.still > 0 {
-            "等待页面滚动…"
+        } else if self.fail_run >= FAIL_HINT {
+            "拼接定位失败，请放慢滚动"
         } else {
             ""
         }
     }
 
-    /// 切换自动/手动。
-    pub fn toggle_mode(&mut self) {
-        self.auto = !self.auto;
-        self.rolling = false;
-    }
-
-    /// 测试专用：直接向帧源发一次滚动（模拟用户手动滚轮）。
-    #[cfg(test)]
-    pub fn source_scroll_for_test(&mut self) {
-        self.source.scroll(-WHEEL_STEP);
-    }
-
     /// 撤销最后一段。
     pub fn undo(&mut self) {
         if self.canvas.undo_last() {
+            self.fail_run = 0;
             self.status = format!("已撤销，当前 {} px", self.canvas.height());
         } else {
             self.status = "没有可撤销的段".to_string();
@@ -394,8 +232,8 @@ mod tests {
         assert!(crate::settings::Config::default().longshot_max_height > 0);
     }
 
-    /// 模拟一个可滚动长页面：拥有超过一屏的内容，每滚一格移动 STEP 像素。
-    /// 这能在无 GUI 下验证「滚动 → 等待稳定 → 拼接」整条自动链路。
+    /// 模拟一个可滚动长页面：拥有超过一屏的内容，每次抓帧前画面已按 STEP 像素下移
+    /// （等价于用户在两拍之间滚动一次）。这能在无 GUI 下验证手动拼接整条链路。
     struct FakePage {
         page: Vec<u8>,
         w: u32,
@@ -438,39 +276,30 @@ mod tests {
 
     impl Source for FakePage {
         fn capture(&mut self) -> Result<Vec<u8>, String> {
-            Ok(self.window())
-        }
-
-        fn scroll(&mut self, delta: i32) {
-            // 负 delta = 向下滚 = 内容上移 = offset 增大
-            if delta < 0 {
-                self.offset = (self.offset + self.step).min(self.max_offset);
-            } else {
-                self.offset = self.offset.saturating_sub(self.step);
-            }
+            let out = self.window();
+            // 模拟用户在两拍之间滚一格（到底后停在最大偏移）。
+            self.offset = (self.offset + self.step).min(self.max_offset);
+            Ok(out)
         }
     }
 
-    /// 自动模式端到端：模拟页面逐格下滚，一直跑到「到底」，
-    /// 断言拼接结果与原始长页面完全一致。这是长截图核心链路的回归保护。
+    /// 手动模式端到端：逐拍滚动拼完整页，断言结果与原始长页面一致。
+    /// 这是长截图核心链路的回归保护。
     #[test]
-    fn auto_scroll_stitches_full_page() {
+    fn manual_scroll_stitches_full_page() {
         let (w, h) = (64u32, 50u32);
         let (total, step) = (300u32, 20u32);
         let page = FakePage::new(w, h, total, step);
         let expect = page.page.clone();
         let mut s = Session::with_source(Box::new(page), w, h, 30000).expect("会话创建");
 
-        // 驱动自动循环：最多 500 拍（足够滚完全部内容并触发到底）
-        for _ in 0..500 {
-            if s.finished || s.cancelled {
-                break;
-            }
+        // 首帧 seed + 覆盖整页所需的拍数（每拍画面下移 step 行）
+        let ticks = ((total - h) / step) as usize + 4;
+        for _ in 0..ticks {
+            assert!(!s.cancelled);
             s.tick();
         }
-        assert!(s.finished, "自动模式应能自行跑到到底");
-        assert!(!s.cancelled);
-        // 拼接图高度应等于整页高度（允许首帧重叠引起的 ±step 误差）
+        assert!(!s.finished, "手动模式不会自行结束");
         let img = s.result().expect("有拼接结果");
         assert!(
             (img.height() as i32 - total as i32).abs() <= step as i32,
@@ -490,69 +319,46 @@ mod tests {
         }
     }
 
+    /// 页面到底后继续抓帧：画布不再增长，且不会自动结束（由用户 Enter 收尾）。
+    #[test]
+    fn still_page_does_not_grow() {
+        let page = FakePage::new(64, 50, 120, 20);
+        let mut s = Session::with_source(Box::new(page), 64, 50, 30000).expect("会话创建");
+        for _ in 0..40 {
+            s.tick();
+        }
+        let settled = s.height();
+        for _ in 0..10 {
+            s.tick();
+        }
+        assert_eq!(s.height(), settled, "到底后画布不应继续增长");
+        assert!(!s.finished, "手动模式不自动结束");
+        assert_eq!(s.hint(), "", "到底后不应显示失败提示");
+    }
+
+    /// 撤销最后一段：高度回退，且无段可撤时不再变化。
+    #[test]
+    fn undo_removes_last_segment() {
+        let page = FakePage::new(64, 50, 200, 20);
+        let mut s = Session::with_source(Box::new(page), 64, 50, 30000).expect("会话创建");
+        s.tick(); // 首帧 seed
+        s.tick();
+        s.tick();
+        let before = s.height();
+        assert!(s.can_undo(), "拼入内容后应可撤销");
+        s.undo();
+        assert!(s.height() < before, "撤销后高度应回退");
+    }
+
     /// 图片较短（不足两屏）时，拼接不应崩溃，且高度接近单屏。
     #[test]
-    fn auto_scroll_short_page() {
-        let (w, h) = (64u32, 50u32);
-        let page = FakePage::new(w, h, 55, 20);
-        let mut s = Session::with_source(Box::new(page), w, h, 30000).expect("会话创建");
-        for _ in 0..200 {
-            if s.finished || s.cancelled {
-                break;
-            }
-            s.tick();
-        }
-        assert!(s.finished);
-        let img = s.result().expect("有结果");
-        assert!(img.height() >= h && img.height() <= 55 + 20);
-    }
-
-    /// 手动模式：用户逐步滚动，每拍抓帧拼接，最后 Enter 完成。
-    #[test]
-    fn manual_mode_stitches_user_scrolls() {
-        let (w, h) = (64u32, 50u32);
-        let (total, step) = (200u32, 15u32);
-        let page = FakePage::new(w, h, total, step);
-        let expect = page.page.clone();
-        let mut s = Session::with_source(Box::new(page), w, h, 30000).expect("会话创建");
-        s.auto = false;
-
-        // 首帧 seed
-        s.tick();
-        // 模拟用户每拍滚一格
+    fn short_page_does_not_crash() {
+        let page = FakePage::new(64, 50, 55, 20);
+        let mut s = Session::with_source(Box::new(page), 64, 50, 30000).expect("会话创建");
         for _ in 0..20 {
-            s.source_scroll_for_test();
             s.tick();
         }
-        let img = s.result().expect("手动模式有结果");
-        assert!(img.height() > h, "手动模式应拼出多于单屏的内容，实际 {}", img.height());
-        // 顶部应仍与页面顶部一致
-        let stride = w as usize * 4;
-        for y in 0..(h as usize / 2) {
-            let o = y * stride;
-            assert_eq!(&img.data()[o..o + stride], &expect[o..o + stride], "第 {y} 行");
-        }
-    }
-
-    /// 大视口 + 小滚动步长（接近真实浏览器：视口 400 行、每滚 60 行）。
-    #[test]
-    fn auto_scroll_realistic_viewport() {
-        let (w, h) = (128u32, 400u32);
-        let (total, step) = (2000u32, 60u32);
-        let page = FakePage::new(w, h, total, step);
-        let mut s = Session::with_source(Box::new(page), w, h, 30000).expect("会话创建");
-        for _ in 0..3000 {
-            if s.finished || s.cancelled {
-                break;
-            }
-            s.tick();
-        }
-        assert!(s.finished, "真实视口尺寸下应能跑到到底");
         let img = s.result().expect("有结果");
-        assert!(
-            (img.height() as i32 - total as i32).abs() <= step as i32,
-            "高度 {} 应接近 {total}",
-            img.height()
-        );
+        assert!(img.height() >= 50 && img.height() <= 55 + 20);
     }
 }

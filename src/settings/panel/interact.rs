@@ -62,6 +62,7 @@ impl Panel {
             RowId::HotkeyShot
             | RowId::HotkeyPin
             | RowId::HotkeyBorder
+            | RowId::HotkeyLongshot
             | RowId::ToolRect
             | RowId::ToolArrow
             | RowId::ToolText
@@ -76,6 +77,7 @@ impl Panel {
             RowId::HotkeyShot
             | RowId::HotkeyPin
             | RowId::HotkeyBorder
+            | RowId::HotkeyLongshot
             | RowId::ToolRect
             | RowId::ToolArrow
             | RowId::ToolText
@@ -193,6 +195,8 @@ impl Panel {
                         self.config.hotkey.border_key = vk;
                         self.config.hotkey.border_modifiers = mods;
                     }
+                    // 长截图键：覆盖层内按下即触发，不区分修饰键（与工具切换键同组）
+                    RowId::HotkeyLongshot => self.config.hotkey.longshot_key = vk,
                     // 工具切换键：仅绑定虚拟键（覆盖层内按下即切工具，无需修饰键）
                     RowId::ToolRect => self.config.tool_keys.rect = vk,
                     RowId::ToolArrow => self.config.tool_keys.arrow = vk,

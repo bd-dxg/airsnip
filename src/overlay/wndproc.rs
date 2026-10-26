@@ -163,7 +163,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 0x0D => overlay.on_copy(), // Enter
                 0x43 if ctrl_down() => overlay.on_copy(), // Ctrl+C
                 0x53 if ctrl_down() => overlay.on_save(), // Ctrl+S 保存（弹另存为对话框）
-                0x53 => overlay.on_longshot(), // M4：S 长截图（当前选区为视口）
+                // 长截图键（默认 S，设置面板可改）：当前选区作为滚动视口（M4）
+                k if k == overlay.longshot_key => overlay.on_longshot(),
                 0x5A if ctrl_down() => {
                     // Ctrl+Z 撤销 / Ctrl+Shift+Z 重做（EDT-7）
                     if shift_down() {

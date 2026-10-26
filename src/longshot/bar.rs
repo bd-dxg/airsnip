@@ -2,7 +2,7 @@
 //! 长截图状态条绘制（M4）：与截图工具栏同风格 —— tiny-skia 圆角矩形 + 主题调色板 +
 //! DirectWrite 文字。分层窗口提交（见 `window`）。
 //!
-//! 布局：[模式按钮] [进度文字 ......] [撤销] [完成] [取消]
+//! 布局：[进度文字 ......] [撤销] [完成] [取消]
 
 use tiny_skia::{Pixmap, Transform};
 
@@ -30,8 +30,6 @@ const FONT: f32 = 14.0;
 /// 状态条上的按钮。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Button {
-    /// 切换自动/手动。
-    Mode,
     /// 撤销最后一段。
     Undo,
     /// 完成。
@@ -49,21 +47,18 @@ pub struct Bar {
 }
 
 impl Bar {
-    /// 命中测试。
+    /// 命中测试。`x`/`y` 为**客户区坐标**（相对状态条左上角）——
+    /// `WM_LBUTTONDOWN` 的 lparam 就是这个坐标系，不能再减 `rect` 原点。
     pub fn hit(&self, x: i32, y: i32) -> Option<Button> {
-        let lx = x - self.rect.x;
-        let ly = y - self.rect.y;
         self.hits
             .iter()
-            .find(|(r, _)| lx >= r.x && lx < r.x + r.w && ly >= r.y && ly < r.y + r.h)
+            .find(|(r, _)| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
             .map(|(_, b)| *b)
     }
 }
 
 /// 状态条要显示的状态。
 pub struct State {
-    /// 是否自动模式。
-    pub auto: bool,
     /// 已拼接像素高度。
     pub height: u32,
     /// 是否可撤销。
@@ -82,32 +77,21 @@ pub fn layout(vp_x: i32, vp_w: u32, vp_y: i32, vp_h: u32, screen_h: i32) -> Bar 
     } else {
         (vp_y - BAR_H - 6).max(0)
     };
-    // 按钮从右往左排：取消、完成、撤销、模式
+    // 按钮从右往左排：取消、完成、撤销（命中区高度用整条高，点偏上下也能命中）
     let mut hits = Vec::new();
     let mut bx = bar_w - PAD - BTN;
-    let by = (BAR_H - BTN) / 2;
     for b in [Button::Cancel, Button::Done, Button::Undo] {
         hits.push((
             SelRect {
                 x: bx,
-                y: by,
+                y: 0,
                 w: BTN,
-                h: BTN,
+                h: BAR_H,
             },
             b,
         ));
         bx -= BTN + 4;
     }
-    // 模式按钮在最左侧
-    hits.push((
-        SelRect {
-            x: PAD,
-            y: by,
-            w: BTN,
-            h: BTN,
-        },
-        Button::Mode,
-    ));
     Bar {
         rect: SelRect {
             x,
@@ -136,11 +120,6 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         );
     }
 
-    // 模式按钮
-    let mode_rect = bar.hits.iter().find(|(_, b)| *b == Button::Mode).map(|(r, _)| *r);
-    if let Some(r) = mode_rect {
-        draw_mode_icon(pixmap, r, state.auto, p);
-    }
     // 撤销
     if let Some(r) = bar.hits.iter().find(|(_, b)| *b == Button::Undo).map(|(r, _)| *r) {
         let c = if state.can_undo { p.icon } else { p.icon_dim };
@@ -157,11 +136,11 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
 
     // 中间进度文字
     let text = if state.hint.is_empty() {
-        format!("已拼接 {} px", state.height)
+        format!("滚轮滚动页面 · 已拼 {} px", state.height)
     } else {
         format!("{} · {} px", state.hint, state.height)
     };
-    let tx = (mode_rect.map(|r| r.x + r.w + 8).unwrap_or(PAD)) as f32;
+    let tx = PAD as f32;
     let spec = dwrite::FontSpec::new(FONT);
     let (tw, th) = dwrite::measure(&text, &spec);
     let ty = (h as f32 - th) / 2.0;
@@ -174,82 +153,6 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         .unwrap_or(w);
     if tx + tw < undo_x as f32 - 4.0 {
         dwrite::draw(pixmap, Point::new(tx, ty), &text, &spec, p.text, Transform::identity());
-    }
-}
-
-/// 模式图标：自动 = 循环箭头，手动 = 手形指针（简化为方向箭头）。
-fn draw_mode_icon(pixmap: &mut Pixmap, r: SelRect, auto: bool, p: &Palette) {
-    // 按钮底色
-    rounded_rect(pixmap, r, 5.0, p.accent_soft, None);
-    let color = p.accent;
-    if auto {
-        draw_auto(pixmap, r, color);
-    } else {
-        draw_hand(pixmap, r, color);
-    }
-}
-
-/// 自动模式：圆形循环箭头。
-fn draw_auto(pixmap: &mut Pixmap, r: SelRect, color: [u8; 4]) {
-    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
-    let rad = 6.0;
-    let mut pb = tiny_skia::PathBuilder::new();
-    let steps = 20;
-    // 3/4 圆弧
-    for i in 0..=steps {
-        let t = std::f32::consts::PI * 1.5 * i as f32 / steps as f32 - std::f32::consts::FRAC_PI_2;
-        let (x, y) = (cx + rad * t.cos(), cy + rad * t.sin());
-        if i == 0 {
-            pb.move_to(x, y);
-        } else {
-            pb.line_to(x, y);
-        }
-    }
-    if let Some(path) = pb.finish() {
-        let stroke = tiny_skia::Stroke {
-            width: 2.0,
-            line_cap: tiny_skia::LineCap::Round,
-            ..Default::default()
-        };
-        pixmap.stroke_path(&path, &paint_of(color), &stroke, Transform::identity(), None);
-    }
-    // 箭头
-    let mut tri = tiny_skia::PathBuilder::new();
-    tri.move_to(cx + rad, cy - 3.0);
-    tri.line_to(cx + rad + 2.5, cy + 2.0);
-    tri.line_to(cx + rad - 3.0, cy + 1.0);
-    tri.close();
-    if let Some(path) = tri.finish() {
-        pixmap.fill_path(
-            &path,
-            &paint_of(color),
-            tiny_skia::FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
-    }
-}
-
-/// 手动模式：手形指针（简化为向下箭头 + 手掌矩形）。
-fn draw_hand(pixmap: &mut Pixmap, r: SelRect, color: [u8; 4]) {
-    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
-    let mut pb = tiny_skia::PathBuilder::new();
-    pb.move_to(cx - 4.0, cy - 6.0);
-    pb.line_to(cx - 4.0, cy + 4.0);
-    pb.line_to(cx - 1.0, cy + 2.0);
-    pb.line_to(cx + 4.0, cy + 5.0);
-    pb.line_to(cx + 5.0, cy + 2.5);
-    pb.line_to(cx + 2.0, cy + 0.5);
-    pb.line_to(cx + 5.0, cy - 1.0);
-    pb.close();
-    if let Some(path) = pb.finish() {
-        pixmap.fill_path(
-            &path,
-            &paint_of(color),
-            tiny_skia::FillRule::Winding,
-            Transform::identity(),
-            None,
-        );
     }
 }
 
@@ -340,15 +243,20 @@ mod tests {
     #[test]
     fn layout_hits_all_buttons() {
         let bar = layout(100, 800, 100, 600, 1080);
-        let cy = bar.rect.y + BAR_H / 2;
+        let cy = BAR_H / 2; // 客户区坐标（窗口 = 状态条矩形）
         // 右侧三个按钮：取消在最右
-        let cancel = bar.hit(bar.rect.x + bar.rect.w - PAD - BTN / 2, cy);
+        let cancel = bar.hit(bar.rect.w - PAD - BTN / 2, cy);
         assert_eq!(cancel, Some(Button::Cancel));
-        // 模式按钮在最左
-        let mode = bar.hit(bar.rect.x + PAD + BTN / 2, cy);
-        assert_eq!(mode, Some(Button::Mode));
+        // 完成在取消左侧
+        let done = bar.hit(bar.rect.w - PAD - BTN - 4 - BTN / 2, cy);
+        assert_eq!(done, Some(Button::Done));
+        // 撤销在完成左侧
+        let undo = bar.hit(bar.rect.w - PAD - (BTN + 4) * 2 - BTN / 2, cy);
+        assert_eq!(undo, Some(Button::Undo));
+        // 左侧空白（原模式按钮位置）无命中
+        assert_eq!(bar.hit(PAD + BTN / 2, cy), None);
         // 中间空白无命中
-        assert_eq!(bar.hit(bar.rect.x + bar.rect.w / 2, cy), None);
+        assert_eq!(bar.hit(bar.rect.w / 2, cy), None);
     }
 
     #[test]
@@ -362,7 +270,6 @@ mod tests {
         let bar = layout(0, 600, 0, 400, 1080);
         let mut px = Pixmap::new(bar.rect.w as u32, bar.rect.h as u32).unwrap();
         let state = State {
-            auto: true,
             height: 1234,
             can_undo: true,
             hint: "",

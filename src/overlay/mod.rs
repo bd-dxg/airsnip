@@ -12,6 +12,8 @@ mod control;
 mod cursor;
 mod font;
 pub(crate) mod geometry;
+mod ime;
+mod init;
 mod interaction;
 mod objedit;
 mod pick;
@@ -26,10 +28,11 @@ mod wndproc;
 use tiny_skia::Pixmap;
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{HBITMAP, HDC, InvalidateRect, UpdateWindow};
+use windows::Win32::UI::Input::Ime::HIMC;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use crate::capture::CapturedScreen;
-use crate::editor::{self, Document, Object, Point, Tool};
+use crate::editor::{Document, Object, Point, Tool};
 use crate::theme::Palette;
 
 use geometry::SelRect;
@@ -65,6 +68,8 @@ pub struct Overlay {
     tool: Tool,
     /// 工具切换键配置（M3：数字键 1-5 切换标注工具）。
     tool_keys: crate::settings::ToolKeys,
+    /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
+    longshot_key: u32,
     /// 保存文件名模板（OUT-2）：保存对话框预填文件名用。
     name_style: crate::settings::NameStyle,
     /// 上次保存的格式扩展名（OUT-2）：保存对话框默认选中的筛选器。
@@ -100,10 +105,12 @@ pub struct Overlay {
     /// 当前工具栏布局（选区存在时才有）。
     bar: Option<toolbar::Toolbar>,
     pub hwnd: HWND,
+    /// 禁用输入法前的 IME 上下文（截图期间禁用，文本输入时恢复，EDT-4）。
+    ime_old: HIMC,
     /// 主消息窗口句柄（贴图载荷/exel 完成后通知用，PIN-1）。
     pub main_hwnd: HWND,
     pub cancelled: bool,
-    /// 长截图触发（M4）：工具栏按钮 / S 键设置屏幕坐标选区，随后覆盖层关闭。
+    /// 长截图触发（M4）：工具栏按钮 / 长截图键设置屏幕坐标选区，随后覆盖层关闭。
     pub viewport: Option<(i32, i32, u32, u32)>,
     /// 上屏用内存 DC（持有 DIB section，BGRA 像素直接写入 dib_bits）。
     mem_dc: HDC,
@@ -114,83 +121,6 @@ pub struct Overlay {
 }
 
 impl Overlay {
-    fn new(
-        mut capture: CapturedScreen,
-        palette: &'static Palette,
-        tool_keys: crate::settings::ToolKeys,
-        default_tool: Tool,
-        name_style: crate::settings::NameStyle,
-        last_save_ext: Option<String>,
-    ) -> Result<Self, String> {
-        let (w, h) = (capture.width, capture.height);
-        let Some(size) = tiny_skia::IntSize::from_wh(w, h) else {
-            return Err("虚拟屏幕尺寸非法".into());
-        };
-        let rgba = std::mem::take(&mut capture.rgba);
-        let original = Pixmap::from_vec(rgba, size).ok_or("创建原图像素图失败")?;
-        let timing = crate::perf::enabled();
-        let t_init = std::time::Instant::now();
-        let mut dimmed = original.clone();
-        let t_clone1 = t_init.elapsed();
-        // 暗化（CAP-3：预生成暗图）：覆盖黑色 alpha=120，多线程分块整数乘法
-        surface::dim_pixmap(&mut dimmed, 255 - 120);
-        let t_dim = t_init.elapsed();
-        let display = dimmed.clone();
-        let t_clone2 = t_init.elapsed();
-
-        // 创建上屏用 DIB section（BGRA、top-down），像素直接写入其内存。
-        let (mem_dc, dib_bmp, dib_bits) = surface::create_dib_surface(w, h)?;
-        if timing {
-            eprintln!(
-                "[jietu] 初始化：原图 clone {t_clone1:?}，暗化 {:?}，暗图 clone {:?}，DIB {:?}",
-                t_dim - t_clone1,
-                t_clone2 - t_dim,
-                t_init.elapsed() - t_clone2
-            );
-        }
-
-        Ok(Self {
-            capture,
-            original,
-            dimmed,
-            display,
-            palette,
-            selection: None,
-            first_paint: true,
-            phase: Phase::Adjusting,
-            drag: None,
-            doc: Document::new(),
-            tool: default_tool, // 记住上次工具（M3），首次为矩形
-            tool_keys,
-            name_style,
-            last_save_ext,
-            color_index: 1, // 默认红色
-            line_width: editor::DEFAULT_LINE_WIDTH,
-            blur_radius: editor::DEFAULT_BLUR_RADIUS,
-            font_size: editor::DEFAULT_FONT_SIZE,
-            font_family: std::sync::Arc::from(editor::DEFAULT_FONT_FAMILY),
-            bold: false,
-            italic: false,
-            font_list: None,
-            filled: false,
-            round: false,
-            draft: None,
-            down_started_draw: false,
-            selected: None,
-            ctrl_drag: None,
-            obj_drag: None,
-            text_edit: None,
-            bar: None,
-            hwnd: HWND::default(),
-            main_hwnd: HWND::default(),
-            cancelled: false,
-            viewport: None,
-            mem_dc,
-            dib_bmp,
-            dib_bits,
-        })
-    }
-
     /// 注册窗口类并创建覆盖窗口（实现见 `setup`）。
 
     /// 显示覆盖层并阻塞运行，直到截图完成、取消或触发长截图。
@@ -199,6 +129,7 @@ impl Overlay {
         capture: CapturedScreen,
         palette: &'static Palette,
         tool_keys: crate::settings::ToolKeys,
+        longshot_key: u32,
         default_tool: Tool,
         name_style: crate::settings::NameStyle,
         last_save_ext: Option<String>,
@@ -217,7 +148,15 @@ impl Overlay {
             }
         };
 
-        let mut overlay = match Self::new(capture, palette, tool_keys, default_tool, name_style, last_save_ext) {
+        let mut overlay = match Self::new(
+            capture,
+            palette,
+            tool_keys,
+            longshot_key,
+            default_tool,
+            name_style,
+            last_save_ext,
+        ) {
             Ok(o) => o,
             Err(_) => {
                 unsafe {
@@ -228,6 +167,9 @@ impl Overlay {
         };
         let t_init_done = std::time::Instant::now();
         overlay.hwnd = hwnd;
+        // 截图期间禁用输入法：否则 S（长截图）/ 回车等按键被 IME 截走；
+        // 进入文本输入时再恢复（见 `ime::set_ime_enabled`，EDT-4）。
+        overlay.set_ime_enabled(false);
         overlay.main_hwnd = main_hwnd;
         let raw = Box::into_raw(Box::new(overlay));
 
