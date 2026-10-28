@@ -23,9 +23,9 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
     rounded_rect(pixmap, bar.rect, 7.0, p.bg, Some(p.border));
 
     // 组分隔线：画在每个组首个元素左侧的空白处
-    // 组划分（hits 索引）：[工具 0-5][颜色 6-10][填充 11 圆角 12][撤销 13 重做 14]
-    // [贴图 15 长截图 16][复制 17 保存 18]
-    for &index in &[6usize, 11, 13, 15, 17] {
+    // 组划分（hits 索引）：[工具 0-5][颜色 6-10][填充 11][撤销 12 重做 13]
+    // [贴图 14 长截图 15][复制 16 保存 17]
+    for &index in &[6usize, 11, 12, 14, 16] {
         let Some((first, _)) = bar.hits.get(index) else {
             continue;
         };
@@ -77,14 +77,6 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
                 }
                 draw_icon(pixmap, Icon::Fill, *r, toggle_color(enabled, state.filled, p));
-            }
-            // 文本工具下圆角开关无意义：置灰禁用
-            Action::ToggleRound => {
-                let enabled = state.tool != Tool::Text;
-                if enabled && state.round {
-                    rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
-                }
-                draw_icon(pixmap, Icon::Round, *r, toggle_color(enabled, state.round, p));
             }
             Action::Undo => draw_icon(pixmap, Icon::Undo, *r, if state.can_undo { p.icon } else { p.icon_dim }),
             Action::Redo => draw_icon(pixmap, Icon::Redo, *r, if state.can_redo { p.icon } else { p.icon_dim }),

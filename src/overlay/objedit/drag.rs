@@ -5,7 +5,7 @@
 use crate::editor::{ArrowEnd, Bounds, Kind, Point};
 
 use super::super::geometry::{SelRect, expand_rect, union_rect};
-use super::{ObjDrag, ObjHandle, lock_axis, resized, resized_aspect};
+use super::{ObjDrag, ObjHandle, lock_axis, radius_delta, resized, resized_aspect};
 
 impl super::super::Overlay {
     /// 按下选中对象的控制柄（或对象本体）：进入拖动状态并建立撤销快照。
@@ -64,6 +64,13 @@ impl super::super::Overlay {
                     let (dx, dy) = if shift { lock_axis(dx, dy) } else { (dx, dy) };
                     obj.kind = orig.kind.clone();
                     obj.kind.remap(frame, shifted_frame(frame, sel, dx, dy));
+                }
+                // 圆角控制柄（EDT-1）：朝矩形中心拖变大、朝角拖变小（控制柄代表圆弧本身）。
+                // 每帧从按下时的半径重算，避免逐帧增量累积误差。
+                ObjHandle::Radius => {
+                    let base = orig.kind.corner().unwrap_or(0.0);
+                    obj.kind = orig.kind.clone();
+                    obj.kind.set_corner(base + radius_delta(x - px, y - py));
                 }
                 // 八向缩放（Shift + 角手柄 = 等比）
                 _ => {
@@ -124,14 +131,15 @@ impl super::super::Overlay {
         }
     }
 
-    /// 工具栏样式（颜色 / 填充 / 圆角）实时作用于选中对象（EDT-7）。
-    /// 线宽 / 字号 / 模糊半径由滚轮直接调整（见 `pick::on_mouse_wheel`）。
+    /// 工具栏样式（颜色 / 填充）实时作用于选中对象（EDT-7）。
+    /// 线宽 / 字号 / 模糊半径由滚轮直接调整（见 `pick::on_mouse_wheel`）；
+    /// 圆角由对象内侧角的控制柄拖动调整（EDT-1，见 `objedit`）。
     pub(in crate::overlay) fn style_selected(&mut self) {
         let Some(i) = self.selected else {
             return;
         };
         let color = crate::editor::PALETTE[self.color_index];
-        let (filled, round) = (self.filled, self.round);
+        let filled = self.filled;
         let before = self.selected_clip();
         self.doc.begin();
         let changed = {
@@ -143,14 +151,9 @@ impl super::super::Overlay {
                 obj.style.color = [color[0], color[1], color[2], obj.style.color[3]];
                 changed = true;
             }
-            if let Kind::Rect { filled: f, radius, .. } = &mut obj.kind {
+            if let Kind::Rect { filled: f, .. } = &mut obj.kind {
                 if *f != filled {
                     *f = filled;
-                    changed = true;
-                }
-                let r = if round { crate::editor::ROUND_RADIUS } else { 0.0 };
-                if (*radius - r).abs() > 0.01 {
-                    *radius = r;
                     changed = true;
                 }
             }

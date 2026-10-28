@@ -7,7 +7,7 @@
 
 ```
 ui/
-  toolbar/   # 覆盖层工具栏 18 个按钮
+  toolbar/   # 覆盖层工具栏 17 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
   status/    # 长截图状态条
 ```
 
@@ -35,7 +35,7 @@ ui/
 
 | 文件 | 来源 |
 |---|---|
-| `toolbar/{fill,round,undo,redo,bold,italic,minus,plus}.svg` | 本项目自绘（原有手绘几何图标没有对应素材，按本文件规格生成） |
+| `toolbar/{fill,undo,redo,bold,italic,minus,plus}.svg` | 本项目自绘（原有手绘几何图标没有对应素材，按本文件规格生成） |
 | `toolbar/fill.svg` | 本项目自绘（油漆桶）：桶身梯形 + 桶沿 + 提手半圆环 + 漆滴 |
 | `toolbar/arrow.svg` | 本项目自绘（用户提供版本的笔画过粗，按反馈调细至墨水 28%） |
 | `toolbar/{rect,text,blur,glow,longshot,highlight,pin,copy,save}.svg` | 用户提供的图标集，仅清洗（去 `p-id`/`class`/DOCTYPE/写死色值；`copy` 删除一个孤立杂点 path） |
@@ -58,7 +58,7 @@ ui/
 | blur | 12.8 ⚠️ | minus | 16.6 |
 | glow | 27.1 | plus | 27.6 |
 | fill | 40.5 | check | 14.9 |
-| round | 26.0 | cross | 24.4 |
+| cross | 24.4 | — | — |
 | undo / redo | 19.2 | pin | 23.1 |
 | longshot | 28.4 | | |
 

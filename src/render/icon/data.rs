@@ -33,7 +33,6 @@ icon_table! {
     Blur => "toolbar/blur.svg",
     Glow => "toolbar/glow.svg",
     Fill => "toolbar/fill.svg",
-    Round => "toolbar/round.svg",
     Undo => "toolbar/undo.svg",
     Redo => "toolbar/redo.svg",
     Pin => "toolbar/pin.svg",

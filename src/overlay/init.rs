@@ -74,7 +74,6 @@ impl Overlay {
             italic: false,
             font_list: None,
             filled: false,
-            round: false,
             draft: None,
             down_started_draw: false,
             selected: None,

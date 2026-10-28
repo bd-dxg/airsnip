@@ -47,7 +47,6 @@ impl super::Overlay {
             tool: self.tool,
             color: self.color_index,
             filled: self.filled,
-            round: self.round,
             can_undo: self.doc.can_undo(),
             can_redo: self.doc.can_redo(),
             font_family,
@@ -71,13 +70,6 @@ impl super::Overlay {
                 // 文本工具无背景功能：填充开关仅对矩形有效，文本下忽略
                 if self.tool != crate::editor::Tool::Text {
                     self.filled = !self.filled;
-                    self.style_selected();
-                }
-            }
-            // 圆角开关仅对矩形有效（EDT-4 文本工具下点击无效果）
-            toolbar::Action::ToggleRound => {
-                if self.tool != crate::editor::Tool::Text {
-                    self.round = !self.round;
                     self.style_selected();
                 }
             }

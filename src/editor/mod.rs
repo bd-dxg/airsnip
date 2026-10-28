@@ -3,6 +3,7 @@
 //! 底图保持不变，标注以矢量对象列表叠加；列表顺序即 z 序（越靠后越上层）。
 //! 坐标统一为覆盖层坐标系下的物理像素。
 
+mod corner;
 mod curve;
 mod document;
 mod hit;
@@ -225,9 +226,6 @@ impl Tool {
 
 /// 新建对象默认线宽（物理像素，连续可调：滚轮 / 二级工具栏）。
 pub const DEFAULT_LINE_WIDTH: f32 = 4.0;
-
-/// 矩形圆角半径（EDT-1 圆角开关打开时的固定半径）。
-pub const ROUND_RADIUS: f32 = 12.0;
 
 /// 模糊默认强度（EDT-5：半径，连续可调）。
 pub const DEFAULT_BLUR_RADIUS: f32 = 16.0;
