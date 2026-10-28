@@ -32,6 +32,8 @@ pub(super) enum Shape {
     WE,
     NWSE,
     NESW,
+    /// 圆角控制柄（EDT-1）：自绘圆弧光标，Win32 没有内置对应形状。
+    Radius,
 }
 
 impl Shape {
@@ -45,6 +47,7 @@ impl Shape {
             Shape::WE => load(IDC_SIZEWE),
             Shape::NWSE => load(IDC_SIZENWSE),
             Shape::NESW => load(IDC_SIZENESW),
+            Shape::Radius => paint::radius_cursor(),
         }
     }
 }
@@ -72,8 +75,9 @@ fn obj_shape(h: ObjHandle) -> Shape {
         ObjHandle::E | ObjHandle::W => Shape::WE,
         ObjHandle::NW | ObjHandle::SE => Shape::NWSE,
         ObjHandle::NE | ObjHandle::SW => Shape::NESW,
-        // 箭头端点：拖动即拉长 / 改向；`Move`/其它 → 四向移动
+        // 箭头端点：拖动即拉长 / 改向；圆角控制柄：自绘圆弧光标
         ObjHandle::ArrowFrom | ObjHandle::ArrowTo | ObjHandle::Move => Shape::Move,
+        ObjHandle::Radius => Shape::Radius,
     }
 }
 
@@ -167,6 +171,7 @@ mod tests {
             (ObjHandle::Move, Shape::Move),
             (ObjHandle::ArrowFrom, Shape::Move),
             (ObjHandle::ArrowTo, Shape::Move),
+            (ObjHandle::Radius, Shape::Radius),
         ] {
             assert_eq!(obj_shape(h), s, "对象手柄 {h:?} 光标映射错误");
         }

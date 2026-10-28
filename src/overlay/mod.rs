@@ -87,7 +87,6 @@ pub struct Overlay {
     /// 展开中的字体列表面板（EDT-4）。
     font_list: Option<toolbar::fontlist::FontPanel>,
     filled: bool,
-    round: bool,
     /// 正在拖拽、尚未提交的标注对象。
     draft: Option<Object>,
     /// 上次左键按下是否启动了选区内空白绘制（双击完成截图判据，M3）。

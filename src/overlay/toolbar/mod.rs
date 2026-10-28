@@ -43,8 +43,6 @@ pub struct State {
     pub color: usize,
     /// 矩形是否填充（EDT-1）。
     pub filled: bool,
-    /// 矩形是否圆角（EDT-1）。
-    pub round: bool,
     pub can_undo: bool,
     pub can_redo: bool,
     /// 第二行（EDT-4）：当前字体族、粗体/斜体、字号与字体面板是否展开。
@@ -61,7 +59,6 @@ pub enum Action {
     Tool(Tool),
     Color(usize),
     ToggleFill,
-    ToggleRound,
     Undo,
     Redo,
     /// PIN-1：把选区（含标注）贴为置顶窗口。
@@ -145,7 +142,6 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool) -> Too
     }
     c.sep();
     item(&mut c, BTN, BTN, Action::ToggleFill);
-    item(&mut c, BTN, BTN, Action::ToggleRound);
     c.sep();
     item(&mut c, BTN, BTN, Action::Undo);
     item(&mut c, BTN, BTN, Action::Redo);
@@ -313,16 +309,16 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 25);
+        assert_eq!(actions.len(), 24);
         assert_eq!(actions[..6], Tool::ALL.map(Action::Tool));
-        assert_eq!(actions[13], Action::Undo);
-        assert_eq!(actions[14], Action::Redo);
-        assert_eq!(actions[15], Action::Pin);
-        assert_eq!(actions[16], Action::Longshot);
-        assert_eq!(actions[17], Action::Copy);
-        assert_eq!(actions[18], Action::Save);
+        assert_eq!(actions[12], Action::Undo);
+        assert_eq!(actions[13], Action::Redo);
+        assert_eq!(actions[14], Action::Pin);
+        assert_eq!(actions[15], Action::Longshot);
+        assert_eq!(actions[16], Action::Copy);
+        assert_eq!(actions[17], Action::Save);
         assert_eq!(
-            actions[19..],
+            actions[18..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -340,6 +336,6 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false);
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, H);
-        assert_eq!(bar.hits.len(), 19);
+        assert_eq!(bar.hits.len(), 18);
     }
 }

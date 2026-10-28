@@ -9,10 +9,12 @@ use crate::editor::{Kind, Object, Point};
 use super::super::geometry::SelRect;
 use super::super::pick::dashed_line;
 use super::super::shape::rounded_path;
-use super::{ObjHandle, frame_of, handle_point};
+use super::{ObjHandle, frame_of, handle_point, radius_handle_point};
 
 /// 手柄边长（物理像素）。
 const HANDLE: f32 = 7.0;
+/// 圆角控制柄半径（略小于方柄半边长，避免看起来像个缩放手柄）。
+const ROUND_HANDLE: f32 = 3.5;
 const ACCENT: [u8; 4] = [26, 115, 232, 255];
 
 /// 画选中对象的编辑手柄。
@@ -65,6 +67,31 @@ pub(in crate::overlay) fn draw_frame(pixmap: &mut Pixmap, obj: &Object) {
         let (hx, hy) = handle_point(f, h);
         square_handle(pixmap, Point::new(hx, hy));
     }
+    // 圆角控制柄（EDT-1）：内侧右上角的小圆，与方形缩放手柄区分
+    if let Some((hx, hy)) = radius_handle_point(obj) {
+        circle_handle(pixmap, Point::new(hx, hy));
+    }
+}
+
+/// 白底蓝框的圆形手柄（圆角控制柄，半径 `ROUND_HANDLE`）。
+fn circle_handle(pixmap: &mut Pixmap, p: Point) {
+    let mut pb = PathBuilder::new();
+    pb.push_circle(p.x, p.y, ROUND_HANDLE);
+    let Some(path) = pb.finish() else {
+        return;
+    };
+    pixmap.fill_path(
+        &path,
+        &paint([255, 255, 255, 255]),
+        FillRule::Winding,
+        Transform::identity(),
+        None,
+    );
+    let stroke = Stroke {
+        width: 1.0,
+        ..Default::default()
+    };
+    pixmap.stroke_path(&path, &paint(ACCENT), &stroke, Transform::identity(), None);
 }
 
 /// 白底蓝框的方形手柄（边长 `HANDLE`）。

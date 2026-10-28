@@ -20,7 +20,8 @@ impl super::super::Overlay {
             Tool::Rect => Kind::Rect {
                 a: p,
                 b: p,
-                radius: if self.round { crate::editor::ROUND_RADIUS } else { 0.0 },
+                // 圆角不再由工具栏开关控制：新建为直角，选中后拖内侧角的控制柄调（EDT-1）
+                radius: 0.0,
                 filled: self.filled,
             },
             Tool::Arrow => Kind::arrow(p, p),

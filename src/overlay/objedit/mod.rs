@@ -33,10 +33,20 @@ pub(super) enum ObjHandle {
     ArrowFrom,
     /// 箭头终点（尖端）。
     ArrowTo,
+    /// 圆角控制柄（EDT-1）：拖拽改变矩形类对象的圆角半径。
+    Radius,
 }
 
 /// 缩放后的最小边长（物理像素），避免对象被拖成零尺寸。
 const MIN_SIZE: f32 = 4.0;
+
+/// 圆角控制柄到右上角的最小内缩距离（物理像素）。
+/// 半径为 0 时弧就在角上，不内缩就会和右上角缩放手柄重叠，反而拖不到。
+const RADIUS_GRIP: f32 = 14.0;
+
+/// 圆弧 45° 点到角的距离与半径之比（`r - r/√2 ≈ 0.293r`）。
+/// 控制柄贴着弧走，半径越大离角越远，与设计工具的直觉一致。
+const ARC_TO_CORNER: f32 = 0.293;
 
 /// 拖动中的上下文。
 pub(super) struct ObjDrag {
@@ -79,8 +89,27 @@ fn handle_point(f: SelRect, h: ObjHandle) -> (f32, f32) {
         ObjHandle::SW => (x0, y1),
         ObjHandle::SE => (x1, y1),
         // 箭头端点手柄不基于包围框（见 `frame::draw_frame` 的早退分支），不参与此处布局
-        ObjHandle::ArrowFrom | ObjHandle::ArrowTo => (cx, cy),
+        ObjHandle::ArrowFrom | ObjHandle::ArrowTo | ObjHandle::Radius => (cx, cy),
     }
+}
+
+/// 圆角控制柄位置：包围框**内侧右上角**，随半径变大而往中心方向移（贴着圆弧走）。
+/// 半径很小时弧就在角上，此时留出 `RADIUS_GRIP` 的余量，避开右上角缩放手柄。
+/// 只有矩形类对象有圆角，其余返回 None。
+pub(super) fn radius_handle_point(obj: &Object) -> Option<(f32, f32)> {
+    let r = obj.kind.corner()?;
+    let f = frame_of(obj);
+    let inset = (RADIUS_GRIP + ARC_TO_CORNER * r)
+        .min(f.w as f32 * 0.45)
+        .min(f.h as f32 * 0.45);
+    Some(((f.x + f.w) as f32 - inset, f.y as f32 + inset))
+}
+
+/// 拖拽位移 → 圆角半径的变化量（物理像素）。
+/// **朝矩形中心方向拖（左下）增大、朝角拖（右上）减小**：控制柄代表圆弧本身，
+/// 弧离角越远半径越大，所以往里拖就是变圆。
+pub(super) fn radius_delta(dx: i32, dy: i32) -> f32 {
+    (dy - dx) as f32 * 0.5
 }
 
 /// 命中对象手柄：箭头只有两端点手柄（没有包围框），其余对象为八个控制柄。
@@ -96,6 +125,13 @@ pub(in crate::overlay) fn hit_handle(obj: &Object, x: i32, y: i32) -> Option<Obj
         return None;
     }
     let f = frame_of(obj);
+    // 圆角控制柄优先：它离右上角缩放手柄很近，不先判定就永远抢不到
+    if let Some((hx, hy)) = radius_handle_point(obj)
+        && (hx - x as f32).abs() <= PICK_RADIUS as f32
+        && (hy - y as f32).abs() <= PICK_RADIUS as f32
+    {
+        return Some(ObjHandle::Radius);
+    }
     for h in [
         ObjHandle::NW,
         ObjHandle::N,
@@ -219,6 +255,72 @@ mod tests {
         assert_eq!(hit_handle(&obj, f.x + f.w / 2, f.y + f.h / 2), None);
         // 远处 → 不命中
         assert_eq!(hit_handle(&obj, f.x - 60, f.y - 60), None);
+    }
+
+    /// 圆角控制柄必须优先于右上角缩放手柄命中，否则永远拖不到。
+    #[test]
+    fn radius_handle_wins_over_corner_handle() {
+        let obj = Object {
+            kind: Kind::Rect {
+                a: Point::new(50.0, 50.0),
+                b: Point::new(250.0, 150.0),
+                radius: 20.0,
+                filled: false,
+            },
+            style: Style::new([255, 0, 0, 255], 2.0),
+        };
+        let (hx, hy) = radius_handle_point(&obj).expect("矩形应有圆角控制柄");
+        assert_eq!(hit_handle(&obj, hx as i32, hy as i32), Some(ObjHandle::Radius));
+        // 右上角本身仍归缩放手柄
+        let f = frame_of(&obj);
+        assert_eq!(hit_handle(&obj, f.x + f.w, f.y), Some(ObjHandle::NE));
+    }
+
+    /// 非矩形类对象没有圆角概念，不画也不命中控制柄。
+    #[test]
+    fn radius_handle_only_for_rect() {
+        let hl = Object {
+            kind: Kind::Highlight {
+                a: Point::new(0.0, 0.0),
+                b: Point::new(100.0, 100.0),
+            },
+            style: Style::new([255, 255, 0, 255], 2.0),
+        };
+        assert!(radius_handle_point(&hl).is_none(), "高亮不应有圆角控制柄");
+    }
+
+    /// 小对象上圆角控制柄要按比例内缩，不能跑出包围框。
+    #[test]
+    fn radius_handle_stays_inside_small_frame() {
+        let obj = rect_obj((0.0, 0.0), (20.0, 16.0));
+        let (hx, hy) = radius_handle_point(&obj).expect("矩形应有圆角控制柄");
+        let f = frame_of(&obj);
+        assert!(hx > f.x as f32 && hx < (f.x + f.w) as f32, "横向越界：{hx} 不在 {f:?}");
+        assert!(hy > f.y as f32 && hy < (f.y + f.h) as f32, "纵向越界：{hy} 不在 {f:?}");
+    }
+
+    /// 半径越大控制柄越靠里（贴着圆弧走），但始终在包围框内。
+    #[test]
+    fn radius_handle_moves_inward_as_radius_grows() {
+        let mut obj = rect_obj((0.0, 0.0), (400.0, 200.0));
+        let small = radius_handle_point(&obj).expect("应有控制柄");
+        obj.kind.set_corner(90.0);
+        let big = radius_handle_point(&obj).expect("应有控制柄");
+        assert!(
+            big.0 < small.0 && big.1 > small.1,
+            "半径变大后应向左下内移：{small:?} → {big:?}"
+        );
+    }
+
+    /// 拖拽方向：朝矩形中心（左下）拖增大半径，朝角（右上）拖减小。
+    #[test]
+    fn radius_drag_direction_matches_arc_metaphor() {
+        // 向左下 = 往中心方向 = 变大
+        assert!(radius_delta(-10, 10) > 0.0);
+        // 向右上 = 往角方向 = 变小
+        assert!(radius_delta(10, -10) < 0.0);
+        // 原地不动 = 不变
+        assert_eq!(radius_delta(0, 0), 0.0);
     }
 
     #[test]
