@@ -19,7 +19,10 @@ impl Kind {
     /// 平移全部几何点（EDT-7 对象移动）。
     pub fn translate(&mut self, dx: f32, dy: f32) {
         match self {
-            Kind::Rect { a, b, .. } | Kind::Highlight { a, b } | Kind::Blur { a, b, .. } | Kind::Glow { a, b } => {
+            Kind::Rect { a, b, .. }
+            | Kind::Highlight { a, b, .. }
+            | Kind::Blur { a, b, .. }
+            | Kind::Glow { a, b, .. } => {
                 *a = Point::new(a.x + dx, a.y + dy);
                 *b = Point::new(b.x + dx, b.y + dy);
             }
@@ -84,7 +87,10 @@ impl Kind {
             )
         };
         match self {
-            Kind::Rect { a, b, .. } | Kind::Highlight { a, b } | Kind::Blur { a, b, .. } | Kind::Glow { a, b } => {
+            Kind::Rect { a, b, .. }
+            | Kind::Highlight { a, b, .. }
+            | Kind::Blur { a, b, .. }
+            | Kind::Glow { a, b, .. } => {
                 *a = map(*a);
                 *b = map(*b);
             }
@@ -196,13 +202,15 @@ mod tests {
         let mut glow = Kind::Glow {
             a: Point::new(1.0, 2.0),
             b: Point::new(3.0, 4.0),
+            corner: 0.0,
         };
         glow.translate(-1.0, -2.0);
         assert_eq!(
             glow,
             Kind::Glow {
                 a: Point::new(0.0, 0.0),
-                b: Point::new(2.0, 2.0)
+                b: Point::new(2.0, 2.0),
+                corner: 0.0,
             }
         );
     }

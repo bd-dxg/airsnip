@@ -14,6 +14,8 @@ pub use bake::bake_objects;
 mod blur;
 pub mod fonts;
 pub mod icon;
+pub(crate) mod mask;
+mod region;
 pub mod text;
 mod text_bitmap;
 
@@ -62,8 +64,8 @@ pub fn draw_object_with(pixmap: &mut Pixmap, obj: &Object, transform: Transform)
             obj.style.color,
             transform,
         ),
-        Kind::Highlight { a, b } => draw_highlight(pixmap, *a, *b, &obj.style, transform),
-        Kind::Blur { a, b, radius } => draw_blur(pixmap, *a, *b, *radius, transform),
+        Kind::Highlight { a, b, corner } => region::draw_highlight(pixmap, *a, *b, *corner, &obj.style, transform),
+        Kind::Blur { a, b, radius, corner } => region::draw_blur(pixmap, *a, *b, *radius, *corner, transform),
         // 聚光高亮：不在底图上涂色，效果由「选区暗化 + 区域恢复原图亮度」的渲染管线提供
         // （屏幕显示见 overlay::selection::repaint，导出见 bake_objects）
         Kind::Glow { .. } => {}
@@ -87,9 +89,7 @@ pub fn bounds_to_clip(b: &Bounds) -> Clip {
     )
 }
 
-/// 荧光笔透明度（EDT-6：半透明块 + 正片叠底，透出底图文字）。
-const HIGHLIGHT_ALPHA: u8 = 150;
-
+/// 荧光笔透明度（HIGHLIGHT_ALPHA）与高亮/模糊绘制见 `region`（EDT-5/EDT-6）。
 fn paint_of(color: [u8; 4]) -> Paint<'static> {
     let mut paint = Paint::default();
     paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
@@ -192,64 +192,6 @@ fn draw_arrow(pixmap: &mut Pixmap, from: Point, c1: Point, c2: Point, to: Point,
     if let Some(path) = tri.finish() {
         pixmap.fill_path(&path, &paint, FillRule::Winding, tr, None);
     }
-}
-
-/// EDT-6 高亮：只取调色板 RGB（alpha 固定为荧光笔透明度），Multiply 混合保留底图明暗。
-/// EDT-6 高亮：半透明荧光笔色块。
-/// 逐像素混合 `dst × (1-a + a×src/255)`（正片叠底的半透明形式）：
-/// 白底被染成淡黄、深色文字几乎不变，不遮挡底图。纯 CPU 整数运算。
-fn draw_highlight(pixmap: &mut Pixmap, a: Point, b: Point, style: &Style, tr: Transform) {
-    let map = |p: Point| Point::new(tr.sx * p.x + tr.kx * p.y + tr.tx, tr.ky * p.x + tr.sy * p.y + tr.ty);
-    let pa = map(a);
-    let pb = map(b);
-    let (x0, y0) = (pa.x.min(pb.x).floor() as i32, pa.y.min(pb.y).floor() as i32);
-    let (x1, y1) = (pa.x.max(pb.x).ceil() as i32, pa.y.max(pb.y).ceil() as i32);
-    if x1 - x0 < 1 || y1 - y0 < 1 {
-        return;
-    }
-    let (x0, y0) = (x0.max(0), y0.max(0));
-    let (x1, y1) = (x1.min(pixmap.width() as i32), y1.min(pixmap.height() as i32));
-    if x1 - x0 < 1 || y1 - y0 < 1 {
-        return;
-    }
-    let (rw, rh) = ((x1 - x0) as usize, (y1 - y0) as usize);
-    let stride = pixmap.width() as usize;
-    // 预计算各通道系数：coef = 255 - a + a×src/255
-    let a = HIGHLIGHT_ALPHA as u32;
-    let inv = 255 - a;
-    let coef = [
-        inv + a * style.color[0] as u32 / 255,
-        inv + a * style.color[1] as u32 / 255,
-        inv + a * style.color[2] as u32 / 255,
-    ];
-    let data = pixmap.data_mut();
-    for row in 0..rh {
-        let base = ((y0 as usize + row) * stride + x0 as usize) * 4;
-        for col in 0..rw {
-            let off = base + col * 4;
-            for c in 0..3 {
-                let d = data[off + c] as u32;
-                data[off + c] = (d * coef[c] / 255) as u8;
-            }
-        }
-    }
-}
-
-/// EDT-5 高斯模糊：从像素图自身抠出区域做盒式模糊后贴回。
-/// 重绘路径上底图已复位（见 `overlay::selection::repaint`），此处模糊的即原图内容；
-/// z 序在其下的对象也会一并模糊（与真实模糊工具盖在上层的效果一致）。
-/// 盒式模糊（Box Blur）迭代近似高斯，纯 CPU 友好；`tr` 用于导出烘焙的坐标平移。
-fn draw_blur(pixmap: &mut Pixmap, a: Point, b: Point, radius: f32, tr: Transform) {
-    // 变换目前只有导出烘焙的纯平移；写成通用仿射，避免依赖 tiny-skia 的 Point 类型
-    let map = |p: Point| Point::new(tr.sx * p.x + tr.kx * p.y + tr.tx, tr.ky * p.x + tr.sy * p.y + tr.ty);
-    let pa = map(a);
-    let pb = map(b);
-    let (x0, y0) = (pa.x.min(pb.x).floor() as i32, pa.y.min(pb.y).floor() as i32);
-    let (x1, y1) = (pa.x.max(pb.x).ceil() as i32, pa.y.max(pb.y).ceil() as i32);
-    if x1 - x0 < 1 || y1 - y0 < 1 {
-        return;
-    }
-    blur::box_blur_region(pixmap, x0, y0, x1 - x0, y1 - y0, radius, 2);
 }
 
 /// 终点切线方向的单位向量（EDT-3：P3−P2，退化时回退 P3−P1 或折线末段）。
@@ -511,6 +453,7 @@ mod tests {
             kind: Kind::Highlight {
                 a: Point::new(10.0, 10.0),
                 b: Point::new(70.0, 30.0),
+                corner: 0.0,
             },
             style: Style::new([255, 240, 0, 255], 2.0),
         };
@@ -542,6 +485,7 @@ mod tests {
             kind: Kind::Highlight {
                 a: Point::new(10.0, 10.0),
                 b: Point::new(30.0, 30.0),
+                corner: 0.0,
             },
             style: Style::new([255, 240, 0, 255], 2.0),
         };
@@ -574,6 +518,7 @@ mod tests {
                 a: Point::new(10.0, 10.0),
                 b: Point::new(30.0, 30.0),
                 radius: 2.0,
+                corner: 0.0,
             },
             style: Style::new([0, 0, 0, 255], 2.0),
         };
@@ -614,6 +559,7 @@ mod tests {
                 a: Point::new(105.0, 105.0),
                 b: Point::new(115.0, 115.0),
                 radius: 2.0,
+                corner: 0.0,
             },
             style: Style::new([0, 0, 0, 255], 2.0),
         };

@@ -276,17 +276,38 @@ mod tests {
         assert_eq!(hit_handle(&obj, f.x + f.w, f.y), Some(ObjHandle::NE));
     }
 
-    /// 非矩形类对象没有圆角概念，不画也不命中控制柄。
+    /// 四边形类（矩形 / 高亮 / 模糊 / 聚光）都有圆角控制柄，箭头与文本没有。
     #[test]
-    fn radius_handle_only_for_rect() {
-        let hl = Object {
-            kind: Kind::Highlight {
-                a: Point::new(0.0, 0.0),
-                b: Point::new(100.0, 100.0),
+    fn radius_handle_for_all_rect_like() {
+        let (a, b) = (Point::new(50.0, 50.0), Point::new(250.0, 150.0));
+        for kind in [
+            Kind::Rect {
+                a,
+                b,
+                radius: 0.0,
+                filled: false,
             },
-            style: Style::new([255, 255, 0, 255], 2.0),
+            Kind::Highlight { a, b, corner: 0.0 },
+            Kind::Blur {
+                a,
+                b,
+                radius: 16.0,
+                corner: 0.0,
+            },
+            Kind::Glow { a, b, corner: 0.0 },
+        ] {
+            let obj = Object {
+                kind,
+                style: Style::new([255, 255, 0, 255], 2.0),
+            };
+            assert!(radius_handle_point(&obj).is_some(), "{obj:?} 应有圆角控制柄");
+        }
+        // 箭头与文本无圆角
+        let arrow = Object {
+            kind: Kind::arrow(Point::new(0.0, 0.0), Point::new(50.0, 50.0)),
+            style: Style::new([255, 0, 0, 255], 2.0),
         };
-        assert!(radius_handle_point(&hl).is_none(), "高亮不应有圆角控制柄");
+        assert!(radius_handle_point(&arrow).is_none(), "箭头不应有圆角控制柄");
     }
 
     /// 小对象上圆角控制柄要按比例内缩，不能跑出包围框。

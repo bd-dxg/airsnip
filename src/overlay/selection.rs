@@ -10,6 +10,7 @@ use super::pick::draw_curve_handles;
 use super::surface::{blit_region, restore_region};
 use super::{textinput, toolbar};
 use crate::render;
+use crate::render::mask::FRect;
 
 /// 脏区域外扩（覆盖边框、手柄与信息文字）。
 pub(super) const DIRTY_PAD: i32 = 60;
@@ -97,7 +98,7 @@ impl super::Overlay {
                 if glow_on {
                     // 逐个恢复聚光区域（草稿也包含在内；与 overlap 求交后回贴原图）
                     for obj in self.doc.objects().iter().chain(self.draft.iter()) {
-                        if let crate::editor::Kind::Glow { a, b } = obj.kind {
+                        if let crate::editor::Kind::Glow { a, b, corner } = obj.kind {
                             // 重新计算区域四边（floor/ceil 取整，不能用截断：浮点值可能为负或非整数）
                             let (gx0, gy0) = (a.x.min(b.x).floor(), a.y.min(b.y).floor());
                             let (gx1, gy1) = (a.x.max(b.x).ceil(), a.y.max(b.y).ceil());
@@ -108,7 +109,7 @@ impl super::Overlay {
                                 h: (gy1 - gy0) as i32,
                             };
                             if let Some(part) = intersect_rect(overlap, gr) {
-                                blit_region(&mut self.display, &self.original, part);
+                                restore_glow(&mut self.display, &self.original, part, (gx0, gy0, gx1, gy1), corner);
                             }
                         }
                     }
@@ -206,6 +207,19 @@ impl super::Overlay {
             }
         }
     }
+}
+
+/// 聚光区域恢复（EDT-9）：直角直接回贴原图；圆角按遮罩混合（圆周外保持暗化）。
+/// `rect` 为**完整**聚光矩形（`part` 可能已被脏区裁剪，不能用它算圆角）。
+fn restore_glow(display: &mut Pixmap, original: &Pixmap, part: SelRect, rect: FRect, corner: f32) {
+    let r = crate::render::mask::clamp_radius(rect, corner);
+    if r < 0.5 {
+        blit_region(display, original, part);
+        return;
+    }
+    let region = (part.x, part.y, part.x + part.w, part.y + part.h);
+    let buf = crate::render::mask::copy_region(original, region);
+    crate::render::mask::blend_compact(display, &buf, region, rect, r);
 }
 
 /// 画选区边框。
