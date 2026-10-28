@@ -60,9 +60,9 @@ pub(super) fn is_degenerate(obj: &Object) -> bool {
         Kind::Rect { a, b, .. } => (a.x - b.x).abs() < 2.0 && (a.y - b.y).abs() < 2.0,
         Kind::Arrow { from, to, .. } => (from.x - to.x).abs() < 2.0 && (from.y - to.y).abs() < 2.0,
         // 区域类（高亮/模糊）：过小视为误触
-        Kind::Highlight { a, b } => (a.x - b.x).abs() < 2.0 && (a.y - b.y).abs() < 2.0,
+        Kind::Highlight { a, b, .. } => (a.x - b.x).abs() < 2.0 && (a.y - b.y).abs() < 2.0,
         Kind::Blur { a, b, .. } => (a.x - b.x).abs() < 2.0 && (a.y - b.y).abs() < 2.0,
-        Kind::Glow { a, b } => (a.x - b.x).abs() < 2.0 && (a.y - b.y).abs() < 2.0,
+        Kind::Glow { a, b, .. } => (a.x - b.x).abs() < 2.0 && (a.y - b.y).abs() < 2.0,
         // 文本：空文本在提交时已拦截，进入文档的均为有效对象
         Kind::Text { .. } => false,
     }

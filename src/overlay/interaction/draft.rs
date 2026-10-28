@@ -25,13 +25,23 @@ impl super::super::Overlay {
                 filled: self.filled,
             },
             Tool::Arrow => Kind::arrow(p, p),
-            Tool::Highlight => Kind::Highlight { a: p, b: p },
+            Tool::Highlight => Kind::Highlight {
+                a: p,
+                b: p,
+                // 新建默认直角，选中后拖内侧角手柄调（EDT-1 同一套）
+                corner: 0.0,
+            },
             Tool::Blur => Kind::Blur {
                 a: p,
                 b: p,
                 radius: self.blur_radius,
+                corner: 0.0,
             },
-            Tool::Glow => Kind::Glow { a: p, b: p },
+            Tool::Glow => Kind::Glow {
+                a: p,
+                b: p,
+                corner: 0.0,
+            },
         };
         self.doc.begin();
         self.draft = Some(Object {
@@ -66,15 +76,24 @@ impl super::super::Overlay {
                 },
                 // 拖动中重建箭头：控制点保持在 1/3、2/3 处（EDT-3 从直线开始）
                 Kind::Arrow { from, .. } => Kind::arrow(*from, end),
-                // 区域类（高亮/模糊）：只更新对角点，半径/样式不变
-                Kind::Highlight { a, .. } => Kind::Highlight { a: *a, b: end },
-                Kind::Blur { a, radius, .. } => Kind::Blur {
+                // 区域类（高亮/模糊）：只更新对角点，半径/圆角/样式不变
+                Kind::Highlight { a, corner, .. } => Kind::Highlight {
+                    a: *a,
+                    b: end,
+                    corner: *corner,
+                },
+                Kind::Blur { a, radius, corner, .. } => Kind::Blur {
                     a: *a,
                     b: end,
                     radius: *radius,
+                    corner: *corner,
                 },
                 // 聚光：同区域类，只更新对角点
-                Kind::Glow { a, .. } => Kind::Glow { a: *a, b: end },
+                Kind::Glow { a, corner, .. } => Kind::Glow {
+                    a: *a,
+                    b: end,
+                    corner: *corner,
+                },
                 // 文本不经草稿拖拽（Text 工具走输入状态机）
                 Kind::Text { .. } => return,
             };

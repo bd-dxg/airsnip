@@ -94,13 +94,20 @@ pub enum Kind {
         italic: bool,
         size: (f32, f32),
     },
-    /// EDT-6 高亮：对角两点，荧光笔效果（半透明色块 + Multiply 混合，不遮挡文字）。
-    Highlight { a: Point, b: Point },
-    /// EDT-5 高斯模糊：对角两点，`radius` 为模糊半径（由工具栏强度档位映射）。
-    Blur { a: Point, b: Point, radius: f32 },
-    /// 高亮（聚光效果，与荧光笔是两种功能）：对角两点。
+    /// EDT-6 高亮：对角两点，荧光笔效果（半透明色块 + Multiply 混合，不遮挡文字）；
+    /// `corner` 圆角半径（与矩形同一套手柄，0 = 直角）。
+    Highlight { a: Point, b: Point, corner: f32 },
+    /// EDT-5 高斯模糊：对角两点，`radius` 为模糊**强度**（由滚轮调），
+    /// `corner` 为圆角半径（勿混用命名，见 `editor::corner`）。
+    Blur {
+        a: Point,
+        b: Point,
+        radius: f32,
+        corner: f32,
+    },
+    /// 高亮（聚光效果，与荧光笔是两种功能）：对角两点 + `corner` 圆角半径。
     /// 选区其余部分暗化、该区域显示原图亮度，详见渲染层说明。
-    Glow { a: Point, b: Point },
+    Glow { a: Point, b: Point, corner: f32 },
 }
 
 impl Kind {
@@ -159,7 +166,7 @@ impl Kind {
                 Bounds::around(x0, y0, x1, y1, pad)
             }
             // 区域类（高亮/模糊/聚光）：整块都是绘制内容，外扩 1px 保证脏区取整
-            Kind::Highlight { a, b } | Kind::Blur { a, b, .. } | Kind::Glow { a, b } => {
+            Kind::Highlight { a, b, .. } | Kind::Blur { a, b, .. } | Kind::Glow { a, b, .. } => {
                 Bounds::around(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y), 1.0)
             }
             // 文本：范围由测量缓存决定（EDT-4），padding 随字号缩放
@@ -471,6 +478,7 @@ mod tests {
             kind: Kind::Highlight {
                 a: Point::new(10.0, 10.0),
                 b: Point::new(50.0, 40.0),
+                corner: 0.0,
             },
             style: Style::new([255, 240, 0, 255], 2.0),
         };
@@ -484,6 +492,7 @@ mod tests {
                 a: Point::new(1.0, 2.0),
                 b: Point::new(11.0, 22.0),
                 radius: 16.0,
+                corner: 0.0,
             },
             style: Style::new([0, 0, 0, 255], 2.0),
         };
