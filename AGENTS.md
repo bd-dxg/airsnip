@@ -18,6 +18,13 @@
 - 已知问题记录（已修）：开机自启后托盘图标消失的根因是 `theme::is_theme_change` 把 `WM_SETTINGCHANGE` 的 `lParam` 无条件当宽字符串读（`PCWSTR::to_string` → `wcslen`），登录阶段系统/第三方广播 `lParam = 0` 时 `wcslen(NULL)` 访问冲突（`0xC0000005`，`ucrtbase.dll+0x7088f`）直接杀掉常驻进程 —— 任务计划本身是成功的。已改为 `VirtualQuery` 校验内存可读性 + 区域内限长读取（不再走 `wcslen`，垃圾指针与无终止符字符串均安全返回 false），并补 `TaskbarCreated` 广播兜底（explorer 就绪/重启后重新 `NIM_ADD`，见 `app::tray::is_taskbar_created`）。
 - 开发由 AI 驱动，本文件是进入此仓库的 agent 的上下文。
 
+## 发布前待办（下个版本收尾）
+
+- **选区提示去掉坐标，只留「宽 × 高」**。现在框选时 HUD 显示 `1173 × 801   @(710,176)`，后半个坐标是虚拟桌面物理像素，普通用户看不懂、也容易被误认为是别的东西——下个版本发版前删掉 `@(x,y)`：
+  - `src/overlay/surface.rs:82` — `format!("{} × {}   @({},{})", sel.w, sel.h, sel.x, sel.y)` → `format!("{} × {}", sel.w, sel.h)`
+  - `src/overlay/geometry.rs:101` — `text_rect()` 里估算文本宽度的同一条格式串要一起改（脏区避让依赖这个估算）
+  - 需求侧：`screenshot-tool-PRD.md` 的 `CAP-2`「显示尺寸与坐标」改为「显示尺寸」
+
 ## 技术栈
 
 - 语言：Rust 1.98（edition 2024）
