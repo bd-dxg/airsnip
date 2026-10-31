@@ -14,7 +14,7 @@
 | 指标 | 实测 | 说明 |
 |---|---|---|
 | **单文件体积** | **1.08 MB** | 绿色免安装，一个 exe 就是全部 |
-| **下载包** | **0.62 MB** | zip，含文档与许可证 |
+| **下载包** | **0.61 MB** | zip，含文档与许可证 |
 | **待机内存** | **1.2 MB** | 常驻托盘时的 Private Working Set |
 | **待机 CPU** | **0.00%** | 事件驱动，无定时轮询 |
 | **热键 → 可用画面** | **124 ms** | 2560×1440：全屏抓取 + 暗化 + 覆盖层就绪 |
@@ -128,7 +128,7 @@ cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
 pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip
 ```
 
-技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。当前版本 v0.5.0。
+技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。当前版本 v0.6.0。
 
 ## 已知限制
 
