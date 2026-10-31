@@ -44,6 +44,22 @@ foreach ($lic in @(
     [void]$sb.AppendLine("- $($lic[0]): $($lic[1])")
 }
 
+[void]$sb.AppendLine("## 图标与美术资源")
+[void]$sb.AppendLine()
+[void]$sb.AppendLine('界面图标位于 `assets/icons/ui/`，统一取自 **Material Symbols**（Apache-2.0）；应用图标与 README 头图为项目自绘。两类资源均与 GPL-3.0-only 兼容。')
+[void]$sb.AppendLine()
+[void]$sb.AppendLine("### Material Symbols（Apache-2.0）")
+[void]$sb.AppendLine()
+[void]$sb.AppendLine("- 来源：https://github.com/google/material-design-icons（``symbols/web/*/materialsymbolsoutlined``）")
+[void]$sb.AppendLine("- 许可证：Apache-2.0，https://www.apache.org/licenses/LICENSE-2.0")
+[void]$sb.AppendLine('- 使用范围：`assets/icons/ui/` 下全部 19 个 SVG（`toolbar/*` 与 `status/*`）。仅去掉 `width`/`height`、给 `<path>` 补 `fill="currentColor"`，图形未做其他修改。')
+[void]$sb.AppendLine()
+[void]$sb.AppendLine("### 本项目自绘")
+[void]$sb.AppendLine()
+[void]$sb.AppendLine("- 范围：应用图标 ``assets/icons/app.ico`` / ``logo.svg`` / ``logo-small.svg`` / ``logo-512.png``，以及 README 头图 ``assets/hero.jpg``。")
+[void]$sb.AppendLine("- 许可：与项目本体一致，GPL-3.0-only。")
+[void]$sb.AppendLine()
+
 $out = Join-Path $root "THIRD-PARTY.md"
 # 统一为 LF（.gitattributes 要求），避免 CRLF 干扰
 $text = $sb.ToString() -replace "`r`n", "`n"

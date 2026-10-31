@@ -130,3 +130,18 @@ AirSnip 自身以 **GPL-3.0-only** 发布。以下是随程序一同分发的第
 - Unicode-3.0: https://www.unicode.org/license.txt
 - IJG: https://www.ijg.org/
 - ISC: https://opensource.org/license/isc-license-txt
+## 图标与美术资源
+
+界面图标位于 `assets/icons/ui/`，统一取自 **Material Symbols**（Apache-2.0）；应用图标与 README 头图为项目自绘。两类资源均与 GPL-3.0-only 兼容。
+
+### Material Symbols（Apache-2.0）
+
+- 来源：https://github.com/google/material-design-icons（`symbols/web/*/materialsymbolsoutlined`）
+- 许可证：Apache-2.0，https://www.apache.org/licenses/LICENSE-2.0
+- 使用范围：`assets/icons/ui/` 下全部 19 个 SVG（`toolbar/*` 与 `status/*`）。仅去掉 `width`/`height`、给 `<path>` 补 `fill="currentColor"`，图形未做其他修改。
+
+### 本项目自绘
+
+- 范围：应用图标 `assets/icons/app.ico` / `logo.svg` / `logo-small.svg` / `logo-512.png`，以及 README 头图 `assets/hero.jpg`。
+- 许可：与项目本体一致，GPL-3.0-only。
+

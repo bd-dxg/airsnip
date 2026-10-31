@@ -37,6 +37,9 @@ pub struct Palette {
     pub accent_soft: [u8; 4],
     /// 色块描边。
     pub swatch_border: [u8; 4],
+    /// 荧光笔工具按钮的图标色（RGB + 未激活时的 alpha）。
+    /// 荧光黄在浅色工具栏上几乎看不见，浅色主题需换成暗金。
+    pub highlight_ink: [u8; 4],
     /// 设置面板正文。
     pub text: [u8; 4],
     /// 设置面板次级文字（说明/描述）。
@@ -59,6 +62,8 @@ pub const DARK: Palette = Palette {
     accent: [26, 115, 232, 255],
     accent_soft: [26, 115, 232, 90],
     swatch_border: [0, 0, 0, 120],
+    // 深色工具栏上用荧光黄最贴近高亮效果
+    highlight_ink: [255, 230, 0, 160],
     text: [255, 255, 255, 235],
     text_dim: [150, 150, 150, 255],
     row_hover: [255, 255, 255, 18],
@@ -76,6 +81,8 @@ pub const LIGHT: Palette = Palette {
     accent: [26, 115, 232, 255],
     accent_soft: [26, 115, 232, 40],
     swatch_border: [0, 0, 0, 60],
+    // 浅底上用暗金：纯荧光黄（#FFE600）在 #F8F8F8 上对比度不足，看不清
+    highlight_ink: [166, 124, 0, 220],
     text: [40, 40, 40, 255],
     text_dim: [120, 120, 120, 255],
     row_hover: [0, 0, 0, 10],

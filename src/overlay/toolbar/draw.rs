@@ -15,9 +15,6 @@ use crate::theme::Palette;
 
 use super::label::{LABEL_SIZE, centered_text, divider, fit_name, left_text};
 
-/// 高亮工具图标的固定色（荧光黄，与色板解耦；见 `assets/icons/ui/README.md` 的颜色白名单）。
-const HIGHLIGHT: [u8; 3] = [255, 230, 0];
-
 /// 绘制工具栏到像素图。
 pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
     rounded_rect(pixmap, bar.rect, 7.0, p.bg, Some(p.border));
@@ -48,8 +45,9 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
                 }
                 let color = if tool == Tool::Highlight {
-                    // 高亮固定荧光黄（激活时更浓）
-                    [HIGHLIGHT[0], HIGHLIGHT[1], HIGHLIGHT[2], if active { 235 } else { 160 }]
+                    // 荧光笔图标：颜色跟主题（浅色主题用暗金，否则看不清楚），激活时更浓
+                    let c = p.highlight_ink;
+                    [c[0], c[1], c[2], if active { 255 } else { c[3] }]
                 } else if active {
                     p.icon
                 } else {

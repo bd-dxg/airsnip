@@ -28,8 +28,7 @@ fn glyphs() -> &'static [svg::SvgIcon] {
 /// 字号加减号紧贴字号数字，需比标准活动区再小一号。
 fn optical_scale(icon: Icon) -> f32 {
     match icon {
-        Icon::Fill => 0.95,
-        Icon::Minus | Icon::Plus => 0.78,
+        Icon::Save => 0.92,
         _ => 1.0,
     }
 }
@@ -93,14 +92,15 @@ mod tests {
     }
 
     /// 视觉重量守门：墨水覆盖率过低会看不清，过高会盖过邻居。
-    /// 实测区间约 8%（虚线矩形）～ 29%（实心油漆桶），留出余量。
+    /// 实测区间约 9%（减号）～46%（Phosphor 带背景框的 text）——Phosphor fill 系列
+    /// 天然比早期手绘图标实心，故上限放到 48%。
     #[test]
     fn icon_weight_is_balanced() {
         for &icon in Icon::ALL {
             let (ink, _) = render(icon, 26);
             assert!(
-                (0.05..=0.45).contains(&ink),
-                "{icon:?} 墨水覆盖率 {ink:.3} 超出 5%～45%"
+                (0.05..=0.48).contains(&ink),
+                "{icon:?} 墨水覆盖率 {ink:.3} 超出 5%～48%"
             );
         }
     }
