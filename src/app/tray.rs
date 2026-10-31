@@ -3,7 +3,7 @@
 //! 右键菜单为自绘弹出窗口（见 `popmenu`）：无边框 + 阴影、单击选中 / 双击执行，
 //! 颜色跟随主题调色板（系统原生菜单固定跟随 Windows 主题，深色设置下仍白底且带边框）。
 
-use windows::Win32::Foundation::{LPARAM, WPARAM};
+use windows::Win32::Foundation::{GetLastError, LPARAM, WPARAM};
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
@@ -17,16 +17,29 @@ use std::sync::OnceLock;
 /// `TaskbarCreated` 广播消息 ID（惰性注册，会话内全局唯一）。
 static TASKBAR_CREATED: OnceLock<u32> = OnceLock::new();
 
+/// 托盘图标补加定时器 ID（`WM_TIMER` 里按它识别，SYS-1）。
+pub(super) const TIMER_TRAY_RETRY: usize = 0x7A01;
+/// 补加次数上限与间隔：explorer 刚启动时通知区可能未就绪，NIM_ADD 会失败。
+/// 5 × 1s = 5s，低配机 explorer 重建通知区也能赶上。
+const TRAY_RETRY_MAX: u8 = 5;
+const TRAY_RETRY_MS: u32 = 1000;
+
+/// `TaskbarCreated` 注册消息 ID（0 表示注册失败）。
+/// 同时供 `wndproc` 用 `ChangeWindowMessageFilterEx` 放行 UIPI 拦截。
+pub fn taskbar_created_message() -> u32 {
+    *TASKBAR_CREATED.get_or_init(|| unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) })
+}
+
 /// 是否为 `TaskbarCreated` 广播：explorer 启动或重启后任务栏通知区重建。
 /// 开机自启早于 explorer 就绪时首次 `NIM_ADD` 会失败且不报错，收到该广播时补加图标（SYS-1）。
 pub fn is_taskbar_created(msg: u32) -> bool {
-    let id = *TASKBAR_CREATED.get_or_init(|| unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) });
+    let id = taskbar_created_message();
     id != 0 && msg == id
 }
 
 impl App {
-    /// 添加托盘图标（SYS-1）。
-    pub fn init_tray(&self) {
+    /// 添加托盘图标（SYS-1），返回是否成功。私有：外部一律走 `ensure_tray` / `restore_tray`。
+    fn init_tray(&self) -> bool {
         let nid = NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
             hWnd: self.hwnd,
@@ -37,9 +50,38 @@ impl App {
             szTip: wide_array("jietu 截图工具"),
             ..Default::default()
         };
-        unsafe {
-            let _ = Shell_NotifyIconW(NIM_ADD, &nid);
+        let ok = unsafe { Shell_NotifyIconW(NIM_ADD, &nid) }.as_bool();
+        if !ok && std::env::var_os("JIETU_DEBUG").is_some() {
+            eprintln!("[jietu] 托盘 NIM_ADD 失败，错误码 {:?}", unsafe {
+                GetLastError()
+            });
         }
+        ok
+    }
+
+    /// 确保托盘图标存在（SYS-1）：失败时用定时器补加，成功则停掉定时器。
+    /// 首次启动、explorer 重启（`TaskbarCreated`）与休眠唤醒（`WM_POWERBROADCAST`）都走这里。
+    pub fn ensure_tray(&mut self) {
+        if self.init_tray() {
+            self.tray_retry = 0;
+            unsafe {
+                let _ = KillTimer(Some(self.hwnd), TIMER_TRAY_RETRY);
+            }
+            return;
+        }
+        if self.tray_retry >= TRAY_RETRY_MAX {
+            return;
+        }
+        self.tray_retry += 1;
+        unsafe { SetTimer(Some(self.hwnd), TIMER_TRAY_RETRY, TRAY_RETRY_MS, None) };
+    }
+
+    /// 通知区重建后重加托盘图标：清零重试计数再走 `ensure_tray`。
+    /// 供 `TaskbarCreated` 与休眠唤醒使用；定时器重试本身必须直接调 `ensure_tray`，
+    /// 否则计数被反复清零会无限重试。
+    pub fn restore_tray(&mut self) {
+        self.tray_retry = 0;
+        self.ensure_tray();
     }
 
     /// 移除托盘图标。

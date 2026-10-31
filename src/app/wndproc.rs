@@ -48,7 +48,30 @@ pub(super) fn create_message_window(hinstance: HINSTANCE) -> Result<HWND, String
             Ok(h) => h,
             Err(e) => return Err(format!("创建窗口失败：{e}")),
         };
+        // UIPI：本进程 requireAdministrator，explorer 是普通权限。不放行的话，
+        // explorer 重启后的 TaskbarCreated 广播与托盘点击的 WM_TRAY 都会被静默
+        // 丢弃（图标消失且点击无响应，见 ADR 0013）。
+        let taskbar_msg = tray::taskbar_created_message();
+        if taskbar_msg != 0 {
+            log_uipi_failure(
+                "TaskbarCreated",
+                ChangeWindowMessageFilterEx(hwnd, taskbar_msg, MSGFLT_ALLOW, None),
+            );
+        }
+        log_uipi_failure(
+            "WM_TRAY",
+            ChangeWindowMessageFilterEx(hwnd, WM_TRAY, MSGFLT_ALLOW, None),
+        );
         Ok(hwnd)
+    }
+}
+
+/// UIPI 放行失败只在调试时提示：失败不致命，仅退化为「收不到 explorer 的低权限消息」。
+fn log_uipi_failure(name: &str, result: windows::core::Result<()>) {
+    if let Err(e) = result {
+        if std::env::var_os("JIETU_DEBUG").is_some() {
+            eprintln!("[jietu] UIPI 放行 {name} 失败：{e:?}");
+        }
     }
 }
 
@@ -56,11 +79,34 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     // explorer 启动/重启后任务栏通知区重建：重新添加托盘图标（开机自启早于 explorer 就绪时）。
     if tray::is_taskbar_created(msg) {
         if let Some(app) = app_from(hwnd) {
-            app.init_tray();
+            app.restore_tray();
         }
         return LRESULT(0);
     }
     match msg {
+        WM_TIMER if wparam.0 == tray::TIMER_TRAY_RETRY => {
+            // 托盘图标补加重试：explorer 通知区就绪前 NIM_ADD 会失败。
+            // 这里不能走 restore_tray：计数被清零会变成无限重试。
+            if let Some(app) = app_from(hwnd) {
+                app.ensure_tray();
+            }
+            LRESULT(0)
+        }
+        WM_POWERBROADCAST => {
+            // 休眠唤醒后通知区可能重建：explorer 未重启时不会有 TaskbarCreated
+            let event = wparam.0 as u32;
+            if matches!(
+                event,
+                PBT_APMRESUMEAUTOMATIC | PBT_APMRESUMESUSPEND | PBT_APMRESUMECRITICAL
+            ) {
+                if let Some(app) = app_from(hwnd) {
+                    app.restore_tray();
+                }
+                LRESULT(1) // TRUE：已处理
+            } else {
+                unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+            }
+        }
         WM_DESTROY => {
             unsafe { PostQuitMessage(0) };
             LRESULT(0)

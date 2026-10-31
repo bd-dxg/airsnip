@@ -85,6 +85,8 @@ pub struct App {
     pub hinstance: HINSTANCE,
     /// 设置面板是否已打开（防托盘菜单重入，SYS-3）。
     pub settings_open: bool,
+    /// 托盘图标补加重试次数（explorer 未就绪时用定时器重试，SYS-1）。
+    pub tray_retry: u8,
 }
 
 /// 入口：单实例检查 → 创建消息窗口 → 托盘 / 热键 → 消息循环。
@@ -111,17 +113,20 @@ pub fn run() -> i32 {
         hwnd,
         hinstance,
         settings_open: false,
+        tray_retry: 0,
     });
-    app.init_tray();
+    // 先存窗口用户数据：wndproc 通过它访问 App，而 ensure_tray / register_hotkeys
+    // 都可能触发消息（如 explorer 刚就绪时的 TaskbarCreated），早于此刻会丢图标。
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, &mut *app as *mut App as isize);
+    }
+    app.ensure_tray();
     app.maybe_warn_no_modifier_clash();
     app.register_hotkeys();
     // 贴图内边框快捷键（M2b，非全局热键：仅贴图窗口聚焦时生效）
     crate::pin::set_border_key(app.config.hotkey.border_key, app.config.hotkey.border_modifiers);
 
-    // 存入窗口用户数据，wndproc 通过它访问 App。
     unsafe {
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, &mut *app as *mut App as isize);
-
         let mut msg = MSG::default();
         loop {
             let ret = GetMessageW(&mut msg, None, 0, 0);
