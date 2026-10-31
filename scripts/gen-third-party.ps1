@@ -56,7 +56,7 @@ foreach ($lic in @(
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("### 本项目自绘")
 [void]$sb.AppendLine()
-[void]$sb.AppendLine("- 范围：应用图标 ``assets/icons/app.ico`` / ``logo.svg`` / ``logo-small.svg`` / ``logo-512.png``，以及 README 头图 ``assets/hero.jpg``。")
+[void]$sb.AppendLine("- 范围：应用图标 ``assets/icons/app.ico`` / ``logo.svg`` / ``logo-small.svg`` / ``logo-512.png``，以及 README 头图 ``assets/hero.webp``。")
 [void]$sb.AppendLine("- 许可：与项目本体一致，GPL-3.0-only。")
 [void]$sb.AppendLine()
 

@@ -142,6 +142,6 @@ AirSnip 自身以 **GPL-3.0-only** 发布。以下是随程序一同分发的第
 
 ### 本项目自绘
 
-- 范围：应用图标 `assets/icons/app.ico` / `logo.svg` / `logo-small.svg` / `logo-512.png`，以及 README 头图 `assets/hero.jpg`。
+- 范围：应用图标 `assets/icons/app.ico` / `logo.svg` / `logo-small.svg` / `logo-512.png`，以及 README 头图 `assets/hero.webp`。
 - 许可：与项目本体一致，GPL-3.0-only。
 
