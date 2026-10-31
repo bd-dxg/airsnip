@@ -1,15 +1,17 @@
-# jietu 开发指南
+# AirSnip（轻截）开发指南
 
 ## 项目概览
 
 轻量原生截图与标注工具（Windows 11，Rust + windows-rs，纯 CPU 渲染），面向无独显迷你主机。目标：常驻 ≈0 开销、触发即用、框选/箭头/文本/高斯模糊/高亮标注、长截图、贴图。
+
+软件名 **AirSnip（轻截）**：展示层用 `AirSnip` / `AirSnip 轻截`，技术标识（crate、exe、仓库、配置目录、任务计划、窗口类、文件名前缀）一律小写 `airsnip`。v0.5.0 之前叫 `jietu`，改名决策与存量影响见 `docs/adr/0014-rename-to-airsnip.md`。
 
 完整需求见 `screenshot-tool-PRD.md`，架构决策见 `docs/adr/`。
 
 ## 项目状态
 
 - 当前处于 **M5 打磨进行中**：M0–M4 与 M5a 全部交付并合并（阶段 A 保存 PR #24、阶段 B 对象二次编辑 PR #26、阶段 B′ 交互打磨 PR #27、阶段 C 文本字体 PR #29），`main` 已合并 PR #32–#45（release 版黑窗修复、设置窗口比例与图标、v0.3.1/v0.3.2/v0.4.0 发布、开机自启托盘图标消失修复 + `WM_SETTINGCHANGE` 指针加固、`app/mod.rs` 拆分、长截图改纯手动滚动 + 拼接预览 + 输入法屏蔽、保存对话框记住上次目录、界面图标统一、圆角内部控制柄 + 扩展到四类），工作区干净。M5a 交付要点：另存为对话框（PNG / JPEG / WebP 无损 + 文件名模板）、选中对象包围框与八向手柄 + `Shift` 约束（`overlay/objedit/`、`editor/transform.rs`）、方向键微调（1px / `Shift` 5px）、系统字体枚举 + 工具栏第二行字体面板（`render::fonts`、`overlay::font`、`overlay::toolbar::fontlist`）；决策见 `docs/adr/0007-drop-delete-and-layering.md`、`0008-font-picker.md`、`0010-radius-handle.md`、`0011-corner-all-kinds.md`；`cargo test` 186 项绿。
-- M5 打磨进度：✅ 许可证合规（`deny.toml` + `cargo deny check` 四类全绿；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 生成；设置面板「关于」页含项目地址、微信赞赏码（`assets/reward-code.png` 编译期嵌入）与第三方声明入口）；✅ 性能剖析（`docs/perf-m5.md`：热键→可见 124ms、交互 4.6ms/帧、待机 0% CPU / 1.2MB，全部红线达标；埋点 `src/perf.rs`，采集 `scripts/perf-capture.ps1` + `scripts/perf.ps1`）；✅ 打包分发（`scripts/package.ps1` → `dist\jietu-v0.5.0-win-x64.zip`，exe 1.08MB / zip 0.62MB，图标 16–256 八尺寸）；⬜ 多屏混合 DPI 测试（**当前无多屏环境，暂跳**）。
+- M5 打磨进度：✅ 许可证合规（`deny.toml` + `cargo deny check` 四类全绿；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 生成；设置面板「关于」页含项目地址、微信赞赏码（`assets/reward-code.png` 编译期嵌入）与第三方声明入口）；✅ 性能剖析（`docs/perf-m5.md`：热键→可见 124ms、交互 4.6ms/帧、待机 0% CPU / 1.2MB，全部红线达标；埋点 `src/perf.rs`，采集 `scripts/perf-capture.ps1` + `scripts/perf.ps1`）；✅ 打包分发（`scripts/package.ps1` → `dist\airsnip-v0.5.0-win-x64.zip`，exe 1.08MB / zip 0.62MB，图标 16–256 八尺寸）；⬜ 多屏混合 DPI 测试（**当前无多屏环境，暂跳**）。
 - 界面图标统一（ADR 0009）：覆盖层工具栏与长截图状态条的图标改为 `assets/icons/ui/` 下的 SVG 资源（`render/icon/` 解析 + 按包围盒归一化绘制），删掉 17 个手绘几何图标与重复实现；`overlay/shape.rs` 承接共用绘制小工具。规格与素材来源见 `assets/icons/ui/README.md`，视觉重量由 `render::icon` 的 4 项单测守门。**遗留**：外部图标集的许可证未登记，发布前须补 `THIRD-PARTY.md`。
 - 圆角改为对象上的内部控制柄（ADR 0010）：删掉工具栏二值「圆角」开关（`Action::ToggleRound` / `State.round` / `round.svg`），选中对象时在包围框内侧右上角显示一个白色小圆，朝中心拖增大、朝角拖减小，上限短边一半；新增自绘圆角光标（`overlay/cursor`）。圆角读写集中在 `editor/corner.rs`。**已扩展到四类**（`feat/corner-all-kinds`）：矩形 / 高亮 / 高斯模糊 / 聚光灯共用同一 `corner` 字段与手柄，三处渲染（高亮逐像素插值、模糊备份后按遮罩恢复、聚光恢复亮度）统一走 `render/mask.rs`；`corner == 0` 仍走原快速路径。
 - 长截图与输入法打磨（待验证）：自动滚动模式已移除（靠「连续静帧」判定到底会误判，拼接提前结束），改为纯手动滚动 + `Enter` 收尾；长截图键从硬编码 `S` 改为配置项 `hotkey.longshot_key`（默认 `S`，设置面板「快捷键」页可改并参与冲突检测）；截图覆盖层打开后禁用 IME，仅在文本输入时恢复，避免 `S`/回车等按键被输入法截走。
@@ -17,6 +19,7 @@
 - 已知问题记录：覆盖层线程曾因 `WM_DESTROY` 同步派发导致 `GetMessageW` 永久阻塞，每次截图泄漏一份全屏位图集合（每张 +57MB），已在 `wndproc.rs` 的 `WM_DESTROY` 分支加 `PostQuitMessage(0)` 修复；修复后截图退出常驻内存稳定在 ~24MB（debug，代码页 + 堆缓存）。
 - 已知问题记录（已修）：开机自启后托盘图标消失的根因是 `theme::is_theme_change` 把 `WM_SETTINGCHANGE` 的 `lParam` 无条件当宽字符串读（`PCWSTR::to_string` → `wcslen`），登录阶段系统/第三方广播 `lParam = 0` 时 `wcslen(NULL)` 访问冲突（`0xC0000005`，`ucrtbase.dll+0x7088f`）直接杀掉常驻进程 —— 任务计划本身是成功的。已改为 `VirtualQuery` 校验内存可读性 + 区域内限长读取（不再走 `wcslen`，垃圾指针与无终止符字符串均安全返回 false），并补 `TaskbarCreated` 广播兜底（explorer 就绪/重启后重新 `NIM_ADD`，见 `app::tray::is_taskbar_created`）。
 - 开发由 AI 驱动，本文件是进入此仓库的 agent 的上下文。
+- 改名 AirSnip（ADR 0014，v0.5.0 之后）：`jietu` → `airsnip` 全量替换 32 个文件 / 86 处，含 crate 名、exe、仓库地址、配置目录 `%APPDATA%\airsnip`、任务计划名、单实例 mutex、窗口类、保存目录 `图片\airsnip`、文件名模板、环境变量 `AIRSNIP_TIMING` / `AIRSNIP_DEBUG`。**未做存量迁移**：升级后需手动删旧任务计划（`schtasks /delete /tn jietu /f`，需管理员）、退出旧版 exe（mutex 已改名，新旧可并存抢热键）、重设一次设置；旧截图留在 `图片\jietu`。`scripts/perf-capture.ps1` 依赖窗口类名与 `[airsnip]` 日志前缀，脚本须与程序同版本。
 
 ## 发布前待办（下个版本收尾）
 
@@ -40,7 +43,7 @@
 - 测试：`cargo test`（当前 186 个：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量与字体（粗斜体渲染、族间测量、未知族名回退）/系统字体枚举/长截图拼接/WebP/变换与手柄/光标映射/布局/字体面板/设置面板布局与 DPI 缩放/设置变更消息内存校验/图标 SVG 解析与视觉重量/圆角读写与手柄/圆角遮罩覆盖率与回贴）
 - 格式化检查：`cargo fmt --check`（提交前必须通过）
 - 性能采集：`scripts/perf-capture.ps1`（热键延迟 + 帧耗时，需管理员）与 `scripts/perf.ps1`（待机 CPU/内存）；报告见 `docs/perf-m5.md`
-- 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标 → 输出 `dist\jietu-v{版本}-win-x64.zip`）
+- 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标 → 输出 `dist\airsnip-v{版本}-win-x64.zip`）
 - 许可证与依赖检查：`cargo deny check`（配置在 `deny.toml`；依赖变更后重跑 `scripts/gen-third-party.ps1` 更新 `THIRD-PARTY.md`）
 
 ## 开发流程（AI 驱动约定）

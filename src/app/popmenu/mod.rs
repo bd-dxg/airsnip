@@ -19,7 +19,7 @@ use windows::core::{PCWSTR, w};
 
 use crate::overlay::surface::create_dib_surface;
 
-pub(super) const WINDOW_CLASS: PCWSTR = w!("jietu.popmenu");
+pub(super) const WINDOW_CLASS: PCWSTR = w!("airsnip.popmenu");
 /// 单位（未缩放）行高。
 pub(super) const ITEM_H: i32 = 34;
 /// 文字左右内边距。

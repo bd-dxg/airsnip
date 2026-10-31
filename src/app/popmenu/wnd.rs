@@ -28,7 +28,7 @@ pub(super) fn create_window(owner: HWND, x: i32, y: i32, w: i32, h: i32) -> Resu
         let hwnd = CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
             WINDOW_CLASS,
-            w!("jietu.menu"),
+            w!("airsnip.menu"),
             WS_POPUP,
             x,
             y,

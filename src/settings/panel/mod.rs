@@ -28,7 +28,7 @@ use crate::theme::{self, Palette};
 
 use controls::{RowId, Section, W};
 
-const WINDOW_CLASS: PCWSTR = w!("jietu.settings");
+const WINDOW_CLASS: PCWSTR = w!("airsnip.settings");
 
 /// 面板运行时状态。
 pub struct Panel {

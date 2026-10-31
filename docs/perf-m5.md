@@ -19,7 +19,7 @@
 - `perf-capture.ps1`：启动程序 → 模拟 `WM_HOTKEY(101)` 触发 5 次截图 → 模拟框选与 20 次鼠标移动（产生多帧脏区重绘）→ `Esc` 退出 → 解析日志。全程无人工干预。
 - `perf.ps1`：采样待机 CPU（`TotalProcessorTime` 增量）与 Private Working Set（性能计数器）。
 
-埋点在 `src/perf.rs`，仅在 `JIETU_TIMING=1` 时记录，常态零开销（一次 `OnceLock` 读）。
+埋点在 `src/perf.rs`，仅在 `AIRSNIP_TIMING=1` 时记录，常态零开销（一次 `OnceLock` 读）。
 
 ## 结果
 
@@ -66,7 +66,7 @@
 
 ```powershell
 # 管理员 PowerShell（release 版 manifest 要求提权）
-$env:JIETU_TIMING = "1"
+$env:AIRSNIP_TIMING = "1"
 .\scripts\perf-capture.ps1 -Rounds 5     # 热键延迟 + 帧耗时
 .\scripts\perf.ps1 -Seconds 10           # 待机 CPU / 内存（需程序在运行）
 ```

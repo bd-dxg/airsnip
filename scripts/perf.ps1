@@ -5,9 +5,9 @@
 param([int]$Seconds = 5)
 
 $ErrorActionPreference = "Stop"
-$p = Get-Process jietu -ErrorAction SilentlyContinue | Select-Object -First 1
+$p = Get-Process airsnip -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $p) {
-    Write-Host "未找到 jietu 进程：请先启动程序（cargo run 或 release 版）" -ForegroundColor Yellow
+    Write-Host "未找到 AirSnip 进程：请先启动程序（cargo run 或 release 版）" -ForegroundColor Yellow
     exit 1
 }
 

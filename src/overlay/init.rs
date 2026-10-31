@@ -43,7 +43,7 @@ impl Overlay {
         let (mem_dc, dib_bmp, dib_bits) = surface::create_dib_surface(w, h)?;
         if timing {
             eprintln!(
-                "[jietu] 初始化：原图 clone {t_clone1:?}，暗化 {:?}，暗图 clone {:?}，DIB {:?}",
+                "[airsnip] 初始化：原图 clone {t_clone1:?}，暗化 {:?}，暗图 clone {:?}，DIB {:?}",
                 t_dim - t_clone1,
                 t_clone2 - t_dim,
                 t_init.elapsed() - t_clone2

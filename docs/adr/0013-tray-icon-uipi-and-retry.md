@@ -11,7 +11,7 @@
 
 - **Decision**:
   1. **创建窗口后立即放行 UIPI**（`wndproc::create_message_window`）：`ChangeWindowMessageFilterEx(hwnd, TaskbarCreated, MSGFLT_ALLOW, None)` 与 `ChangeWindowMessageFilterEx(hwnd, WM_TRAY, MSGFLT_ALLOW, None)`。两条都要，缺第一条图标不恢复，缺第二条点击无响应。
-  2. **`init_tray` 返回成功与否**，不再吞掉 `Shell_NotifyIconW` 的结果；`JIETU_DEBUG` 下打印 `GetLastError`。
+  2. **`init_tray` 返回成功与否**，不再吞掉 `Shell_NotifyIconW` 的结果；`AIRSNIP_DEBUG` 下打印 `GetLastError`。
   3. **自愈重试**：新增 `App::ensure_tray()`，失败时 `SetTimer(TIMER_TRAY_RETRY, 500ms)` 补加，上限 5 次，成功即 `KillTimer` 并清零计数。首次启动、`TaskbarCreated`、休眠唤醒三条路径统一走它。
   4. **补 `WM_POWERBROADCAST`**：`PBT_APMRESUMEAUTOMATIC` / `PBT_APMRESUMESUSPEND` 时重新 `ensure_tray()`。休眠唤醒会重建通知区但**不重启 explorer**，不会触发 `TaskbarCreated`，必须单独处理。
   5. **调整初始化顺序**：`SetWindowLongPtrW(GWLP_USERDATA)` 提到 `ensure_tray()` 与 `register_hotkeys()` 之前，消除「窗口期消息到达却取不到 `App`」的窗口。

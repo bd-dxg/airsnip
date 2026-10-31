@@ -1,8 +1,8 @@
 [package]
-name = "jietu"
+name = "airsnip"
 version = "0.5.0"
 edition = "2024"
-description = "轻量原生截图与标注工具（Windows，纯 CPU 渲染）"
+description = "AirSnip 轻截：轻量原生截图与标注工具（Windows，纯 CPU 渲染）"
 license = "GPL-3.0-only"
 
 [profile.release]

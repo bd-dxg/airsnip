@@ -1,11 +1,11 @@
-# jietu
+# AirSnip（轻截）
 
 **1 MB 的 Windows 截图标注工具。** 常驻内存 1.2 MB、待机 0% CPU、按热键 0.12 秒出画面——
 标注、二次编辑、长截图、贴图、多格式另存，功能一样不少。
 
 > 纯 CPU 渲染，不依赖 GPU、不套 Electron、不装运行时。解压即用的绿色单文件，在核显迷你主机、虚拟机、远程桌面里同样流畅。
 
-![jietu 截图覆盖层：冻结屏幕、框选区域、底部标注工具栏](assets/hero.jpg)
+![AirSnip 截图覆盖层：冻结屏幕、框选区域、底部标注工具栏](assets/hero.jpg)
 
 *按 `F1` 后的样子：屏幕冻结、框选任意区域，底部一行就是全部标注工具。*
 
@@ -23,7 +23,7 @@
 > 截图会话期间会按屏幕大小临时分配位图（1440p 约 15 MB），退出覆盖层立即释放——不截图时它几乎不占资源。
 > 数据来自真实目标机型（无独显）实测，方法与优化过程见 `docs/perf-m5.md`。
 
-**为什么能这么小：** 没有 Electron / WebView / .NET 运行时，界面与标注全部由 Rust 直接绘制（tiny-skia 矢量栅格化 + DirectWrite 文字），抓屏走 GDI BitBlt，常驻部分只做「等热键」一件事。不少同类工具自带运行时或基于 Electron，安装包在数十至上百 MB、常驻内存数百 MB 量级——jietu 把这两项都压到了 1 MB 量级。
+**为什么能这么小：** 没有 Electron / WebView / .NET 运行时，界面与标注全部由 Rust 直接绘制（tiny-skia 矢量栅格化 + DirectWrite 文字），抓屏走 GDI BitBlt，常驻部分只做「等热键」一件事。不少同类工具自带运行时或基于 Electron，安装包在数十至上百 MB、常驻内存数百 MB 量级——AirSnip 把这两项都压到了 1 MB 量级。
 
 ## 适合谁
 
@@ -61,7 +61,7 @@
 ### 输出
 - 剪贴板：`CF_DIB` + 延迟渲染 PNG，粘到微信 / 文档 / 聊天框都不失真
 - 另存为：PNG / JPEG / WebP（无损），弹出系统对话框自选路径与格式
-- 文件名模板：`jietu-20241231-235959` / 时间戳 / 仅日期；记住上次目录与格式，连拍不打断
+- 文件名模板：`airsnip-20241231-235959` / 时间戳 / 仅日期；记住上次目录与格式，连拍不打断
 
 ### 长截图
 - 以当前选区为视口，自己滚动页面、`Enter` 收尾，`Ctrl+Z` 可撤销最后一段
@@ -103,13 +103,19 @@
 
 ## 下载与使用
 
-1. 从 [Releases](https://github.com/bd-dxg/jietu/releases) 下载 `jietu-v*-win-x64.zip`，解压到任意目录（绿色单文件，无需安装）
-2. 双击 `jietu.exe`：程序**需要管理员权限**（否则无法覆盖管理员权限的窗口，见 ADR 0003），首次运行会弹 UAC，请选「是」
+1. 从 [Releases](https://github.com/bd-dxg/airsnip/releases) 下载 `airsnip-v*-win-x64.zip`，解压到任意目录（绿色单文件，无需安装）
+2. 双击 `airsnip.exe`：程序**需要管理员权限**（否则无法覆盖管理员权限的窗口，见 ADR 0003），首次运行会弹 UAC，请选「是」
 3. 启动后托盘常驻（无主窗口），按 `F1` 截图 / `F3` 贴图
 4. 托盘左键打开设置，右键为「设置 / 退出」
-5. 配置位置：`%APPDATA%\jietu\config.toml`
+5. 配置位置：`%APPDATA%\airsnip\config.toml`
 
 **首次运行提示**：exe 未做代码签名，Windows SmartScreen 可能提示「已保护你的电脑」——点「更多信息」→「仍要运行」。
+
+**从旧版 `jietu`（v0.5.0 及更早）升级**：本版改名为 AirSnip，**不做自动迁移**，请手动完成三件事——
+
+1. 删除旧的开机自启任务（管理员 PowerShell）：`schtasks /delete /tn jietu /f`
+2. 退出并删除旧版 `jietu.exe`：新旧版的单实例互不排斥，同时运行会抢同一组热键
+3. 设置需重设一次（新配置在 `%APPDATA%\airsnip\config.toml`）；旧截图仍在 `图片\jietu`，不会自动搬家
 
 ## 构建与开发
 
@@ -119,7 +125,7 @@ cargo build --release     # 发布版（manifest 要求管理员权限，单文�
 cargo test                # 单测（186 项）
 cargo fmt --check         # 格式化检查
 cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
-pwsh scripts/package.ps1  # 打包 dist\jietu-v{版本}-win-x64.zip
+pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip
 ```
 
 技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。当前版本 v0.5.0。

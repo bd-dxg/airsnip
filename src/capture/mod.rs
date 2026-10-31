@@ -184,7 +184,7 @@ pub fn capture_virtual_screen() -> Result<CapturedScreen, String> {
         };
 
         let _ = SelectObject(hdc_mem, hbmp.into());
-        let timing = std::env::var_os("JIETU_TIMING").is_some();
+        let timing = std::env::var_os("AIRSNIP_TIMING").is_some();
         let t_blt = std::time::Instant::now();
         if BitBlt(
             hdc_mem,
@@ -214,7 +214,7 @@ pub fn capture_virtual_screen() -> Result<CapturedScreen, String> {
         swap_rb_parallel(&mut rgba);
         let copy = t_copy.elapsed();
         if timing {
-            eprintln!("[jietu] BitBlt {blt:?}，拷贝+交换 {copy:?}");
+            eprintln!("[airsnip] BitBlt {blt:?}，拷贝+交换 {copy:?}");
         }
 
         let _ = DeleteObject(hbmp.into());
@@ -228,8 +228,8 @@ pub fn capture_virtual_screen() -> Result<CapturedScreen, String> {
             origin_y: vy,
             rgba,
         });
-        if std::env::var_os("JIETU_TIMING").is_some() {
-            eprintln!("[jietu] 抓屏耗时 {:?}", t0.elapsed());
+        if std::env::var_os("AIRSNIP_TIMING").is_some() {
+            eprintln!("[airsnip] 抓屏耗时 {:?}", t0.elapsed());
         }
         result
     }

@@ -1,4 +1,4 @@
-# 打包发布（M5）：构建 release → 校验图标/体积 → 输出 dist\jietu-v{版本}-win-x64.zip
+# 打包发布（M5）：构建 release → 校验图标/体积 → 输出 dist\airsnip-v{版本}-win-x64.zip
 # 用法：pwsh -File scripts/package.ps1            # 完整构建 + 打包
 #       pwsh -File scripts/package.ps1 -SkipBuild  # 复用已有 release 产物
 param([switch]$SkipBuild)
@@ -10,7 +10,7 @@ Set-Location $root
 $m = Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object -First 1
 if (-not $m) { throw "无法从 Cargo.toml 读取版本号" }
 $ver = $m.Matches[0].Groups[1].Value
-$name = "jietu-v$ver-win-x64"
+$name = "airsnip-v$ver-win-x64"
 Write-Host "版本：$ver"
 
 if (-not $SkipBuild) {
@@ -19,7 +19,7 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) { throw "cargo build --release 失败" }
 }
 
-$exe = Join-Path $root "target\release\jietu.exe"
+$exe = Join-Path $root "target\release\airsnip.exe"
 if (-not (Test-Path $exe)) { throw "找不到 $exe" }
 
 # 体积红线（PRD：≤5 MB）
@@ -56,4 +56,4 @@ Write-Host "产物：dist\$name.zip"
 Write-Host ("体积：{0:N2} MB" -f $zipMb)
 Write-Host "SHA256：$sha"
 Write-Host ""
-Write-Host "下一步：gh release create v$ver `"dist\$name.zip`" --title `"jietu v$ver`" --notes-file <说明文件>"
+Write-Host "下一步：gh release create v$ver `"dist\$name.zip`" --title `"AirSnip v$ver`" --notes-file <说明文件>"

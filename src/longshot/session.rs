@@ -90,7 +90,7 @@ impl Session {
     pub fn capture(&mut self) -> Result<Vec<u8>, String> {
         let frame = self.source.capture()?;
         self.frame_seq += 1;
-        if std::env::var_os("JIETU_DEBUG").is_some() {
+        if std::env::var_os("AIRSNIP_DEBUG").is_some() {
             // 简单哈希（异或逐 8 字节）+ 采样首像素，看每帧是否真在变。
             let mut h: u64 = 0;
             for c in frame.chunks_exact(8).step_by(97) {
@@ -100,12 +100,12 @@ impl Session {
             super::debug::log(&format!("capture#{} hash={h:016x}", self.frame_seq));
         }
         // 调试：导出首帧供目视核对抓取区域。
-        if !self.seeded && std::env::var_os("JIETU_DEBUG").is_some() {
+        if !self.seeded && std::env::var_os("AIRSNIP_DEBUG").is_some() {
             let size = tiny_skia::IntSize::from_wh(self.w, self.h);
             if let Some(size) = size
                 && let Some(px) = tiny_skia::Pixmap::from_vec(frame.clone(), size)
             {
-                let path = std::env::temp_dir().join("jietu-longshot-frame0.png");
+                let path = std::env::temp_dir().join("airsnip-longshot-frame0.png");
                 let _ = px.save_png(&path);
             }
         }

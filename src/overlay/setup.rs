@@ -12,7 +12,7 @@ use windows::core::{PCWSTR, w};
 use super::Overlay;
 use super::{cursor, wndproc};
 
-const WINDOW_CLASS: PCWSTR = w!("jietu.overlay");
+const WINDOW_CLASS: PCWSTR = w!("airsnip.overlay");
 
 impl Overlay {
     /// 注册窗口类并创建覆盖窗口。
@@ -36,7 +36,7 @@ impl Overlay {
                 // 否则窗口无输入焦点，WM_KEYDOWN/WM_HOTKEY 之外的键（如 Esc、回车）收不到（M3）。
                 WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
                 WINDOW_CLASS,
-                w!("jietu.overlay"),
+                w!("airsnip.overlay"),
                 WS_POPUP,
                 0,
                 0,
@@ -49,7 +49,7 @@ impl Overlay {
             )
             .map_err(|e| format!("创建覆盖层窗口失败：{e}"))?;
             if crate::perf::enabled() {
-                eprintln!("[jietu] 建窗：CreateWindowEx {:?}", t_reg.elapsed());
+                eprintln!("[airsnip] 建窗：CreateWindowEx {:?}", t_reg.elapsed());
             }
             Ok(hwnd)
         }
