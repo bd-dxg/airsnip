@@ -1,6 +1,6 @@
 # 界面图标（UI icons）
 
-覆盖层工具栏、长截图状态条使用的单色矢量图标。全部为**实心填充剪影（filled silhouette）**，
+覆盖层工具栏、长截图状态条使用的单色矢量图标。统一取自 **Material Symbols（outlined）**，
 运行时由 `src/render/icon/` 解析成 `tiny_skia::Path` 绘制，颜色由主题调色板注入。
 
 ## 目录
@@ -18,54 +18,76 @@ ui/
 
 | 项 | 要求 |
 |---|---|
-| viewBox | `0 0 1024 1024` |
+| viewBox | 保留素材原值（Material Symbols 为 `0 -960 960 960`，部分为 `0 0 24 24`）；渲染按 bbox 归一化，viewBox 只需自洽 |
 | 颜色 | 只用 `fill="currentColor"`，不写死色值 |
 | 元素 | 只允许 `<path>`（含 `fill-rule="evenodd"`） |
 | 禁止 | `<g>`、`transform`、`<mask>`、`<clipPath>`、渐变、`<style>`/class、`width`/`height` |
-| 网格 | 内容居中，bbox 建议 700–900 单位见方（渲染端按 bbox 归一化，但不统一会让视觉重量漂移） |
-| 笔画 | 框类笔画宽 **85**；线宽低于 **60** 会在 26px 下糊掉 |
-| 挖洞 | 用 `fill-rule="evenodd"`，或同 path 内反向 winding（顺时针外轮廓 + 逆时针内洞） |
+| 居中 | 内容居中，bbox 尽量接近正方形（不统一会让视觉重量漂移） |
+| 线宽 | 由素材决定；验收看墨水率，见下方「视觉重量」 |
 
-### 为什么是这些数字
+### 为什么不再限制网格与笔画数值
 
-工具栏按钮 26px（物理像素），图标活动区约 20px。1 个 CSS 像素 ≈ 40 个网格单位，
-因此 **60 单位 ≈ 1.5px** 是能稳定分辨的下限，85 单位 ≈ 2.1px 是框类笔画的基准。
+v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽由 Google 设计规范给定，
+不再需要项目自订的 1024 网格 / 85 笔画规则。渲染端只做一件事：按 bbox 归一化到
+按钮的 76% 活动区，因此**真正需要守住的是墨水率区间**（见下），而不是具体坐标。
 
 ## 来源
 
-| 文件 | 来源 |
-|---|---|
-| `toolbar/{fill,undo,redo,bold,italic,minus,plus}.svg` | 本项目自绘（原有手绘几何图标没有对应素材，按本文件规格生成） |
-| `toolbar/fill.svg` | 本项目自绘（油漆桶）：桶身梯形 + 桶沿 + 提手半圆环 + 漆滴 |
-| `toolbar/arrow.svg` | 本项目自绘（用户提供版本的笔画过粗，按反馈调细至墨水 28%） |
-| `toolbar/{rect,text,blur,glow,longshot,highlight,pin,copy,save}.svg` | 用户提供的图标集，仅清洗（去 `p-id`/`class`/DOCTYPE/写死色值；`copy` 删除一个孤立杂点 path） |
-| `status/{check,cross}.svg` | 同上 |
+全部取自 **Material Symbols（outlined）**，Apache-2.0，已在 `THIRD-PARTY.md` 登记。
+下载地址：`https://raw.githubusercontent.com/google/material-design-icons/master/symbols/web/{名称}/materialsymbolsoutlined/{名称}_24px.svg`
+清洗：仅去 `width`/`height`、给 `<path>` 补 `fill="currentColor"`，图形未改。
 
-用户提供的图标集**来源与授权待补**。入库前必须确认其许可证与 GPL-3.0-only 兼容，
-并在 `THIRD-PARTY.md` 登记。
+**唯一例外**：`highlight` 用 `format_ink_highlighter_fill1_24px.svg`（同目录的填充变体）。
+它的 outlined 版笔身是细线框，在 26px / 浅色主题下几乎消失（实测 20px 下只剩底线），
+填充变体才是可读的。其他图标保持 outlined。
+
+| 文件 | Material Symbols |
+|---|---|
+| `toolbar/rect.svg` | `crop_free` |
+| `toolbar/arrow.svg` | `arrow_outward` |
+| `toolbar/text.svg` | `text_fields` |
+| `toolbar/highlight.svg` | `format_ink_highlighter`（**fill1** 变体，见下） |
+| `toolbar/blur.svg` | `blur_on` |
+| `toolbar/glow.svg` | `flashlight_on` |
+| `toolbar/fill.svg` | `format_color_fill` |
+| `toolbar/undo.svg` / `redo.svg` | `undo` / `redo` |
+| `toolbar/pin.svg` | `push_pin` |
+| `toolbar/longshot.svg` | `unfold_more` |
+| `toolbar/copy.svg` | `content_copy` |
+| `toolbar/save.svg` | `save` |
+| `toolbar/bold.svg` / `italic.svg` | `format_bold` / `format_italic` |
+| `toolbar/minus.svg` / `plus.svg` | `remove` / `add` |
+| `status/check.svg` / `cross.svg` | `check` / `close` |
+
+历史：v0.6.0 之前这批图标来自 iconfont 上多个不同作者，**来源与授权无法确认**，已全部
+替换为 Material Symbols，避免与 GPL-3.0-only 冲突。新增图标请从同一套取，不要引入授权
+不明的素材（类似 iconfont / 图标聚合站的「免费商用」宣传语不构成许可证）。
 
 ## 视觉重量（实测）
 
 78px 归一化渲染、6% 内边距下的墨水覆盖率。`cargo test` 中的图标测试会校验该指标落在
-合理区间，防止后续新增图标视觉重量跑偏。
+合理区间（5%～48%），防止后续新增图标视觉重量跑偏。
 
 | 图标 | 墨水% | 图标 | 墨水% |
 |---|---|---|---|
-| rect | 11.1 ⚠️ | copy | 26.8 |
-| arrow | 28.3 | save | 29.2 |
-| text | 19.0 | bold | 31.1 |
-| highlight | 32.1 | italic | 25.3 |
-| blur | 12.8 ⚠️ | minus | 16.6 |
-| glow | 27.1 | plus | 27.6 |
-| fill | 40.5 | check | 14.9 |
-| cross | 24.4 | — | — |
-| undo / redo | 19.2 | pin | 23.1 |
-| longshot | 28.4 | | |
+| rect | 14.5 | copy | 25.5 |
+| arrow | 27.5 | save | 31.7 |
+| text | 20.0 | bold | 34.0 |
+| highlight | 27.0 | italic | 22.8 |
+| blur | 15.4 | minus | 9.9 |
+| glow | 20.9 | plus | 18.1 |
+| fill | 21.8 | check | 10.8 |
+| cross | 21.9 | pin | 14.7 |
+| undo / redo | 20.6 | longshot | 9.2 |
 
-⚠️ `rect`（虚线框 + 加号）与 `blur`（散点）在 26px 下笔画低于 1.5px，边缘会发灰。
-保留原样是因为它们是用户指定的素材；若后续反馈"看不清"，可换成本项目自绘的实心方框 /
-圆 + 粗弧环版本（见 git 历史 `feat/icon-unify` 分支早期提交）。
+全组落在 9.2%～34.0%，均在测试区间（5%～48%）内。个别图标用
+`render::icon::optical_scale` 微调（`save` 0.92：软盘 bbox 偏大，不缩会在 26px 下盖过邻居）。
 
-`fill`（油漆桶）是本项目自绘的实心剪影：桶身梯形 + 桶沿 + 提手半圆环 + 漆滴。
-因桶身全实心，墨水 40.5% 是整组最高，在 26px 下最抢眼。若想降到与邻居齐平
-（≈29%），把桶身改为粗边框梯形（`fill-rule="evenodd"`，边框 85）即可，素材结构不变。
+**验收要同时看深色与浅色主题**：线框图标在浅底上会显得更淡（实测 `highlight` 的
+outlined 版就是因此换成 fill1）。新增/替换图标后请在两种底色下各看一眼 26px 渲染。
+
+另外，`highlight` 是唯一**颜色跟主题走**的图标：工具栏按钮里它的图标色取
+`Palette::highlight_ink`（深色主题荧光黄 `#FFE600`，浅色主题暗金 `#A67C00`）。
+荧光黄在浅色工具栏背景上几乎看不见，不能写死。
+
+调整图标后要重跑 `cargo test render::icon` 并更新此表（数值可直接从测试输出抄）。

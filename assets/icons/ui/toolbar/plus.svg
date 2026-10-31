@@ -1,3 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
-  <path fill="currentColor" d="M265 447H759A65 65 0 0 1 824 512V512A65 65 0 0 1 759 577H265A65 65 0 0 1 200 512V512A65 65 0 0 1 265 447ZM512 200H512A65 65 0 0 1 577 265V759A65 65 0 0 1 512 824H512A65 65 0 0 1 447 759V265A65 65 0 0 1 512 200Z"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path fill="currentColor" d="M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z"/></svg>
