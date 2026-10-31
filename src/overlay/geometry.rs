@@ -2,7 +2,13 @@
 //! 矩形几何（CAP-2）：`SelRect` 与交集/并集/外扩等运算，供选区、脏区与工具栏共用。
 
 /// 信息文字高度（`text_rect` 与工具栏布局共用）。
-pub(super) const INFO_TEXT_H: i32 = 22;
+/// 字号 16px + 上下各 6px 内缩；工具栏单行是 34，两者不强求等高。
+pub(super) const INFO_TEXT_H: i32 = 28;
+/// 信息文字字号（DIP，`render::text` 的 `FontSpec::size`；`SetPixelsPerDip(1.0)` 下 1 DIP = 1 物理像素）。
+/// 原 `DEFAULT_GUI_FONT` 只有 11px，2560×1440 下偏小；22px 又太大。
+pub(super) const INFO_FONT_SIZE: f32 = 16.0;
+/// 信息文字相对信息块的左侧内缩。
+pub(super) const INFO_PAD_X: i32 = 6;
 /// 信息文字/工具栏与选区的间隔。
 pub(super) const INFO_OFFSET: i32 = 8;
 
@@ -96,16 +102,29 @@ pub(super) fn same_rect(a: Option<SelRect>, b: Option<SelRect>) -> bool {
     }
 }
 
+/// 信息文字是否放在选区下方（工具栏与文字共用同一决策，避免两者重叠）。
+///
+/// 默认沿用旧规则：选区上方容得下一个文字块就放上方，否则放下方。
+/// 唯一例外：文字在上方、但工具栏下方放不下又无法翻到文字之上时，把文字让到下方，
+/// 让工具栏贴屏幕顶部——否则两者会叠在一起（小屏 + 大选区 + 两行工具栏）。
+pub(super) fn info_text_below(sel: SelRect, screen_h: i32, toolbar_h: i32) -> bool {
+    if sel.y <= INFO_TEXT_H + INFO_OFFSET {
+        return true;
+    }
+    let bar_below_fits = sel.y + sel.h + INFO_OFFSET + toolbar_h + 4 <= screen_h;
+    let bar_above_text_fits = sel.y - INFO_TEXT_H - INFO_OFFSET - INFO_OFFSET - toolbar_h >= 2;
+    !(bar_below_fits || bar_above_text_fits)
+}
+
 /// 估算信息文本占位矩形（供脏区域与工具栏避让使用，宽度保守）。
-pub(super) fn text_rect(sel: SelRect, screen_w: i32) -> SelRect {
-    let len = format!("{} × {}   @({},{})", sel.w, sel.h, sel.x, sel.y)
-        .chars()
-        .count() as i32;
-    let tw = (len * 10 + 16).min(screen_w.max(0));
-    let ty = if sel.y > INFO_TEXT_H + INFO_OFFSET {
-        sel.y - INFO_TEXT_H - INFO_OFFSET
-    } else {
+pub(super) fn text_rect(sel: SelRect, screen_w: i32, screen_h: i32, toolbar_h: i32) -> SelRect {
+    let len = format!("{} × {}", sel.w, sel.h).chars().count() as i32;
+    // 16px Segoe UI Semibold 下「1173 × 801」实测 92px，按 10px/字符估仍偏保守。
+    let tw = (len * 10 + INFO_PAD_X * 2 + 4).min(screen_w.max(0));
+    let ty = if info_text_below(sel, screen_h, toolbar_h) {
         sel.y + sel.h + INFO_OFFSET
+    } else {
+        sel.y - INFO_TEXT_H - INFO_OFFSET
     };
     SelRect {
         x: sel.x.min((screen_w - tw - 8).max(4)).max(4),

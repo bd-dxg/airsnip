@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tiny_skia::Pixmap;
 
 use crate::editor::{PALETTE, Tool};
-use crate::overlay::geometry::{INFO_OFFSET, INFO_TEXT_H, SelRect};
+use crate::overlay::geometry::{INFO_OFFSET, INFO_TEXT_H, SelRect, info_text_below};
 use crate::theme::Palette;
 
 /// 第一行高度（工具 / 颜色 / 开关 / 输出按钮）。
@@ -176,17 +176,16 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool) -> Too
     let w = w1.max(w2);
     let h = if text_row { H + ROW_GAP + H2 } else { H };
     let x = sel.x.clamp(4, (screen_w - w - 4).max(4));
-    // 信息文字占位（见 overlay::text_rect）：与文字同侧时需再让出一个文字高度，避免重叠
-    let text_above = sel.y > INFO_TEXT_H + INFO_OFFSET;
-    let below = sel.y + sel.h + OFFSET + if text_above { 0 } else { INFO_TEXT_H };
+    // 信息文字占位（见 overlay::text_rect）：默认贴选区下方，与文字同侧时再让出一个文字高度；
+    // 下方塞不下就翻到上方，且避开文字块（见 geometry::info_text_below）。
+    let text_below = info_text_below(sel, screen_h, h);
+    let below = sel.y + sel.h + OFFSET + if text_below { INFO_TEXT_H } else { 0 };
     let y = if below + h + 4 <= screen_h {
         below
-    } else if text_above {
-        // 上方优先，但屏幕空间不足时允许贴到屏幕顶部（信息文字优先不重叠，
-        // 极端小屏 + 大选区下只能重叠；此处只保证不退到负坐标）
-        (sel.y - INFO_OFFSET - INFO_TEXT_H - OFFSET - h).max(2)
-    } else {
+    } else if text_below {
         (sel.y - OFFSET - h).max(2)
+    } else {
+        (sel.y - INFO_TEXT_H - INFO_OFFSET - OFFSET - h).max(2)
     };
     let first = SelRect { x, y, w: w1, h: H };
     let second = text_row.then(|| SelRect {
@@ -231,6 +230,21 @@ mod tests {
         SelRect { x, y, w, h }
     }
 
+    /// 工具栏默认贴在选区下方（上下都有空间时不能跑到上方）。
+    #[test]
+    fn toolbar_defaults_below_selection() {
+        let (vw, vh) = (2560, 1440);
+        for text_row in [false, true] {
+            for s in [sel(600, 500, 800, 400), sel(600, 60, 800, 400)] {
+                let bar = layout(s, vw, vh, text_row);
+                assert!(
+                    bar.rect.y >= s.y + s.h,
+                    "工具栏应在选区下方（text_row={text_row}, 选区 {s:?}）：{bar:?}"
+                );
+            }
+        }
+    }
+
     /// 工具栏不能与信息文字重叠，否则 GDI 文字会盖在工具栏上（见 overlay::text_rect）。
     #[test]
     fn toolbar_never_overlaps_info_text() {
@@ -244,7 +258,7 @@ mod tests {
         ];
         for s in cases {
             let bar = layout(s, vw, vh, false).rect;
-            let text = text_rect(s, vw);
+            let text = text_rect(s, vw, vh, bar.h);
             assert!(
                 intersect_rect(bar, text).is_none(),
                 "工具栏 {bar:?} 与信息文字 {text:?} 重叠（选区 {s:?}）"
@@ -267,7 +281,7 @@ mod tests {
         ];
         for s in cases {
             let bar = layout(s, vw, vh, true);
-            let text = text_rect(s, vw);
+            let text = text_rect(s, vw, vh, bar.rect.h);
             assert!(
                 intersect_rect(bar.rect, text).is_none(),
                 "工具栏 {bar:?} 与信息文字 {text:?} 重叠"

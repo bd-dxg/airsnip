@@ -10,7 +10,7 @@
 
 ## 项目状态
 
-- 当前处于 **M5 打磨进行中**：M0–M4 与 M5a 全部交付并合并（阶段 A 保存 PR #24、阶段 B 对象二次编辑 PR #26、阶段 B′ 交互打磨 PR #27、阶段 C 文本字体 PR #29），`main` 已合并 PR #32–#45（release 版黑窗修复、设置窗口比例与图标、v0.3.1/v0.3.2/v0.4.0 发布、开机自启托盘图标消失修复 + `WM_SETTINGCHANGE` 指针加固、`app/mod.rs` 拆分、长截图改纯手动滚动 + 拼接预览 + 输入法屏蔽、保存对话框记住上次目录、界面图标统一、圆角内部控制柄 + 扩展到四类），工作区干净。M5a 交付要点：另存为对话框（PNG / JPEG / WebP 无损 + 文件名模板）、选中对象包围框与八向手柄 + `Shift` 约束（`overlay/objedit/`、`editor/transform.rs`）、方向键微调（1px / `Shift` 5px）、系统字体枚举 + 工具栏第二行字体面板（`render::fonts`、`overlay::font`、`overlay::toolbar::fontlist`）；决策见 `docs/adr/0007-drop-delete-and-layering.md`、`0008-font-picker.md`、`0010-radius-handle.md`、`0011-corner-all-kinds.md`；`cargo test` 186 项绿。
+- 当前处于 **M5 打磨进行中**：M0–M4 与 M5a 全部交付并合并（阶段 A 保存 PR #24、阶段 B 对象二次编辑 PR #26、阶段 B′ 交互打磨 PR #27、阶段 C 文本字体 PR #29），`main` 已合并 PR #32–#49（release 版黑窗修复、设置窗口比例与图标、v0.3.1/v0.3.2/v0.4.0 发布、开机自启托盘图标消失修复 + `WM_SETTINGCHANGE` 指针加固、`app/mod.rs` 拆分、长截图改纯手动滚动 + 拼接预览 + 输入法屏蔽、保存对话框记住上次目录、界面图标统一、圆角内部控制柄 + 扩展到四类、README 重写 + 头图、提权进程托盘图标自愈、改名 AirSnip + 新应用图标），工作区干净。M5a 交付要点：另存为对话框（PNG / JPEG / WebP 无损 + 文件名模板）、选中对象包围框与八向手柄 + `Shift` 约束（`overlay/objedit/`、`editor/transform.rs`）、方向键微调（1px / `Shift` 5px）、系统字体枚举 + 工具栏第二行字体面板（`render::fonts`、`overlay::font`、`overlay::toolbar::fontlist`）；决策见 `docs/adr/0007-drop-delete-and-layering.md`、`0008-font-picker.md`、`0010-radius-handle.md`、`0011-corner-all-kinds.md`；`cargo test` 186 项绿。
 - M5 打磨进度：✅ 许可证合规（`deny.toml` + `cargo deny check` 四类全绿；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 生成；设置面板「关于」页含项目地址、微信赞赏码（`assets/reward-code.png` 编译期嵌入）与第三方声明入口）；✅ 性能剖析（`docs/perf-m5.md`：热键→可见 124ms、交互 4.6ms/帧、待机 0% CPU / 1.2MB，全部红线达标；埋点 `src/perf.rs`，采集 `scripts/perf-capture.ps1` + `scripts/perf.ps1`）；✅ 打包分发（`scripts/package.ps1` → `dist\airsnip-v0.5.0-win-x64.zip`，exe 1.08MB / zip 0.62MB，图标 16–256 八尺寸）；⬜ 多屏混合 DPI 测试（**当前无多屏环境，暂跳**）。
 - 界面图标统一（ADR 0009）：覆盖层工具栏与长截图状态条的图标改为 `assets/icons/ui/` 下的 SVG 资源（`render/icon/` 解析 + 按包围盒归一化绘制），删掉 17 个手绘几何图标与重复实现；`overlay/shape.rs` 承接共用绘制小工具。规格与素材来源见 `assets/icons/ui/README.md`，视觉重量由 `render::icon` 的 4 项单测守门。**遗留**：外部图标集的许可证未登记，发布前须补 `THIRD-PARTY.md`。
 - 圆角改为对象上的内部控制柄（ADR 0010）：删掉工具栏二值「圆角」开关（`Action::ToggleRound` / `State.round` / `round.svg`），选中对象时在包围框内侧右上角显示一个白色小圆，朝中心拖增大、朝角拖减小，上限短边一半；新增自绘圆角光标（`overlay/cursor`）。圆角读写集中在 `editor/corner.rs`。**已扩展到四类**（`feat/corner-all-kinds`）：矩形 / 高亮 / 高斯模糊 / 聚光灯共用同一 `corner` 字段与手柄，三处渲染（高亮逐像素插值、模糊备份后按遮罩恢复、聚光恢复亮度）统一走 `render/mask.rs`；`corner == 0` 仍走原快速路径。
@@ -20,13 +20,11 @@
 - 已知问题记录（已修）：开机自启后托盘图标消失的根因是 `theme::is_theme_change` 把 `WM_SETTINGCHANGE` 的 `lParam` 无条件当宽字符串读（`PCWSTR::to_string` → `wcslen`），登录阶段系统/第三方广播 `lParam = 0` 时 `wcslen(NULL)` 访问冲突（`0xC0000005`，`ucrtbase.dll+0x7088f`）直接杀掉常驻进程 —— 任务计划本身是成功的。已改为 `VirtualQuery` 校验内存可读性 + 区域内限长读取（不再走 `wcslen`，垃圾指针与无终止符字符串均安全返回 false），并补 `TaskbarCreated` 广播兜底（explorer 就绪/重启后重新 `NIM_ADD`，见 `app::tray::is_taskbar_created`）。
 - 开发由 AI 驱动，本文件是进入此仓库的 agent 的上下文。
 - 改名 AirSnip（ADR 0014，v0.5.0 之后）：`jietu` → `airsnip` 全量替换 32 个文件 / 86 处，含 crate 名、exe、仓库地址、配置目录 `%APPDATA%\airsnip`、任务计划名、单实例 mutex、窗口类、保存目录 `图片\airsnip`、文件名模板、环境变量 `AIRSNIP_TIMING` / `AIRSNIP_DEBUG`。**未做存量迁移**：升级后需手动删旧任务计划（`schtasks /delete /tn jietu /f`，需管理员）、退出旧版 exe（mutex 已改名，新旧可并存抢热键）、重设一次设置；旧截图留在 `图片\jietu`。`scripts/perf-capture.ps1` 依赖窗口类名与 `[airsnip]` 日志前缀，脚本须与程序同版本。
-
-## 发布前待办（下个版本收尾）
-
-- **选区提示去掉坐标，只留「宽 × 高」**。现在框选时 HUD 显示 `1173 × 801   @(710,176)`，后半个坐标是虚拟桌面物理像素，普通用户看不懂、也容易被误认为是别的东西——下个版本发版前删掉 `@(x,y)`：
-  - `src/overlay/surface.rs:82` — `format!("{} × {}   @({},{})", sel.w, sel.h, sel.x, sel.y)` → `format!("{} × {}", sel.w, sel.h)`
-  - `src/overlay/geometry.rs:101` — `text_rect()` 里估算文本宽度的同一条格式串要一起改（脏区避让依赖这个估算）
-  - 需求侧：`screenshot-tool-PRD.md` 的 `CAP-2`「显示尺寸与坐标」改为「显示尺寸」
+- 选区提示只留「宽 × 高」+ 字体加大（`fix/hud-drop-coords`，v0.6.0 收尾）：
+  - 删掉 HUD 后半段的 `@(x,y)` —— 那是虚拟桌面物理像素，普通用户看不懂。`surface::draw_info_text` 与 `geometry::text_rect()` 两处格式串同步改为 `format!("{} × {}", sel.w, sel.h)`（后者用于估算文本宽度供脏区与工具栏避让），需求侧 `screenshot-tool-PRD.md` 的 `CAP-2` 同步改为「显示选区尺寸」。
+  - 字号从 `DEFAULT_GUI_FONT`（11px）提到 **16px 加粗**（`INFO_FONT_SIZE`），信息块高 `INFO_TEXT_H` 22 → 28。
+  - **不再用 GDI 文本**：原 `TextOutW` + 灰度抗锯齿在 16px 下 hinting 会把笔画吸到整像素，同一串数字里有的 1px 有的 2px（看起来粗细不均）；关 ClearType 避彩边后更明显。现改为走 `render::text`（DirectWrite 栅格化，与工具栏/标注文字同一套），画在 `display` Pixmap 上、随脏区一起 `present_region` 上传，`surface::draw_info_text` 不再接 `HDC`。
+  - 文字与工具栏的避让抽为 `geometry::info_text_below`（两处共用同一侧向决策），`text_rect` 增 `screen_h` / `toolbar_h` 参数；工具栏仍是**选区下方优先**，下方塞不下才翻到上方，并新增 `toolbar_defaults_below_selection` 测试守住该行为。
 
 ## 技术栈
 

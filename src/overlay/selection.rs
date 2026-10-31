@@ -7,7 +7,7 @@ use tiny_skia::{Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 use super::geometry::{SelRect, expand_rect, intersect_rect, same_rect, text_rect, union_rect};
 use super::objedit;
 use super::pick::draw_curve_handles;
-use super::surface::{blit_region, restore_region};
+use super::surface::{blit_region, draw_info_text, restore_region};
 use super::{textinput, toolbar};
 use crate::render;
 use crate::render::mask::FRect;
@@ -39,11 +39,12 @@ impl super::Overlay {
         let new_chrome = self.chrome_rect();
 
         let mut dirty: Option<SelRect> = None;
+        let bar_h = self.bar.as_ref().map(|b| b.rect.h).unwrap_or(0);
         for r in [
             old.map(|o| expand_rect(o, DIRTY_PAD)),
             new.map(|n| expand_rect(n, DIRTY_PAD)),
-            old.map(|o| text_rect(o, vw)),
-            new.map(|n| text_rect(n, vw)),
+            old.map(|o| text_rect(o, vw, vh, bar_h)),
+            new.map(|n| text_rect(n, vw, vh, bar_h)),
             old_chrome.map(|b| expand_rect(b, 2)),
             new_chrome.map(|b| expand_rect(b, 2)),
         ]
@@ -161,6 +162,13 @@ impl super::Overlay {
             let (family, ..) = self.font_state();
             let panel = self.font_list.clone().expect("已判定为 Some");
             toolbar::fontlist::render(&mut self.display, &panel, &family, self.palette);
+        }
+        // 6) 选区尺寸提示（HUD）：走 DirectWrite 栅格化，与工具栏文字同一套渲染
+        if let Some(sel) = self.selection {
+            let bar_h = self.bar.as_ref().map(|b| b.rect.h).unwrap_or(0);
+            if intersect_rect(text_rect(sel, w, h, bar_h), region).is_some() {
+                draw_info_text(&mut self.display, sel, w, h, bar_h);
+            }
         }
         self.present_region(region);
     }
