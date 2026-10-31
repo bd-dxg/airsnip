@@ -4,16 +4,16 @@
 
 use std::mem::size_of;
 
-use tiny_skia::Pixmap;
-use windows::Win32::Foundation::COLORREF;
+use tiny_skia::{Pixmap, Transform};
 use windows::Win32::Graphics::Gdi::{
-    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection, DEFAULT_GUI_FONT,
-    DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC, GetStockObject, HBITMAP, HDC, ReleaseDC, SRCCOPY, SelectObject,
-    SetBkMode, SetTextColor, TRANSPARENT, TextOutW,
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC,
+    DeleteObject, GetDC, HBITMAP, HDC, ReleaseDC, SRCCOPY, SelectObject,
 };
 
 use super::SelRect;
-use super::geometry::text_rect;
+use super::geometry::{INFO_FONT_SIZE, INFO_PAD_X, text_rect};
+use crate::editor::Point;
+use crate::render::text::{self as dwrite, FontSpec};
 
 impl Drop for super::Overlay {
     /// 释放上屏用 GDI 资源（DIB section 位图 + 内存 DC）。
@@ -63,25 +63,30 @@ impl super::Overlay {
                 return;
             }
             let _ = BitBlt(hdc, x0, y0, rw, rh, Some(self.mem_dc), x0, y0, SRCCOPY);
-            if let Some(sel) = self.selection {
-                draw_info_text(hdc, sel, w);
-            }
             let _ = ReleaseDC(Some(self.hwnd), hdc);
         }
     }
 }
 
-/// GDI 文本：显示选区尺寸（物理像素），位置由 text_rect 确定。
-pub(super) fn draw_info_text(hdc: HDC, sel: SelRect, screen_w: i32) {
-    let r = text_rect(sel, screen_w);
-    unsafe {
-        let font = GetStockObject(DEFAULT_GUI_FONT);
-        let _ = SelectObject(hdc, font);
-        let _ = SetBkMode(hdc, TRANSPARENT);
-        let _ = SetTextColor(hdc, COLORREF(0x00FFFFFF));
-        let text: Vec<u16> = format!("{} × {}", sel.w, sel.h).encode_utf16().collect();
-        let _ = TextOutW(hdc, r.x + 4, r.y + 4, &text);
-    }
+/// 选区尺寸提示（物理像素）：与工具栏文字走同一套 DirectWrite 栅格化。
+/// 位置由 `text_rect` 确定，字色纯白。
+pub(super) fn draw_info_text(pixmap: &mut Pixmap, sel: SelRect, screen_w: i32, screen_h: i32, toolbar_h: i32) {
+    let r = text_rect(sel, screen_w, screen_h, toolbar_h);
+    let text = format!("{} × {}", sel.w, sel.h);
+    // 字重加粗：16px 常规字重在暗底上偏细发灰，加粗后笔画更实且不刺眼。
+    let mut spec = FontSpec::new(INFO_FONT_SIZE);
+    spec.bold = true;
+    let (_, th) = dwrite::measure(&text, &spec);
+    let x = (r.x + INFO_PAD_X) as f32;
+    let y = r.y as f32 + (r.h as f32 - th) / 2.0;
+    dwrite::draw(
+        pixmap,
+        Point::new(x, y),
+        &text,
+        &spec,
+        [255, 255, 255, 255],
+        Transform::identity(),
+    );
 }
 
 /// 将 src 的 r 区域拷贝到 dst（原地回贴）。
@@ -227,31 +232,4 @@ pub(super) fn crop_pixmap(src: &Pixmap, r: SelRect) -> Option<Pixmap> {
             .copy_from_slice(&src.data()[off_src..off_src + w as usize * 4]);
     }
     Some(out)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use tiny_skia::Pixmap;
-
-    /// 测量热键到覆盖层可显示前的 CPU 耗时（抓屏 + Pixmap 构建 + 暗化）。
-    #[test]
-    fn capture_pipeline_timing() {
-        let t0 = std::time::Instant::now();
-        let screen = crate::capture::capture_virtual_screen().expect("抓屏失败");
-        let t1 = std::time::Instant::now();
-        let size = tiny_skia::IntSize::from_wh(screen.width, screen.height).unwrap();
-        let original = Pixmap::from_vec(screen.rgba, size).unwrap();
-        let t2 = std::time::Instant::now();
-        let mut dimmed = original.clone();
-        dim_pixmap(&mut dimmed, 255 - 120);
-        let t3 = std::time::Instant::now();
-        println!(
-            "抓屏 {:?} | 建 Pixmap {:?} | 暗化 {:?} | 合计 {:?}",
-            t1 - t0,
-            t2 - t1,
-            t3 - t2,
-            t3 - t0
-        );
-    }
 }
