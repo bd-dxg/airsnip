@@ -34,7 +34,7 @@ const MIN_H: i32 = 120;
 const PAD: i32 = 6;
 
 /// 窗口类名。
-const CLASS: windows::core::PCWSTR = w!("jietu.longshot.preview");
+const CLASS: windows::core::PCWSTR = w!("airsnip.longshot.preview");
 
 /// 预览窗。
 pub struct Preview {

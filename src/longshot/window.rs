@@ -111,7 +111,7 @@ pub fn run(
             lpfnWndProc: Some(wndproc),
             hInstance: hinstance,
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
-            lpszClassName: w!("jietu.longshot"),
+            lpszClassName: w!("airsnip.longshot"),
             ..Default::default()
         };
         let _ = RegisterClassW(&wc);
@@ -137,7 +137,7 @@ pub fn run(
             // WS_EX_LAYERED：UpdateLayeredWindow 提交带圆角透明的像素（与工具栏一致）；
             // WS_EX_NOACTIVATE：不抢焦点（手动模式下用户自行在目标页面滚动，状态条不抢焦点）。
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-            w!("jietu.longshot"),
+            w!("airsnip.longshot"),
             w!("长截图"),
             WS_POPUP,
             bx,

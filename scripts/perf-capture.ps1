@@ -1,12 +1,12 @@
-# 性能采集（M5）：启动 jietu → 模拟 F1 截图 + 拖框绘制多帧 → 解析 JIETU_TIMING 日志。
+# 性能采集（M5）：启动 AirSnip → 模拟 F1 截图 + 拖框绘制多帧 → 解析 AIRSNIP_TIMING 日志。
 # 用法（需与目标程序同权限；release 版要管理员）：
 #   pwsh -File scripts/perf-capture.ps1                     # 默认 release
-#   pwsh -File scripts/perf-capture.ps1 -Exe .\target\debug\jietu.exe -Rounds 3
+#   pwsh -File scripts/perf-capture.ps1 -Exe .\target\debug\airsnip.exe -Rounds 3
 # 结果对照 PRD §6：热键→覆盖层 ≤150ms(1080p)/≤250ms(4K)，交互 ≥60FPS（每帧 ≤16.7ms）。
 param(
-    [string]$Exe = ".\target\release\jietu.exe",
+    [string]$Exe = ".\target\release\airsnip.exe",
     [int]$Rounds = 5,
-    [string]$LogPath = "$env:TEMP\jietu-perf.log"
+    [string]$LogPath = "$env:TEMP\airsnip-perf.log"
 )
 $ErrorActionPreference = 'Stop'
 
@@ -47,17 +47,17 @@ function Wait-Gone([string]$cls, [int]$timeoutMs = 3000) {
 
 if (-not (Test-Path $Exe)) { throw "找不到可执行文件：$Exe" }
 $Exe = (Resolve-Path $Exe).Path
-$running = Get-Process jietu -ErrorAction SilentlyContinue
-if ($running) { throw "jietu 已在运行（PID $($running.Id)），请先退出再采集" }
+$running = Get-Process airsnip -ErrorAction SilentlyContinue
+if ($running) { throw "AirSnip 已在运行（PID $($running.Id)），请先退出再采集" }
 
-$env:JIETU_TIMING = "1"
+$env:AIRSNIP_TIMING = "1"
 if (Test-Path $LogPath) { Remove-Item $LogPath -Force }
 Write-Host "启动 $Exe（日志：$LogPath）"
 $proc = Start-Process -FilePath $Exe -RedirectStandardError $LogPath -PassThru
 Start-Sleep -Seconds 2
 
-$hidden = Wait-Window "jietu.hidden" 5000
-if ($hidden -eq [IntPtr]::Zero) { Stop-Process -Id $proc.Id -Force; throw "未找到隐藏主窗口 jietu.hidden" }
+$hidden = Wait-Window "airsnip.hidden" 5000
+if ($hidden -eq [IntPtr]::Zero) { Stop-Process -Id $proc.Id -Force; throw "未找到隐藏主窗口 airsnip.hidden" }
 
 $sw = [P.W]::GetSystemMetrics(0)
 $sh = [P.W]::GetSystemMetrics(1)
@@ -69,7 +69,7 @@ $rx2 = [int]($sw * 0.55); $ry2 = [int]($sh * 0.60)
 
 for ($i = 1; $i -le $Rounds; $i++) {
     [void][P.W]::PostMessageW($hidden, $WM_HOTKEY, [IntPtr]101, [IntPtr]0)
-    $ov = Wait-Window "jietu.overlay" 5000
+    $ov = Wait-Window "airsnip.overlay" 5000
     if ($ov -eq [IntPtr]::Zero) { Write-Warning "第 $i 轮：覆盖层未出现"; continue }
     Start-Sleep -Milliseconds 250
 
@@ -92,7 +92,7 @@ for ($i = 1; $i -le $Rounds; $i++) {
     Start-Sleep -Milliseconds 100
 
     [void][P.W]::PostMessageW($ov, $WM_KEYDOWN, [IntPtr]$VK_ESC, [IntPtr]0)
-    if (-not (Wait-Gone "jietu.overlay" 3000)) { Write-Warning "第 $i 轮：Esc 后覆盖层未关闭" }
+    if (-not (Wait-Gone "airsnip.overlay" 3000)) { Write-Warning "第 $i 轮：Esc 后覆盖层未关闭" }
     Start-Sleep -Milliseconds 200
 }
 
@@ -128,7 +128,7 @@ Write-Host "==== 采集结果（$($shown.Count) 次截图）===="
 Write-Host ("抓屏耗时            : 平均 {0,6:N1} ms" -f (Avg $capture))
 Write-Host ("热键 → 覆盖层可见    : 平均 {0,6:N1} ms   最大 {1,6:N1} ms" -f (Avg $shown), (MaxOf $shown))
 Write-Host ("帧统计              : {0} 条" -f $frames.Count)
-foreach ($f in $frames) { Write-Host ("  " + $f.Line.Replace('[jietu] ', '')) }
+foreach ($f in $frames) { Write-Host ("  " + $f.Line.Replace('[airsnip] ', '')) }
 Write-Host ""
 Write-Host "红线：热键→覆盖层 ≤150ms（1080p）/ ≤250ms（4K）；交互 ≥60FPS = 每帧 ≤16.7ms"
 Write-Host ""

@@ -34,7 +34,7 @@ pub(super) fn create_message_window(hinstance: HINSTANCE) -> Result<HWND, String
         let hwnd = match CreateWindowExW(
             WINDOW_EX_STYLE(0),
             WINDOW_CLASS,
-            w!("jietu"),
+            w!("AirSnip"),
             WINDOW_STYLE(0),
             0,
             0,
@@ -69,8 +69,8 @@ pub(super) fn create_message_window(hinstance: HINSTANCE) -> Result<HWND, String
 /// UIPI 放行失败只在调试时提示：失败不致命，仅退化为「收不到 explorer 的低权限消息」。
 fn log_uipi_failure(name: &str, result: windows::core::Result<()>) {
     if let Err(e) = result {
-        if std::env::var_os("JIETU_DEBUG").is_some() {
-            eprintln!("[jietu] UIPI 放行 {name} 失败：{e:?}");
+        if std::env::var_os("AIRSNIP_DEBUG").is_some() {
+            eprintln!("[airsnip] UIPI 放行 {name} 失败：{e:?}");
         }
     }
 }

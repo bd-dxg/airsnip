@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 配置（SYS-5）：`%APPDATA%\jietu\config.toml`，缺失或损坏时回退默认值。
+//! 配置（SYS-5）：`%APPDATA%\airsnip\config.toml`，缺失或损坏时回退默认值。
 
 pub mod panel;
 
@@ -115,14 +115,14 @@ pub enum PinPosition {
 /// 保存文件名模板（OUT-2）：保存对话框预填的文件名，可在设置面板选择。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum NameStyle {
-    /// `jietu-20241231-235959`（日期 + 时间，默认）。
+    /// `airsnip-20241231-235959`（日期 + 时间，默认）。
     #[default]
     #[serde(rename = "datetime")]
     DateTime,
     /// `1735689599123`（Unix 毫秒时间戳）。
     #[serde(rename = "timestamp")]
     Timestamp,
-    /// `jietu-20241231`（仅日期）。
+    /// `airsnip-20241231`（仅日期）。
     #[serde(rename = "date")]
     Date,
 }
@@ -197,10 +197,10 @@ impl Default for Config {
 }
 
 impl Config {
-    /// 配置目录：`%APPDATA%\jietu`。
+    /// 配置目录：`%APPDATA%\airsnip`。
     pub fn config_dir() -> PathBuf {
         let appdata = std::env::var("APPDATA").unwrap_or_else(|_| ".".to_string());
-        PathBuf::from(appdata).join("jietu")
+        PathBuf::from(appdata).join("airsnip")
     }
 
     /// 配置文件路径。

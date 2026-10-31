@@ -9,5 +9,7 @@ fn main() {
     println!("cargo:rerun-if-changed=app.dev.rc");
     println!("cargo:rerun-if-changed=app.manifest");
     println!("cargo:rerun-if-changed=app.dev.manifest");
+    // 图标资源也要 watch：否则只换 app.ico 时 cargo 不会重跑 build.rs，图标不生效
+    println!("cargo:rerun-if-changed=assets/icons/app.ico");
     let _ = embed_resource::compile(rc, embed_resource::NONE);
 }

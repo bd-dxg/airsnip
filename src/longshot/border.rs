@@ -10,7 +10,7 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
 /// 窗口类名。
-const CLASS: windows::core::PCWSTR = w!("jietu.longshot.border");
+const CLASS: windows::core::PCWSTR = w!("airsnip.longshot.border");
 /// 边框厚度（像素）。
 const EDGE: i32 = 2;
 /// 内部透明用的颜色键（极罕见颜色，LWA_COLORKEY）。

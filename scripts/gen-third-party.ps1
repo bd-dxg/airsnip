@@ -5,7 +5,7 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$meta = Join-Path $env:TEMP "jietu-meta.json"
+$meta = Join-Path $env:TEMP "airsnip-meta.json"
 cargo metadata --format-version 1 --locked | Out-File -Encoding utf8 $meta
 $m = Get-Content $meta -Raw | ConvertFrom-Json
 $pkgs = $m.packages | Where-Object { $_.source -ne $null } | Sort-Object name
@@ -13,7 +13,7 @@ $pkgs = $m.packages | Where-Object { $_.source -ne $null } | Sort-Object name
 $sb = [System.Text.StringBuilder]::new()
 [void]$sb.AppendLine("# 第三方组件声明")
 [void]$sb.AppendLine()
-[void]$sb.AppendLine("jietu 自身以 **GPL-3.0-only** 发布。以下是随程序一同分发的第三方开源组件（共 $($pkgs.Count) 个 crate，均由 crates.io 获取）。")
+[void]$sb.AppendLine("AirSnip 自身以 **GPL-3.0-only** 发布。以下是随程序一同分发的第三方开源组件（共 $($pkgs.Count) 个 crate，均由 crates.io 获取）。")
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("所有组件均使用宽松许可证，与 GPL-3.0-only 兼容（无 GPL-2.0-only 等不兼容条款）。清单包含运行期与构建期依赖（如 ``embed-resource``）。")
 [void]$sb.AppendLine()

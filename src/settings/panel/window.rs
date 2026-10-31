@@ -66,7 +66,7 @@ pub(super) fn create_window(hinstance: HINSTANCE, panel: &mut Panel) -> Result<H
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             WINDOW_CLASS,
-            w!("jietu 设置"),
+            w!("AirSnip 设置"),
             STYLE,
             cx,
             cy,

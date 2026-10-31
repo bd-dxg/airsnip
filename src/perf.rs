@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 性能埋点（M5）：仅在 `JIETU_TIMING=1` 时记录，常态零开销（无系统调用、无分配）。
+//! 性能埋点（M5）：仅在 `AIRSNIP_TIMING=1` 时记录，常态零开销（无系统调用、无分配）。
 //! 采集项：热键 → 覆盖层可见的总耗时、每帧重绘耗时（每 60 帧打印平均与最大值）。
 
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,9 +12,9 @@ static FRAMES: AtomicU64 = AtomicU64::new(0);
 static FRAME_NS: AtomicU64 = AtomicU64::new(0);
 static FRAME_MAX_NS: AtomicU64 = AtomicU64::new(0);
 
-/// 是否开启埋点：`JIETU_TIMING` 环境变量存在即开启（只读一次）。
+/// 是否开启埋点：`AIRSNIP_TIMING` 环境变量存在即开启（只读一次）。
 pub fn enabled() -> bool {
-    *ENABLED.get_or_init(|| std::env::var_os("JIETU_TIMING").is_some())
+    *ENABLED.get_or_init(|| std::env::var_os("AIRSNIP_TIMING").is_some())
 }
 
 /// 记录热键触发时刻（`start_capture` 入口，含撤销贴图热键等准备工作之前）。
@@ -34,7 +34,7 @@ pub fn log_overlay_shown() {
     }
     if let Ok(at) = CAPTURE_AT.lock() {
         if let Some(t) = *at {
-            eprintln!("[jietu] 热键到覆盖层显示 {:?}", t.elapsed());
+            eprintln!("[airsnip] 热键到覆盖层显示 {:?}", t.elapsed());
         }
     }
 }
@@ -56,7 +56,7 @@ impl Drop for FrameTimer {
             let total = FRAME_NS.load(Ordering::Relaxed);
             let max = FRAME_MAX_NS.load(Ordering::Relaxed);
             eprintln!(
-                "[jietu] 重绘 {n} 帧：平均 {:.1}ms，最大 {:.1}ms",
+                "[airsnip] 重绘 {n} 帧：平均 {:.1}ms，最大 {:.1}ms",
                 total as f64 / n as f64 / 1e6,
                 max as f64 / 1e6
             );
@@ -76,7 +76,7 @@ pub fn log_frames_summary() {
     let total = FRAME_NS.swap(0, Ordering::Relaxed);
     let max = FRAME_MAX_NS.swap(0, Ordering::Relaxed);
     eprintln!(
-        "[jietu] 本次共重绘 {n} 帧：平均 {:.1}ms，最大 {:.1}ms",
+        "[airsnip] 本次共重绘 {n} 帧：平均 {:.1}ms，最大 {:.1}ms",
         total as f64 / n as f64 / 1e6,
         max as f64 / 1e6
     );

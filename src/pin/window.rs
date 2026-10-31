@@ -14,7 +14,7 @@ use super::dib::create_dib;
 use super::scale;
 use super::zoom::MAX_SIDE;
 
-const WINDOW_CLASS: PCWSTR = w!("jietu.pin");
+const WINDOW_CLASS: PCWSTR = w!("airsnip.pin");
 const ALPHA_MIN: u8 = 12;
 /// 滚轮/透明度单步（wndproc 与测试共用）。
 pub(super) const ALPHA_STEP: i32 = 24;
@@ -93,7 +93,7 @@ pub(super) fn spawn(
             // WS_EX_LAYERED：UpdateLayeredWindow 提交带 alpha 的像素（PNG 透明区域透出桌面）
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
             WINDOW_CLASS,
-            w!("jietu.pin"),
+            w!("airsnip.pin"),
             WS_POPUP,
             x,
             y,

@@ -1,6 +1,6 @@
 # 第三方组件声明
 
-jietu 自身以 **GPL-3.0-only** 发布。以下是随程序一同分发的第三方开源组件（共 71 个 crate，均由 crates.io 获取）。
+AirSnip 自身以 **GPL-3.0-only** 发布。以下是随程序一同分发的第三方开源组件（共 71 个 crate，均由 crates.io 获取）。
 
 所有组件均使用宽松许可证，与 GPL-3.0-only 兼容（无 GPL-2.0-only 等不兼容条款）。清单包含运行期与构建期依赖（如 `embed-resource`）。
 

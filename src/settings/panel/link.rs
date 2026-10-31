@@ -14,7 +14,7 @@ use super::controls::RowId;
 pub(super) fn draw_link(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let s = panel.scale;
     let text = match row.id {
-        RowId::Repo => "github.com/bd-dxg/jietu ›",
+        RowId::Repo => "github.com/bd-dxg/airsnip ›",
         RowId::Licenses => "查看清单 ›",
         _ => "",
     };

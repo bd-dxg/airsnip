@@ -228,7 +228,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             push(RowId::ThemeDark, RowKind::Radio, "深色", &mut y, items);
         }
         Section::About => {
-            push(RowId::About, RowKind::About, "jietu 截图工具", &mut y, items);
+            push(RowId::About, RowKind::About, "AirSnip 轻截", &mut y, items);
             push(RowId::Repo, RowKind::Link, "项目地址", &mut y, items);
             push(RowId::Licenses, RowKind::Link, "第三方许可", &mut y, items);
             let qh = (QR_ROW_H as f32 * s) as i32;
