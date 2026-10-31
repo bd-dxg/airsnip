@@ -71,7 +71,7 @@ impl super::Overlay {
     }
 }
 
-/// GDI 文本：显示选区尺寸与坐标（物理像素），位置由 text_rect 确定。
+/// GDI 文本：显示选区尺寸（物理像素），位置由 text_rect 确定。
 pub(super) fn draw_info_text(hdc: HDC, sel: SelRect, screen_w: i32) {
     let r = text_rect(sel, screen_w);
     unsafe {
@@ -79,9 +79,7 @@ pub(super) fn draw_info_text(hdc: HDC, sel: SelRect, screen_w: i32) {
         let _ = SelectObject(hdc, font);
         let _ = SetBkMode(hdc, TRANSPARENT);
         let _ = SetTextColor(hdc, COLORREF(0x00FFFFFF));
-        let text: Vec<u16> = format!("{} × {}   @({},{})", sel.w, sel.h, sel.x, sel.y)
-            .encode_utf16()
-            .collect();
+        let text: Vec<u16> = format!("{} × {}", sel.w, sel.h).encode_utf16().collect();
         let _ = TextOutW(hdc, r.x + 4, r.y + 4, &text);
     }
 }

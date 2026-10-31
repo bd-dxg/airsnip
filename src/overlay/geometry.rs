@@ -98,9 +98,7 @@ pub(super) fn same_rect(a: Option<SelRect>, b: Option<SelRect>) -> bool {
 
 /// 估算信息文本占位矩形（供脏区域与工具栏避让使用，宽度保守）。
 pub(super) fn text_rect(sel: SelRect, screen_w: i32) -> SelRect {
-    let len = format!("{} × {}   @({},{})", sel.w, sel.h, sel.x, sel.y)
-        .chars()
-        .count() as i32;
+    let len = format!("{} × {}", sel.w, sel.h).chars().count() as i32;
     let tw = (len * 10 + 16).min(screen_w.max(0));
     let ty = if sel.y > INFO_TEXT_H + INFO_OFFSET {
         sel.y - INFO_TEXT_H - INFO_OFFSET
