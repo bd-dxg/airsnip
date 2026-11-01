@@ -1,16 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 矩形几何（CAP-2）：`SelRect` 与交集/并集/外扩等运算，供选区、脏区与工具栏共用。
+//! 界面度量（信息文字块与间隔）以 1080p / 100% DPI 为基准，经 `Ui` 缩放（CAP-5）。
+
+use super::ui::Ui;
 
 /// 信息文字高度（`text_rect` 与工具栏布局共用）。
 /// 字号 16px + 上下各 6px 内缩；工具栏单行是 34，两者不强求等高。
-pub(super) const INFO_TEXT_H: i32 = 28;
+pub(super) fn info_text_h(ui: Ui) -> i32 {
+    ui.px(28.0)
+}
+
 /// 信息文字字号（DIP，`render::text` 的 `FontSpec::size`；`SetPixelsPerDip(1.0)` 下 1 DIP = 1 物理像素）。
 /// 原 `DEFAULT_GUI_FONT` 只有 11px，2560×1440 下偏小；22px 又太大。
-pub(super) const INFO_FONT_SIZE: f32 = 16.0;
+pub(super) fn info_font_size(ui: Ui) -> f32 {
+    ui.f(16.0)
+}
+
 /// 信息文字相对信息块的左侧内缩。
-pub(super) const INFO_PAD_X: i32 = 6;
+pub(super) fn info_pad_x(ui: Ui) -> i32 {
+    ui.px(6.0)
+}
+
 /// 信息文字/工具栏与选区的间隔。
-pub(super) const INFO_OFFSET: i32 = 8;
+pub(super) fn info_offset(ui: Ui) -> i32 {
+    ui.px(8.0)
+}
 
 /// 矩形选区（相对虚拟屏幕左上角的物理像素坐标）。
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -107,29 +121,31 @@ pub(super) fn same_rect(a: Option<SelRect>, b: Option<SelRect>) -> bool {
 /// 默认沿用旧规则：选区上方容得下一个文字块就放上方，否则放下方。
 /// 唯一例外：文字在上方、但工具栏下方放不下又无法翻到文字之上时，把文字让到下方，
 /// 让工具栏贴屏幕顶部——否则两者会叠在一起（小屏 + 大选区 + 两行工具栏）。
-pub(super) fn info_text_below(sel: SelRect, screen_h: i32, toolbar_h: i32) -> bool {
-    if sel.y <= INFO_TEXT_H + INFO_OFFSET {
+pub(super) fn info_text_below(sel: SelRect, screen_h: i32, toolbar_h: i32, ui: Ui) -> bool {
+    let (text_h, offset) = (info_text_h(ui), info_offset(ui));
+    if sel.y <= text_h + offset {
         return true;
     }
-    let bar_below_fits = sel.y + sel.h + INFO_OFFSET + toolbar_h + 4 <= screen_h;
-    let bar_above_text_fits = sel.y - INFO_TEXT_H - INFO_OFFSET - INFO_OFFSET - toolbar_h >= 2;
+    let bar_below_fits = sel.y + sel.h + offset + toolbar_h + 4 <= screen_h;
+    let bar_above_text_fits = sel.y - text_h - offset - offset - toolbar_h >= 2;
     !(bar_below_fits || bar_above_text_fits)
 }
 
 /// 估算信息文本占位矩形（供脏区域与工具栏避让使用，宽度保守）。
-pub(super) fn text_rect(sel: SelRect, screen_w: i32, screen_h: i32, toolbar_h: i32) -> SelRect {
+pub(super) fn text_rect(sel: SelRect, screen_w: i32, screen_h: i32, toolbar_h: i32, ui: Ui) -> SelRect {
+    let (text_h, offset, pad_x) = (info_text_h(ui), info_offset(ui), info_pad_x(ui));
     let len = format!("{} × {}", sel.w, sel.h).chars().count() as i32;
     // 16px Segoe UI Semibold 下「1173 × 801」实测 92px，按 10px/字符估仍偏保守。
-    let tw = (len * 10 + INFO_PAD_X * 2 + 4).min(screen_w.max(0));
-    let ty = if info_text_below(sel, screen_h, toolbar_h) {
-        sel.y + sel.h + INFO_OFFSET
+    let tw = (len * ui.px(10.0) + pad_x * 2 + 4).min(screen_w.max(0));
+    let ty = if info_text_below(sel, screen_h, toolbar_h, ui) {
+        sel.y + sel.h + offset
     } else {
-        sel.y - INFO_TEXT_H - INFO_OFFSET
+        sel.y - text_h - offset
     };
     SelRect {
         x: sel.x.min((screen_w - tw - 8).max(4)).max(4),
         y: ty,
         w: tw,
-        h: INFO_TEXT_H,
+        h: text_h,
     }
 }

@@ -35,7 +35,8 @@ pub struct Panel {
     pub palette: &'static Palette,
     /// 工作副本（关闭时写回）。
     pub config: crate::settings::Config,
-    /// DPI 缩放系数（字号/控件尺寸随屏缩放）。
+    /// 界面缩放系数（与截图覆盖层同一套，ADR 0016）：改设置时立即重算并重排窗口，
+    /// 面板自身当场就能反映新倍率。
     pub scale: f32,
     /// 内容区悬停行下标。
     pub hover: Option<usize>,

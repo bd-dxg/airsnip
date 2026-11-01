@@ -34,7 +34,7 @@ impl Overlay {
             .map(|(r, _)| *r)?;
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
         let (family, ..) = self.font_state();
-        Some(FontPanel::open(btn, bar.rect, &family, vw, vh))
+        Some(FontPanel::open(btn, bar.rect, &family, vw, vh, self.ui))
     }
 
     /// 面板上的左键：命中某行即选中该字体并收起面板。

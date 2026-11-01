@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 选区更新与统一脏区重绘（CAP-2/3、PRD 6.3.2）：
 //! 底图复位 → 标注对象 → 选中箭头的控制柄 → 选区装饰 → 工具栏，一次 `repaint` 完成并上屏。
+//! 选区边框、手柄与聚光恢复的绘制见 `draw`。
 
-use tiny_skia::{Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
+mod draw;
 
 use super::geometry::{SelRect, expand_rect, intersect_rect, same_rect, text_rect, union_rect};
 use super::objedit;
@@ -10,19 +11,20 @@ use super::pick::draw_curve_handles;
 use super::surface::{blit_region, draw_info_text, restore_region};
 use super::{textinput, toolbar};
 use crate::render;
-use crate::render::mask::FRect;
 
-/// 脏区域外扩（覆盖边框、手柄与信息文字）。
-pub(super) const DIRTY_PAD: i32 = 60;
-/// 对象包围框与控制柄的脏区外扩（手柄画在包围盒之外）。
-const HANDLE_PAD: i32 = 12;
-/// 手柄边长。
-const HANDLE_SIZE: i32 = 7;
-const ACCENT: u8 = 26; // 主题蓝
-const ACCENT_G: u8 = 115;
-const ACCENT_B: u8 = 232;
+use draw::{draw_handles, draw_rect, restore_glow};
+
+/// 脏区域外扩基准值（覆盖边框、手柄与信息文字）。
+const DIRTY_PAD_BASE: f32 = 60.0;
+/// 对象包围框与控制柄的脏区外扩基准值（手柄画在包围盒之外）。
+const HANDLE_PAD_BASE: f32 = 12.0;
 
 impl super::Overlay {
+    /// 选区脏区外扩量（手柄、边框与信息文字都画在选区之外）。
+    pub(super) fn dirty_pad(&self) -> i32 {
+        self.ui.px(DIRTY_PAD_BASE)
+    }
+
     /// 更新选区并做脏矩形增量重绘（PRD 6.3.2）：
     /// 只处理旧/新选区的装饰与工具栏区域，避免每次鼠标移动全屏重绘。
     pub(super) fn set_selection(&mut self, new: Option<SelRect>) {
@@ -35,16 +37,17 @@ impl super::Overlay {
         // 选区变化后字体面板的位置失效（EDT-4）：收起并连旧区域一起重绘
         let old_chrome = self.chrome_rect();
         self.font_list = None;
-        self.bar = new.map(|s| toolbar::layout(s, vw, vh, self.text_row_visible()));
+        self.bar = new.map(|s| toolbar::layout(s, vw, vh, self.text_row_visible(), self.ui));
         let new_chrome = self.chrome_rect();
 
         let mut dirty: Option<SelRect> = None;
         let bar_h = self.bar.as_ref().map(|b| b.rect.h).unwrap_or(0);
+        let pad = self.dirty_pad();
         for r in [
-            old.map(|o| expand_rect(o, DIRTY_PAD)),
-            new.map(|n| expand_rect(n, DIRTY_PAD)),
-            old.map(|o| text_rect(o, vw, vh, bar_h)),
-            new.map(|n| text_rect(n, vw, vh, bar_h)),
+            old.map(|o| expand_rect(o, pad)),
+            new.map(|n| expand_rect(n, pad)),
+            old.map(|o| text_rect(o, vw, vh, bar_h, self.ui)),
+            new.map(|n| text_rect(n, vw, vh, bar_h, self.ui)),
             old_chrome.map(|b| expand_rect(b, 2)),
             new_chrome.map(|b| expand_rect(b, 2)),
         ]
@@ -132,8 +135,8 @@ impl super::Overlay {
         if let Some(obj) = self.selected_object().cloned()
             && render::intersects(&obj.bounds(), (x0, y0, x1, y1))
         {
-            objedit::draw_frame(&mut self.display, &obj);
-            draw_curve_handles(&mut self.display, &obj);
+            objedit::draw_frame(&mut self.display, &obj, self.ui);
+            draw_curve_handles(&mut self.display, &obj, self.ui);
         }
         // 2c) 文本输入框（EDT-4；仅屏幕显示，提交后为对象）
         if let Some(edit) = &self.text_edit {
@@ -143,9 +146,9 @@ impl super::Overlay {
         }
         // 3) 选区边框与手柄（只在与选区装饰区域相交时重画）
         if let Some(sel) = self.selection {
-            if intersect_rect(expand_rect(sel, DIRTY_PAD), region).is_some() {
-                draw_rect(&mut self.display, sel);
-                draw_handles(&mut self.display, sel);
+            if intersect_rect(expand_rect(sel, self.dirty_pad()), region).is_some() {
+                draw_rect(&mut self.display, sel, self.ui);
+                draw_handles(&mut self.display, sel, self.ui);
             }
         }
         // 4) 工具栏
@@ -166,8 +169,8 @@ impl super::Overlay {
         // 6) 选区尺寸提示（HUD）：走 DirectWrite 栅格化，与工具栏文字同一套渲染
         if let Some(sel) = self.selection {
             let bar_h = self.bar.as_ref().map(|b| b.rect.h).unwrap_or(0);
-            if intersect_rect(text_rect(sel, w, h, bar_h), region).is_some() {
-                draw_info_text(&mut self.display, sel, w, h, bar_h);
+            if intersect_rect(text_rect(sel, w, h, bar_h, self.ui), region).is_some() {
+                draw_info_text(&mut self.display, sel, w, h, bar_h, self.ui);
             }
         }
         self.present_region(region);
@@ -179,7 +182,7 @@ impl super::Overlay {
             return r;
         };
         if render::intersects(&obj.bounds(), (r.x, r.y, r.x + r.w, r.y + r.h)) {
-            expand_rect(r, HANDLE_PAD)
+            expand_rect(r, self.ui.px(HANDLE_PAD_BASE))
         } else {
             r
         }
@@ -212,90 +215,6 @@ impl super::Overlay {
             }
             if !changed {
                 return r;
-            }
-        }
-    }
-}
-
-/// 聚光区域恢复（EDT-9）：直角直接回贴原图；圆角按遮罩混合（圆周外保持暗化）。
-/// `rect` 为**完整**聚光矩形（`part` 可能已被脏区裁剪，不能用它算圆角）。
-fn restore_glow(display: &mut Pixmap, original: &Pixmap, part: SelRect, rect: FRect, corner: f32) {
-    let r = crate::render::mask::clamp_radius(rect, corner);
-    if r < 0.5 {
-        blit_region(display, original, part);
-        return;
-    }
-    let region = (part.x, part.y, part.x + part.w, part.y + part.h);
-    let buf = crate::render::mask::copy_region(original, region);
-    crate::render::mask::blend_compact(display, &buf, region, rect, r);
-}
-
-/// 画选区边框。
-fn draw_rect(pixmap: &mut Pixmap, sel: SelRect) {
-    let Some(rect) = Rect::from_xywh(
-        sel.x as f32 + 0.5,
-        sel.y as f32 + 0.5,
-        sel.w as f32 - 1.0,
-        sel.h as f32 - 1.0,
-    ) else {
-        return;
-    };
-    let mut pb = PathBuilder::new();
-    pb.push_rect(rect);
-    let Some(path) = pb.finish() else {
-        return;
-    };
-    let mut paint = Paint::default();
-    paint.set_color_rgba8(ACCENT, ACCENT_G, ACCENT_B, 255);
-    let stroke = Stroke {
-        width: 2.0,
-        ..Default::default()
-    };
-    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
-    // 外圈白色辅助线
-    let mut pb = PathBuilder::new();
-    if let Some(inner) = Rect::from_xywh(
-        sel.x as f32 + 1.5,
-        sel.y as f32 + 1.5,
-        sel.w as f32 - 3.0,
-        sel.h as f32 - 3.0,
-    ) {
-        pb.push_rect(inner);
-    }
-    if let Some(p) = pb.finish() {
-        let mut white = Paint::default();
-        white.set_color_rgba8(255, 255, 255, 160);
-        let thin = Stroke {
-            width: 1.0,
-            ..Default::default()
-        };
-        pixmap.stroke_path(&p, &white, &thin, Transform::identity(), None);
-    }
-}
-
-/// 画 8 个缩放手柄。
-fn draw_handles(pixmap: &mut Pixmap, sel: SelRect) {
-    let (x0, y0, x1, y1) = (sel.x, sel.y, sel.x + sel.w, sel.y + sel.h);
-    let cx = x0 + sel.w / 2;
-    let cy = y0 + sel.h / 2;
-    for (hx, hy) in [
-        (x0, y0),
-        (cx, y0),
-        (x1, y0),
-        (x0, cy),
-        (x1, cy),
-        (x0, y1),
-        (cx, y1),
-        (x1, y1),
-    ] {
-        let r = HANDLE_SIZE / 2;
-        let mut paint = Paint::default();
-        paint.set_color_rgba8(255, 255, 255, 255);
-        if let Some(rect) = Rect::from_xywh((hx - r) as f32, (hy - r) as f32, HANDLE_SIZE as f32, HANDLE_SIZE as f32) {
-            let mut pb = PathBuilder::new();
-            pb.push_rect(rect);
-            if let Some(p) = pb.finish() {
-                pixmap.fill_path(&p, &paint, tiny_skia::FillRule::Winding, Transform::identity(), None);
             }
         }
     }

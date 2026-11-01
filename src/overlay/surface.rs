@@ -11,7 +11,8 @@ use windows::Win32::Graphics::Gdi::{
 };
 
 use super::SelRect;
-use super::geometry::{INFO_FONT_SIZE, INFO_PAD_X, text_rect};
+use super::geometry::{info_font_size, info_pad_x, text_rect};
+use super::ui::Ui;
 use crate::editor::Point;
 use crate::render::text::{self as dwrite, FontSpec};
 
@@ -69,15 +70,15 @@ impl super::Overlay {
 }
 
 /// 选区尺寸提示（物理像素）：与工具栏文字走同一套 DirectWrite 栅格化。
-/// 位置由 `text_rect` 确定，字色纯白。
-pub(super) fn draw_info_text(pixmap: &mut Pixmap, sel: SelRect, screen_w: i32, screen_h: i32, toolbar_h: i32) {
-    let r = text_rect(sel, screen_w, screen_h, toolbar_h);
+/// 位置由 `text_rect` 确定，字色纯白；字号随显示器 DPI 缩放（CAP-5）。
+pub(super) fn draw_info_text(pixmap: &mut Pixmap, sel: SelRect, screen_w: i32, screen_h: i32, toolbar_h: i32, ui: Ui) {
+    let r = text_rect(sel, screen_w, screen_h, toolbar_h, ui);
     let text = format!("{} × {}", sel.w, sel.h);
     // 字重加粗：16px 常规字重在暗底上偏细发灰，加粗后笔画更实且不刺眼。
-    let mut spec = FontSpec::new(INFO_FONT_SIZE);
+    let mut spec = FontSpec::new(info_font_size(ui));
     spec.bold = true;
     let (_, th) = dwrite::measure(&text, &spec);
-    let x = (r.x + INFO_PAD_X) as f32;
+    let x = (r.x + info_pad_x(ui)) as f32;
     let y = r.y as f32 + (r.h as f32 - th) / 2.0;
     dwrite::draw(
         pixmap,

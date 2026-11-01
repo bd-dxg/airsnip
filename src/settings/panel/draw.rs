@@ -238,7 +238,8 @@ fn draw_radio(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::NameDateTime => panel.config.name_style == crate::settings::NameStyle::DateTime,
         RowId::NameTimestamp => panel.config.name_style == crate::settings::NameStyle::Timestamp,
         RowId::NameDate => panel.config.name_style == crate::settings::NameStyle::Date,
-        _ => false,
+        // 界面缩放（CAP-5）：选项与行 ID 的映射集中在 `controls`
+        id => super::controls::ui_scale_of(id).is_some_and(|m| panel.config.ui_scale == m),
     };
     let c = &row.control;
     let d = (14.0 * s) as i32;

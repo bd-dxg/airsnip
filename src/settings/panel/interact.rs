@@ -113,6 +113,21 @@ impl Panel {
                 self.end_capture();
                 self.set_theme(ThemeSetting::Dark);
             }
+            // 界面缩放（CAP-5）：改工作副本 + 立即按新倍率重排面板（ADR 0016），
+            // 选完当场就能看到效果（调用方随后 fit_window + 重绘）
+            id if super::controls::ui_scale_of(id).is_some() => {
+                self.end_capture();
+                if let Some(m) = super::controls::ui_scale_of(id)
+                    && self.config.ui_scale != m
+                {
+                    self.config.ui_scale = m;
+                    self.scale = crate::overlay::ui::Ui::resolve(m).scale();
+                    // 重排后行位置全变：旧悬停行失效（鼠标不动时不会收到新的 WM_MOUSEMOVE）
+                    self.hover = None;
+                    self.nav_hover = None;
+                    self.config_dirty = true;
+                }
+            }
             // 贴图位置（M2b）：改工作副本，面板关闭时统一写回
             RowId::PinPosOriginal => {
                 self.end_capture();

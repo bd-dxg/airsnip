@@ -19,6 +19,7 @@ use super::present::{ctrl_down, redraw, win_from};
 use super::preview::Preview;
 use super::session::Session;
 use crate::overlay::geometry::SelRect;
+use crate::overlay::ui::Ui;
 use crate::theme::Palette;
 
 /// 定时器 ID。
@@ -93,6 +94,7 @@ pub fn run(
     hinstance: windows::Win32::Foundation::HINSTANCE,
     max_height: u32,
     palette: &'static Palette,
+    ui_scale: crate::settings::UiScale,
 ) -> Option<tiny_skia::Pixmap> {
     let session = match Session::new(x, y, w, h, max_height) {
         Ok(s) => s,
@@ -102,8 +104,11 @@ pub fn run(
         }
     };
 
+    // 界面缩放：与截图覆盖层同一设置（手动倍率或按光标所在显示器自动，CAP-5）
+    let ui = Ui::resolve(ui_scale);
+
     // 视口边框：提前创建让用户立刻看到截取范围。
-    let border_hwnd = border::spawn(x, y, w, h, hinstance);
+    let border_hwnd = border::spawn(x, y, w, h, hinstance, ui);
 
     unsafe {
         let wc = WNDCLASSW {
@@ -117,7 +122,7 @@ pub fn run(
         let _ = RegisterClassW(&wc);
 
         let screen_h = GetSystemMetrics(SM_CYVIRTUALSCREEN);
-        let bar = bar::layout(x, w, y, h, screen_h);
+        let bar = bar::layout(x, w, y, h, screen_h, ui);
         // 预览窗：在视口左右剩余空间显示拼接缩略图（放不下则不显示，长截图照常）。
         // 先于状态条创建，让状态条在 Z 序上位于预览之上。
         let preview = Preview::spawn(
@@ -129,6 +134,7 @@ pub fn run(
             },
             hinstance,
             palette,
+            ui,
         );
         let (bw, bh) = (bar.rect.w, bar.rect.h);
         let (bx, by) = (bar.rect.x, bar.rect.y);

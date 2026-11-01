@@ -5,14 +5,15 @@
 use crate::editor::Point;
 
 use super::geometry::{expand_rect, union_rect};
-use super::pick::PICK_RADIUS;
+use super::pick::pick_radius;
 
 impl super::Overlay {
     /// 命中已选箭头的控制柄（EDT-3），返回 0（尾部侧）或 1（头部侧）。
     pub(super) fn hit_control(&self, x: i32, y: i32) -> Option<usize> {
         let cps = self.selected_object()?.kind.control_points()?;
+        let pick = pick_radius(self.ui) as f32;
         cps.iter()
-            .position(|p| (p.x - x as f32).abs() <= PICK_RADIUS as f32 && (p.y - y as f32).abs() <= PICK_RADIUS as f32)
+            .position(|p| (p.x - x as f32).abs() <= pick && (p.y - y as f32).abs() <= pick)
     }
 
     /// 按下控制柄：记录起点（用于「未移动则不进撤销栈」）。
