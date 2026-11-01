@@ -92,7 +92,11 @@ impl super::Overlay {
             Some(sel) => {
                 // 1) 选中对象的八向手柄（EDT-7）：可能压在选区装饰或对象描边上，最优先
                 if let Some(i) = self.selected
-                    && let Some(h) = self.doc.objects().get(i).and_then(|o| objedit::hit_handle(o, x, y))
+                    && let Some(h) = self
+                        .doc
+                        .objects()
+                        .get(i)
+                        .and_then(|o| objedit::hit_handle(o, x, y, self.ui))
                 {
                     self.begin_obj_drag(i, h, x, y);
                     return;
@@ -102,7 +106,7 @@ impl super::Overlay {
                     self.begin_control_drag(index);
                     return;
                 }
-                if let Some(handle) = hit_handle(sel, x, y) {
+                if let Some(handle) = hit_handle(sel, x, y, self.ui) {
                     self.drag = Some(Drag {
                         handle,
                         orig: sel,

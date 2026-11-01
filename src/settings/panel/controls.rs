@@ -4,7 +4,9 @@
 use crate::overlay::geometry::SelRect;
 
 mod keys;
+mod scale;
 pub use keys::*;
+pub use scale::*;
 
 /// 窗口内容总宽（横向桌面窗口，宽高比约 1.4）。
 pub const W: i32 = 720;
@@ -88,6 +90,18 @@ pub enum RowId {
     ThemeLight,
     /// 主题：深色。
     ThemeDark,
+    /// 界面缩放（CAP-5）：自动（按显示器 DPI + 分辨率）。
+    UiScaleAuto,
+    /// 界面缩放：固定 100%。
+    UiScale100,
+    /// 界面缩放：固定 125%。
+    UiScale125,
+    /// 界面缩放：固定 150%。
+    UiScale150,
+    /// 界面缩放：固定 175%。
+    UiScale175,
+    /// 界面缩放：固定 200%。
+    UiScale200,
     /// 文件名模板：日期 + 时间（OUT-2）。
     NameDateTime,
     /// 文件名模板：Unix 毫秒时间戳（OUT-2）。
@@ -226,6 +240,9 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             push(RowId::ThemeFollow, RowKind::Radio, "跟随系统", &mut y, items);
             push(RowId::ThemeLight, RowKind::Radio, "浅色", &mut y, items);
             push(RowId::ThemeDark, RowKind::Radio, "深色", &mut y, items);
+            for m in crate::settings::UiScale::ALL {
+                push(ui_scale_row(m), RowKind::Radio, m.title(), &mut y, items);
+            }
         }
         Section::About => {
             push(RowId::About, RowKind::About, "AirSnip 轻截", &mut y, items);
@@ -325,7 +342,17 @@ mod tests {
                     RowId::Widenote,
                 ],
                 Section::Save => vec![RowId::NameDateTime, RowId::NameTimestamp, RowId::NameDate],
-                Section::Appearance => vec![RowId::ThemeFollow, RowId::ThemeLight, RowId::ThemeDark],
+                Section::Appearance => vec![
+                    RowId::ThemeFollow,
+                    RowId::ThemeLight,
+                    RowId::ThemeDark,
+                    RowId::UiScaleAuto,
+                    RowId::UiScale100,
+                    RowId::UiScale125,
+                    RowId::UiScale150,
+                    RowId::UiScale175,
+                    RowId::UiScale200,
+                ],
                 Section::About => vec![RowId::About, RowId::Repo, RowId::Licenses, RowId::Reward],
             };
             assert_eq!(rows, expected, "节 {sec:?} 行集合错误");

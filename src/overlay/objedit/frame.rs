@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 选中对象的编辑手柄绘制（EDT-7）：箭头为两端点方柄，其余对象为虚线包围框 + 八向手柄。
 //! 仅屏幕显示，不进导出烘焙；手柄位置与命中判定共用 `super::handle_point` / `super::frame_of`。
+//! 尺寸基准为 100% DPI，经 `Ui` 缩放（CAP-5）。
 
 use tiny_skia::{FillRule, PathBuilder, Pixmap, Stroke, Transform};
 
@@ -9,22 +10,24 @@ use crate::editor::{Kind, Object, Point};
 use super::super::geometry::SelRect;
 use super::super::pick::dashed_line;
 use super::super::shape::rounded_path;
+use super::super::ui::Ui;
 use super::{ObjHandle, frame_of, handle_point, radius_handle_point};
 
-/// 手柄边长（物理像素）。
-const HANDLE: f32 = 7.0;
-/// 圆角控制柄半径（略小于方柄半边长，避免看起来像个缩放手柄）。
-const ROUND_HANDLE: f32 = 3.5;
+/// 手柄边长基准值（物理像素）。
+const HANDLE_BASE: f32 = 7.0;
+/// 圆角控制柄半径基准值（略小于方柄半边长，避免看起来像个缩放手柄）。
+const ROUND_HANDLE_BASE: f32 = 3.5;
 const ACCENT: [u8; 4] = [26, 115, 232, 255];
 
 /// 画选中对象的编辑手柄。
 /// 箭头（EDT-2/EDT-3）：不画包围框，只在头尾给两个方形端点手柄（拖动拉长 / 改向），
 /// 曲率控制点由 `pick::draw_curve_handles` 的 1/3、2/3 圆点负责；
 /// 其余对象：虚线包围框 + 八向缩放手柄。
-pub(in crate::overlay) fn draw_frame(pixmap: &mut Pixmap, obj: &Object) {
+pub(in crate::overlay) fn draw_frame(pixmap: &mut Pixmap, obj: &Object, ui: Ui) {
+    let handle = ui.f(HANDLE_BASE);
     if let Kind::Arrow { from, to, .. } = &obj.kind {
         for p in [*from, *to] {
-            square_handle(pixmap, p);
+            square_handle(pixmap, p, handle, ui);
         }
         return;
     }
@@ -40,7 +43,7 @@ pub(in crate::overlay) fn draw_frame(pixmap: &mut Pixmap, obj: &Object) {
     edge.close();
     if let Some(path) = edge.finish() {
         let stroke = Stroke {
-            width: 1.0,
+            width: ui.f(1.0),
             ..Default::default()
         };
         pixmap.stroke_path(&path, &paint([0, 0, 0, 120]), &stroke, Transform::identity(), None);
@@ -51,7 +54,7 @@ pub(in crate::overlay) fn draw_frame(pixmap: &mut Pixmap, obj: &Object) {
         ((x1, y1), (x0, y1)),
         ((x0, y1), (x0, y0)),
     ] {
-        dashed_line(pixmap, Point::new(a.0, a.1), Point::new(b.0, b.1));
+        dashed_line(pixmap, Point::new(a.0, a.1), Point::new(b.0, b.1), ui);
     }
     // 八个控制柄（白底 + 主题蓝描边，与选区手柄区分）
     for h in [
@@ -65,18 +68,18 @@ pub(in crate::overlay) fn draw_frame(pixmap: &mut Pixmap, obj: &Object) {
         ObjHandle::SE,
     ] {
         let (hx, hy) = handle_point(f, h);
-        square_handle(pixmap, Point::new(hx, hy));
+        square_handle(pixmap, Point::new(hx, hy), handle, ui);
     }
     // 圆角控制柄（EDT-1）：内侧右上角的小圆，与方形缩放手柄区分
-    if let Some((hx, hy)) = radius_handle_point(obj) {
-        circle_handle(pixmap, Point::new(hx, hy));
+    if let Some((hx, hy)) = radius_handle_point(obj, ui) {
+        circle_handle(pixmap, Point::new(hx, hy), ui);
     }
 }
 
-/// 白底蓝框的圆形手柄（圆角控制柄，半径 `ROUND_HANDLE`）。
-fn circle_handle(pixmap: &mut Pixmap, p: Point) {
+/// 白底蓝框的圆形手柄（圆角控制柄）。
+fn circle_handle(pixmap: &mut Pixmap, p: Point, ui: Ui) {
     let mut pb = PathBuilder::new();
-    pb.push_circle(p.x, p.y, ROUND_HANDLE);
+    pb.push_circle(p.x, p.y, ui.f(ROUND_HANDLE_BASE));
     let Some(path) = pb.finish() else {
         return;
     };
@@ -88,21 +91,21 @@ fn circle_handle(pixmap: &mut Pixmap, p: Point) {
         None,
     );
     let stroke = Stroke {
-        width: 1.0,
+        width: ui.f(1.0),
         ..Default::default()
     };
     pixmap.stroke_path(&path, &paint(ACCENT), &stroke, Transform::identity(), None);
 }
 
-/// 白底蓝框的方形手柄（边长 `HANDLE`）。
-fn square_handle(pixmap: &mut Pixmap, p: Point) {
+/// 白底蓝框的方形手柄（边长 `size`）。
+fn square_handle(pixmap: &mut Pixmap, p: Point, size: f32, ui: Ui) {
     let r = SelRect {
-        x: (p.x - HANDLE / 2.0).round() as i32,
-        y: (p.y - HANDLE / 2.0).round() as i32,
-        w: HANDLE as i32,
-        h: HANDLE as i32,
+        x: (p.x - size / 2.0).round() as i32,
+        y: (p.y - size / 2.0).round() as i32,
+        w: size.round() as i32,
+        h: size.round() as i32,
     };
-    let Some(path) = rounded_path(r, 1.5) else {
+    let Some(path) = rounded_path(r, ui.f(1.5)) else {
         return;
     };
     pixmap.fill_path(
@@ -113,7 +116,7 @@ fn square_handle(pixmap: &mut Pixmap, p: Point) {
         None,
     );
     let stroke = Stroke {
-        width: 1.0,
+        width: ui.f(1.0),
         ..Default::default()
     };
     pixmap.stroke_path(&path, &paint(ACCENT), &stroke, Transform::identity(), None);

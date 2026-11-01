@@ -22,6 +22,7 @@ impl Overlay {
         longshot_key: u32,
         default_tool: Tool,
         save: crate::settings::SavePrefs,
+        ui_scale: crate::settings::UiScale,
     ) -> Result<Self, String> {
         let (w, h) = (capture.width, capture.height);
         let Some(size) = tiny_skia::IntSize::from_wh(w, h) else {
@@ -56,6 +57,8 @@ impl Overlay {
             dimmed,
             display,
             palette,
+            // 界面缩放：手动倍率或按光标所在显示器的 DPI + 分辨率自动（CAP-5）
+            ui: super::ui::Ui::resolve(ui_scale),
             selection: None,
             first_paint: true,
             phase: Phase::Adjusting,

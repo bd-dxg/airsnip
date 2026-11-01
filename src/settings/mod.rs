@@ -137,6 +137,61 @@ impl NameStyle {
     }
 }
 
+/// 覆盖层界面缩放（CAP-5）：自动 / 固定百分比。
+/// 只影响截图工具栏、手柄、尺寸提示与光标，不影响标注内容（线宽、字号）与导出结果。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum UiScale {
+    /// 按显示器 DPI 与物理分辨率自动（默认）。
+    #[default]
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "100")]
+    P100,
+    #[serde(rename = "125")]
+    P125,
+    #[serde(rename = "150")]
+    P150,
+    #[serde(rename = "175")]
+    P175,
+    #[serde(rename = "200")]
+    P200,
+}
+
+impl UiScale {
+    pub const ALL: [UiScale; 6] = [
+        UiScale::Auto,
+        UiScale::P100,
+        UiScale::P125,
+        UiScale::P150,
+        UiScale::P175,
+        UiScale::P200,
+    ];
+
+    /// 设置面板行标签。
+    pub fn title(self) -> &'static str {
+        match self {
+            UiScale::Auto => "界面缩放·自动",
+            UiScale::P100 => "界面缩放·100%",
+            UiScale::P125 => "界面缩放·125%",
+            UiScale::P150 => "界面缩放·150%",
+            UiScale::P175 => "界面缩放·175%",
+            UiScale::P200 => "界面缩放·200%",
+        }
+    }
+
+    /// 固定倍率；`Auto` 返回 None（由 `Ui::resolve` 按显示器算）。
+    pub fn factor(self) -> Option<f32> {
+        match self {
+            UiScale::Auto => None,
+            UiScale::P100 => Some(1.0),
+            UiScale::P125 => Some(1.25),
+            UiScale::P150 => Some(1.5),
+            UiScale::P175 => Some(1.75),
+            UiScale::P200 => Some(2.0),
+        }
+    }
+}
+
 /// 保存相关运行时偏好（OUT-2）：文件名模板 + 上次格式 + 上次目录。
 /// 截图开始时从配置快照后传入覆盖层线程（`HWND` 不可跨线程，值可以）。
 #[derive(Debug, Clone, Default)]
@@ -167,6 +222,8 @@ pub struct Config {
     pub pin_position: PinPosition,
     /// 贴图 1px 蓝色边框（M2b，默认开）。
     pub pin_border: bool,
+    /// 覆盖层界面缩放（CAP-5，默认自动）：4K@100% 这类高密度屏需要手动放大。
+    pub ui_scale: UiScale,
     /// 保存文件名模板（OUT-2）。
     pub name_style: NameStyle,
     /// 上次保存用的格式扩展名（OUT-2，运行时记忆）：保存对话框下次默认选中该格式。
@@ -188,6 +245,7 @@ impl Default for Config {
             hotkey_warned: false,
             pin_position: PinPosition::Original,
             pin_border: true,
+            ui_scale: UiScale::Auto,
             name_style: NameStyle::DateTime,
             last_save_ext: None,
             last_save_dir: None,
@@ -318,5 +376,28 @@ mod tests {
         };
         let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
         assert_eq!(back.last_save_dir.as_deref(), Some(r"D:\shots"));
+    }
+
+    /// 界面缩放（CAP-5）：旧配置回退自动，固定倍率能往返。
+    #[test]
+    fn ui_scale_defaults_and_roundtrip() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.ui_scale, UiScale::Auto, "旧配置应回退自动缩放");
+        assert_eq!(UiScale::Auto.factor(), None, "自动模式不固定倍率");
+        assert_eq!(UiScale::P150.factor(), Some(1.5));
+
+        let cfg = Config {
+            ui_scale: UiScale::P175,
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.ui_scale, UiScale::P175);
+        // 每个选项都有标签与（Auto 之外的）倍率
+        for m in UiScale::ALL {
+            assert!(!m.title().is_empty());
+            if m != UiScale::Auto {
+                assert!(m.factor().is_some(), "{m:?} 应有固定倍率");
+            }
+        }
     }
 }

@@ -23,7 +23,7 @@ impl Overlay {
                 style: CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS,
                 lpfnWndProc: Some(wndproc::wndproc),
                 hInstance: hinstance,
-                hCursor: cursor::cross_cursor(),
+                hCursor: cursor::class_cursor(),
                 hbrBackground: Default::default(),
                 lpszMenuName: PCWSTR::null(),
                 lpszClassName: WINDOW_CLASS,

@@ -7,16 +7,21 @@ use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke, Transform};
 use crate::editor::{Kind, Object, Point};
 
 use super::geometry::{SelRect, expand_rect, union_rect};
-use super::selection::DIRTY_PAD;
+use super::ui::Ui;
 
-/// 曲线控制柄半径（含描边，需 ≤ 对象包围盒的余量）。
-const CTRL_RADIUS: f32 = 4.5;
+/// 曲线控制柄半径基准值（含描边，需 ≤ 对象包围盒的余量）。
+const CTRL_RADIUS_BASE: f32 = 4.5;
 const ACCENT: u8 = 26; // 主题蓝
 const ACCENT_G: u8 = 115;
 const ACCENT_B: u8 = 232;
 
-/// 手柄命中半径。
-pub(super) const PICK_RADIUS: i32 = 6;
+/// 手柄命中半径基准值（物理像素，经 `Ui` 缩放）。
+pub(super) const PICK_RADIUS_BASE: f32 = 6.0;
+
+/// 按界面缩放后的手柄命中半径。
+pub(super) fn pick_radius(ui: Ui) -> i32 {
+    ui.px(PICK_RADIUS_BASE)
+}
 
 /// 选区手柄类型（八向 + 移动）；对象手柄见 `objedit::ObjHandle`。
 #[derive(Clone, Copy, PartialEq)]
@@ -33,7 +38,8 @@ pub(super) enum Handle {
 }
 
 /// 八向手柄/移动命中（CAP-2）。
-pub(super) fn hit_handle(sel: SelRect, x: i32, y: i32) -> Option<Handle> {
+pub(super) fn hit_handle(sel: SelRect, x: i32, y: i32, ui: Ui) -> Option<Handle> {
+    let pick = pick_radius(ui);
     let (x0, y0, x1, y1) = (sel.x, sel.y, sel.x + sel.w, sel.y + sel.h);
     let cx = x0 + sel.w / 2;
     let cy = y0 + sel.h / 2;
@@ -47,7 +53,7 @@ pub(super) fn hit_handle(sel: SelRect, x: i32, y: i32) -> Option<Handle> {
         (cx, y1, Handle::S),
         (x1, y1, Handle::SE),
     ] {
-        if (x - hx).abs() <= PICK_RADIUS && (y - hy).abs() <= PICK_RADIUS {
+        if (x - hx).abs() <= pick && (y - hy).abs() <= pick {
             return Some(h);
         }
     }
@@ -86,14 +92,15 @@ impl super::Overlay {
         if (had || new.is_some())
             && let Some(sel) = self.selection
         {
-            self.repaint(expand_rect(sel, DIRTY_PAD));
+            self.repaint(expand_rect(sel, self.dirty_pad()));
         }
     }
 
     /// 命中已有对象：从上层往下找（列表顺序即 z 序，EDT-7）。
     pub(super) fn hit_object(&self, x: i32, y: i32) -> Option<usize> {
         let q = Point::new(x as f32, y as f32);
-        self.doc.objects().iter().rposition(|o| o.hit(q, PICK_RADIUS as f32))
+        let tol = pick_radius(self.ui) as f32;
+        self.doc.objects().iter().rposition(|o| o.hit(q, tol))
     }
 
     /// 选中对象占据的像素区域。
@@ -198,16 +205,16 @@ impl super::Overlay {
     }
 }
 /// 选中箭头的控制柄（EDT-3）：控制点处画圆点，与端点之间用虚线辅助线连接。
-pub(super) fn draw_curve_handles(pixmap: &mut Pixmap, obj: &Object) {
+pub(super) fn draw_curve_handles(pixmap: &mut Pixmap, obj: &Object, ui: Ui) {
     let (Some(cps), Kind::Arrow { from, to, .. }) = (obj.kind.control_points(), &obj.kind) else {
         return;
     };
     let [c1, c2] = cps;
-    dashed_line(pixmap, *from, c1);
-    dashed_line(pixmap, c2, *to);
+    dashed_line(pixmap, *from, c1, ui);
+    dashed_line(pixmap, c2, *to, ui);
     for p in [c1, c2] {
         let mut pb = PathBuilder::new();
-        pb.push_circle(p.x, p.y, CTRL_RADIUS);
+        pb.push_circle(p.x, p.y, ui.f(CTRL_RADIUS_BASE));
         let Some(path) = pb.finish() else {
             continue;
         };
@@ -217,7 +224,7 @@ pub(super) fn draw_curve_handles(pixmap: &mut Pixmap, obj: &Object) {
         let mut edge = Paint::default();
         edge.set_color_rgba8(ACCENT, ACCENT_G, ACCENT_B, 255);
         let stroke = Stroke {
-            width: 1.5,
+            width: ui.f(1.5),
             ..Default::default()
         };
         pixmap.stroke_path(&path, &edge, &stroke, Transform::identity(), None);
@@ -225,20 +232,22 @@ pub(super) fn draw_curve_handles(pixmap: &mut Pixmap, obj: &Object) {
 }
 
 /// 虚线辅助线（5px 实 / 4px 虚）：tiny-skia 无 dash，手动拆成小段。
-pub(super) fn dashed_line(pixmap: &mut Pixmap, a: Point, b: Point) {
+pub(super) fn dashed_line(pixmap: &mut Pixmap, a: Point, b: Point, ui: Ui) {
     let (dx, dy) = (b.x - a.x, b.y - a.y);
     let len = (dx * dx + dy * dy).sqrt();
     if len < 1.0 {
         return;
     }
     let (ux, uy) = (dx / len, dy / len);
+    // 实线段与周期按界面缩放，避免 4K 下虚线看起来是实线
+    let (dash, period) = (ui.f(5.0), ui.f(9.0));
     let mut pb = PathBuilder::new();
     let mut t = 0.0;
     while t < len {
-        let end = (t + 5.0).min(len);
+        let end = (t + dash).min(len);
         pb.move_to(a.x + ux * t, a.y + uy * t);
         pb.line_to(a.x + ux * end, a.y + uy * end);
-        t += 9.0;
+        t += period;
     }
     let Some(path) = pb.finish() else {
         return;
@@ -246,7 +255,7 @@ pub(super) fn dashed_line(pixmap: &mut Pixmap, a: Point, b: Point) {
     let mut paint = Paint::default();
     paint.set_color_rgba8(255, 255, 255, 200);
     let stroke = Stroke {
-        width: 1.0,
+        width: ui.f(1.0),
         ..Default::default()
     };
     pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);

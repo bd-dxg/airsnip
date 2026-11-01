@@ -4,12 +4,12 @@
 
 use windows::Win32::Foundation::{HINSTANCE, HWND, RECT};
 use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
 use crate::app::icon_resource;
 use crate::overlay::surface::create_dib_surface;
+use crate::overlay::ui::Ui;
 
 use super::controls::{self, Section, W};
 use super::{Panel, WINDOW_CLASS};
@@ -79,8 +79,8 @@ pub(super) fn create_window(hinstance: HINSTANCE, panel: &mut Panel) -> Result<H
         )
         .map_err(|e| format!("创建设置窗口失败：{e}"))?;
 
-        let dpi = GetDpiForWindow(hwnd);
-        panel.scale = dpi as f32 / 96.0;
+        // 面板与截图覆盖层共用同一套界面缩放（ADR 0016）：面板内改设置能当场看到效果
+        panel.scale = Ui::resolve(panel.config.ui_scale).scale();
         panel.fit_window(hwnd);
         Ok(hwnd)
     }
@@ -112,7 +112,8 @@ impl Panel {
     }
 
     /// 按当前节重建上屏 DIB，并把窗口外框调到「客户区 = 绘制位图」尺寸。
-    /// 非客户区用 GetWindowRect/GetClientRect 实测差值补齐，窗口中心保持不动。
+    /// 非客户区用 GetWindowRect/GetClientRect 实测差值补齐，窗口中心保持不动；
+    /// 界面缩放变大后可能超出屏幕，夹回工作区内。
     pub(super) fn fit_window(&mut self, hwnd: HWND) {
         let w = self.content_w();
         let ch = controls::layout(self.section, self.scale).height;
@@ -140,9 +141,15 @@ impl Panel {
             // SetWindowPos 的宽高是窗口外框：必须加上非客户区，否则客户区比绘制位图窄、右侧被裁
             let nc_w = (wr.right - wr.left) - (cr.right - cr.left);
             let nc_h = (wr.bottom - wr.top) - (cr.bottom - cr.top);
+            let (outer_w, outer_h) = (w + nc_w, ch + nc_h);
             let nx = wr.left + ((cr.right - cr.left) - w) / 2;
             let ny = wr.top + ((cr.bottom - cr.top) - ch) / 2;
-            let _ = SetWindowPos(hwnd, None, nx, ny, w + nc_w, ch + nc_h, SWP_NOZORDER);
+            // 缩放变大后窗口可能超出屏幕：夹回屏幕内（放不下时贴左上角）
+            let sw = GetSystemMetrics(SM_CXSCREEN);
+            let sh = GetSystemMetrics(SM_CYSCREEN);
+            let nx = nx.clamp(0, (sw - outer_w).max(0));
+            let ny = ny.clamp(0, (sh - outer_h).max(0));
+            let _ = SetWindowPos(hwnd, None, nx, ny, outer_w, outer_h, SWP_NOZORDER);
         }
     }
 }

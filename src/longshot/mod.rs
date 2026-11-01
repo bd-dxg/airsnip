@@ -28,8 +28,9 @@ pub fn run(
     hinstance: HINSTANCE,
     max_height: u32,
     palette: &'static crate::theme::Palette,
+    ui_scale: crate::settings::UiScale,
 ) {
-    let Some(pixmap) = window::run(x, y, w, h, hinstance, max_height, palette) else {
+    let Some(pixmap) = window::run(x, y, w, h, hinstance, max_height, palette, ui_scale) else {
         return; // 取消或失败（窗口内已提示）
     };
     // 输出：复制 + 保存（与普通截图 Enter / Ctrl+S 行为一致，OUT-1/OUT-2）

@@ -11,8 +11,8 @@ use crate::theme::Palette;
 
 use crate::overlay::shape::paint_of as paint;
 
-/// 工具栏文字尺寸（字体名 / B / I / 字号）。
-pub(super) const LABEL_SIZE: f32 = 13.0;
+/// 工具栏文字尺寸基准值（字体名 / B / I / 字号），经 `Ui` 缩放。
+pub(super) const LABEL_SIZE_BASE: f32 = 13.0;
 
 /// 竖分隔线。
 pub(super) fn divider(pixmap: &mut Pixmap, x: i32, y: i32, h: i32, p: &Palette) {

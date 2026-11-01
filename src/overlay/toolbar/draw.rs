@@ -8,16 +8,20 @@ use tiny_skia::Pixmap;
 use crate::editor::{PALETTE, Tool};
 use crate::overlay::SelRect;
 use crate::overlay::shape::{rounded_rect, rounded_rect_outline};
-use crate::overlay::toolbar::{Action, FONT_BTN_W, GAP, H, H2, State, Toolbar};
+use crate::overlay::toolbar::{Action, State, Toolbar};
+use crate::overlay::ui::Ui;
 use crate::render::icon::{self, Icon};
 use crate::render::text::FontSpec;
 use crate::theme::Palette;
 
-use super::label::{LABEL_SIZE, centered_text, divider, fit_name, left_text};
+use super::label::{LABEL_SIZE_BASE, centered_text, divider, fit_name, left_text};
 
 /// 绘制工具栏到像素图。
 pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
-    rounded_rect(pixmap, bar.rect, 7.0, p.bg, Some(p.border));
+    let ui = bar.ui;
+    let gap = bar.gap;
+    let first_h = bar.first.h;
+    rounded_rect(pixmap, bar.rect, ui.f(7.0), p.bg, Some(p.border));
 
     // 组分隔线：画在每个组首个元素左侧的空白处
     // 组划分（hits 索引）：[工具 0-5][颜色 6-10][填充 11][撤销 12 重做 13]
@@ -26,13 +30,25 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
         let Some((first, _)) = bar.hits.get(index) else {
             continue;
         };
-        divider(pixmap, first.x - GAP / 2 - 1, bar.first.y + 7, H - 14, p);
+        divider(
+            pixmap,
+            first.x - gap / 2 - 1,
+            bar.first.y + ui.px(7.0),
+            first_h - ui.px(14.0),
+            p,
+        );
     }
     // 第二行分隔线（EDT-4）：字体按钮之后、斜体重之后
     if let Some(second) = bar.second {
         for action in [Action::ToggleBold, Action::FontSmaller] {
             if let Some((r, _)) = bar.hits.iter().find(|(_, a)| *a == action) {
-                divider(pixmap, r.x - GAP / 2 - 1, second.y + 7, H2 - 14, p);
+                divider(
+                    pixmap,
+                    r.x - gap / 2 - 1,
+                    second.y + ui.px(7.0),
+                    second.h - ui.px(14.0),
+                    p,
+                );
             }
         }
     }
@@ -56,23 +72,23 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                 draw_icon(pixmap, tool_icon(tool), *r, color);
             }
             Action::Color(i) => {
-                let inset = 2;
+                let inset = ui.px(2.0);
                 let swatch = SelRect {
                     x: r.x + inset,
                     y: r.y + inset,
                     w: r.w - inset * 2,
                     h: r.h - inset * 2,
                 };
-                rounded_rect(pixmap, swatch, 4.0, PALETTE[i], Some(p.swatch_border));
+                rounded_rect(pixmap, swatch, ui.f(4.0), PALETTE[i], Some(p.swatch_border));
                 if i == state.color {
-                    rounded_rect_outline(pixmap, *r, 4.0, p.accent);
+                    rounded_rect_outline(pixmap, *r, ui.f(4.0), p.accent);
                 }
             }
             // 文本工具无背景功能：填充开关置灰禁用
             Action::ToggleFill => {
                 let enabled = state.tool != Tool::Text;
                 if enabled && state.filled {
-                    rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
+                    rounded_rect(pixmap, *r, ui.f(5.0), p.accent_soft, None);
                 }
                 draw_icon(pixmap, Icon::Fill, *r, toggle_color(enabled, state.filled, p));
             }
@@ -85,19 +101,19 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
             // EDT-4：字体族按钮（展开/收起字体列表），名字过长截断加省略号
             Action::FontPick => {
                 if state.font_open {
-                    rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
+                    rounded_rect(pixmap, *r, ui.f(5.0), p.accent_soft, None);
                 }
-                let spec = FontSpec::new(LABEL_SIZE);
+                let spec = FontSpec::new(ui.f(LABEL_SIZE_BASE));
                 let color = if state.font_open { p.accent } else { p.text };
-                let name = fit_name(&state.font_family, (FONT_BTN_W - 12) as f32, &spec);
-                left_text(pixmap, *r, 6, &name, &spec, color);
+                let name = fit_name(&state.font_family, (r.w - ui.px(12.0)) as f32, &spec);
+                left_text(pixmap, *r, ui.px(6.0), &name, &spec, color);
             }
-            Action::ToggleBold => toggle_icon(pixmap, Icon::Bold, *r, state.bold, p),
-            Action::ToggleItalic => toggle_icon(pixmap, Icon::Italic, *r, state.italic, p),
+            Action::ToggleBold => toggle_icon(pixmap, Icon::Bold, *r, state.bold, p, ui),
+            Action::ToggleItalic => toggle_icon(pixmap, Icon::Italic, *r, state.italic, p, ui),
             Action::FontSmaller => draw_icon(pixmap, Icon::Minus, *r, p.icon),
             Action::FontLarger => draw_icon(pixmap, Icon::Plus, *r, p.icon),
             Action::FontSize => {
-                let spec = FontSpec::new(LABEL_SIZE);
+                let spec = FontSpec::new(ui.f(LABEL_SIZE_BASE));
                 let text = format!("{}", state.font_size.round() as i32);
                 centered_text(pixmap, *r, &text, &spec, p.text);
             }
@@ -136,9 +152,9 @@ fn toggle_color(enabled: bool, on: bool, p: &Palette) -> [u8; 4] {
 }
 
 /// B / I 开关按钮：开启时强调底色 + 强调色图标。
-fn toggle_icon(pixmap: &mut Pixmap, icon: Icon, r: SelRect, on: bool, p: &Palette) {
+fn toggle_icon(pixmap: &mut Pixmap, icon: Icon, r: SelRect, on: bool, p: &Palette, ui: Ui) {
     if on {
-        rounded_rect(pixmap, r, 5.0, p.accent_soft, None);
+        rounded_rect(pixmap, r, ui.f(5.0), p.accent_soft, None);
     }
     draw_icon(pixmap, icon, r, if on { p.accent } else { p.icon });
 }

@@ -25,6 +25,12 @@
   - 字号从 `DEFAULT_GUI_FONT`（11px）提到 **16px 加粗**（`INFO_FONT_SIZE`），信息块高 `INFO_TEXT_H` 22 → 28。
   - **不再用 GDI 文本**：原 `TextOutW` + 灰度抗锯齿在 16px 下 hinting 会把笔画吸到整像素，同一串数字里有的 1px 有的 2px（看起来粗细不均）；关 ClearType 避彩边后更明显。现改为走 `render::text`（DirectWrite 栅格化，与工具栏/标注文字同一套），画在 `display` Pixmap 上、随脏区一起 `present_region` 上传，`surface::draw_info_text` 不再接 `HDC`。
   - 文字与工具栏的避让抽为 `geometry::info_text_below`（两处共用同一侧向决策），`text_rect` 增 `screen_h` / `toolbar_h` 参数；工具栏仍是**选区下方优先**，下方塞不下才翻到上方，并新增 `toolbar_defaults_below_selection` 测试守住该行为。
+- 覆盖层界面按显示器缩放（v0.7.0，ADR 0016）：设置面板「外观」页新增「界面缩放」（自动 / 100% / 125% / 150% / 175% / 200%，默认自动），`overlay/ui.rs` 的 `Ui` 把 1080p / 100% 基准像素换算成当前屏幕物理像素（`ui.px()` / `ui.f()`），所有界面尺寸常量改为 `*_BASE`。
+  - **自动 = `max(显示器DPI/96, (屏幕面积/1920×1080)^0.3)`**：纯 DPI 方案在 **4K@100%** 下系数仍是 1.0（DPI 就是 96），分辨率项兜底到约 1.52；取较大值保证 4K@150% / 200% 不被重复放大。指数 0.3 而非 0.5 —— 4K@100% 要的是「别太小」，不是「等比放大一倍」。
+  - 系数按**光标所在显示器**取（`GetCursorPos` + `MonitorFromPoint` + `GetDpiForMonitor` + `GetMonitorInfoW`）；覆盖层横跨虚拟屏，`GetDpiForWindow` 只会给主屏。夹在 `[1.0, 3.0]`。
+  - 覆盖范围：工具栏、选区/对象手柄、尺寸提示、字体面板、长截图状态条 / 视口边框 / 预览窗、自绘光标（十字 / 抓手 / 圆角）。**标注内容（线宽、字号、文字）不缩放**，它们是导出内容，跟着 DPI 变会改输出结果。
+  - 自绘光标按画布尺寸缓存，换屏导致尺寸变化时先 `DestroyCursor` 再重建；窗口类 `hCursor` 改用系统 `IDC_CROSS` 兜底，避免窗口类持有会被销毁的句柄。
+  - 设置面板也用同一套系数（`Panel::scale = Ui::resolve(config.ui_scale).scale()`，不再是 `GetDpiForWindow/96`）：在面板里选完倍率，面板当场就缩放（`fit_window` 重建 DIB + 重排窗口 + 夹回屏幕内、清空 `hover`），不必关面板再截图。
 
 ## 技术栈
 

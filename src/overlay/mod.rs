@@ -5,7 +5,8 @@
 //!
 //! 文件分工：`wndproc` 消息分发、`setup` 窗口创建、`geometry` 矩形运算、`surface` 像素缓冲与上屏、
 //! `cursor` 光标、`selection` 脏区重绘、`interaction` 鼠标交互、`pick` 对象选中与控制柄、
-//! `objedit` 对象手柄与拖动缩放、`font` 字体设置与字体面板、`annotate` 标注与输出、`toolbar` 工具栏。
+//! `objedit` 对象手柄与拖动缩放、`font` 字体设置与字体面板、`annotate` 标注与输出、`toolbar` 工具栏、
+//! `ui` 按显示器 DPI 的界面缩放。
 
 mod annotate;
 mod control;
@@ -24,6 +25,7 @@ pub(crate) mod surface;
 mod text_edit_state;
 mod textinput;
 pub(crate) mod toolbar;
+pub(crate) mod ui;
 mod wndproc;
 
 use tiny_skia::Pixmap;
@@ -60,6 +62,8 @@ pub struct Overlay {
     pub first_paint: bool,
     /// 当前主题调色板（截图开始时由设置解析，M3）。
     pub palette: &'static Palette,
+    /// 界面缩放（按光标所在显示器 DPI，CAP-5）：工具栏、手柄、尺寸提示与光标随之缩放。
+    pub ui: ui::Ui,
     pub selection: Option<SelRect>,
     phase: Phase,
     drag: Option<Drag>,
@@ -130,6 +134,7 @@ impl Overlay {
         longshot_key: u32,
         default_tool: Tool,
         save: crate::settings::SavePrefs,
+        ui_scale: crate::settings::UiScale,
         hinstance: HINSTANCE,
         main_hwnd: HWND,
     ) -> OverlayResult {
@@ -145,7 +150,7 @@ impl Overlay {
             }
         };
 
-        let mut overlay = match Self::new(capture, palette, tool_keys, longshot_key, default_tool, save) {
+        let mut overlay = match Self::new(capture, palette, tool_keys, longshot_key, default_tool, save, ui_scale) {
             Ok(o) => o,
             Err(_) => {
                 unsafe {

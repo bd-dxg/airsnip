@@ -15,7 +15,8 @@ use crate::editor::{Bounds, Kind, Object};
 use crate::render;
 
 use super::geometry::SelRect;
-use super::pick::PICK_RADIUS;
+use super::pick::pick_radius;
+use super::ui::Ui;
 
 /// 对象手柄类型（八向缩放 + `Move`；箭头用两端点手柄 `ArrowFrom`/`ArrowTo`）。
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -40,9 +41,9 @@ pub(super) enum ObjHandle {
 /// 缩放后的最小边长（物理像素），避免对象被拖成零尺寸。
 const MIN_SIZE: f32 = 4.0;
 
-/// 圆角控制柄到右上角的最小内缩距离（物理像素）。
+/// 圆角控制柄到右上角的最小内缩距离基准值（物理像素）。
 /// 半径为 0 时弧就在角上，不内缩就会和右上角缩放手柄重叠，反而拖不到。
-const RADIUS_GRIP: f32 = 14.0;
+const RADIUS_GRIP_BASE: f32 = 14.0;
 
 /// 圆弧 45° 点到角的距离与半径之比（`r - r/√2 ≈ 0.293r`）。
 /// 控制柄贴着弧走，半径越大离角越远，与设计工具的直觉一致。
@@ -96,10 +97,10 @@ fn handle_point(f: SelRect, h: ObjHandle) -> (f32, f32) {
 /// 圆角控制柄位置：包围框**内侧右上角**，随半径变大而往中心方向移（贴着圆弧走）。
 /// 半径很小时弧就在角上，此时留出 `RADIUS_GRIP` 的余量，避开右上角缩放手柄。
 /// 只有矩形类对象有圆角，其余返回 None。
-pub(super) fn radius_handle_point(obj: &Object) -> Option<(f32, f32)> {
+pub(super) fn radius_handle_point(obj: &Object, ui: Ui) -> Option<(f32, f32)> {
     let r = obj.kind.corner()?;
     let f = frame_of(obj);
-    let inset = (RADIUS_GRIP + ARC_TO_CORNER * r)
+    let inset = (ui.f(RADIUS_GRIP_BASE) + ARC_TO_CORNER * r)
         .min(f.w as f32 * 0.45)
         .min(f.h as f32 * 0.45);
     Some(((f.x + f.w) as f32 - inset, f.y as f32 + inset))
@@ -115,10 +116,11 @@ pub(super) fn radius_delta(dx: i32, dy: i32) -> f32 {
 /// 命中对象手柄：箭头只有两端点手柄（没有包围框），其余对象为八个控制柄。
 /// 「内部整体移动」不在此判定：未填充矩形的内部是空白，按下应当能画新标注；
 /// 拖动已有对象由 `interaction` 在对象命中（`hit_object`）后发起（EDT-7）。
-pub(in crate::overlay) fn hit_handle(obj: &Object, x: i32, y: i32) -> Option<ObjHandle> {
+pub(in crate::overlay) fn hit_handle(obj: &Object, x: i32, y: i32, ui: Ui) -> Option<ObjHandle> {
+    let pick = pick_radius(ui) as f32;
     if let Kind::Arrow { from, to, .. } = &obj.kind {
         for (h, p) in [(ObjHandle::ArrowFrom, from), (ObjHandle::ArrowTo, to)] {
-            if (p.x - x as f32).abs() <= PICK_RADIUS as f32 && (p.y - y as f32).abs() <= PICK_RADIUS as f32 {
+            if (p.x - x as f32).abs() <= pick && (p.y - y as f32).abs() <= pick {
                 return Some(h);
             }
         }
@@ -126,9 +128,9 @@ pub(in crate::overlay) fn hit_handle(obj: &Object, x: i32, y: i32) -> Option<Obj
     }
     let f = frame_of(obj);
     // 圆角控制柄优先：它离右上角缩放手柄很近，不先判定就永远抢不到
-    if let Some((hx, hy)) = radius_handle_point(obj)
-        && (hx - x as f32).abs() <= PICK_RADIUS as f32
-        && (hy - y as f32).abs() <= PICK_RADIUS as f32
+    if let Some((hx, hy)) = radius_handle_point(obj, ui)
+        && (hx - x as f32).abs() <= pick
+        && (hy - y as f32).abs() <= pick
     {
         return Some(ObjHandle::Radius);
     }
@@ -143,7 +145,7 @@ pub(in crate::overlay) fn hit_handle(obj: &Object, x: i32, y: i32) -> Option<Obj
         ObjHandle::SE,
     ] {
         let (hx, hy) = handle_point(f, h);
-        if (hx - x as f32).abs() <= PICK_RADIUS as f32 && (hy - y as f32).abs() <= PICK_RADIUS as f32 {
+        if (hx - x as f32).abs() <= pick && (hy - y as f32).abs() <= pick {
             return Some(h);
         }
     }
@@ -231,6 +233,11 @@ mod tests {
     use super::*;
     use crate::editor::{Kind, Point, Style};
 
+    /// 基准缩放（100% DPI）。
+    fn base() -> Ui {
+        Ui::from_dpi(96)
+    }
+
     fn rect_obj(a: (f32, f32), b: (f32, f32)) -> Object {
         Object {
             kind: Kind::Rect {
@@ -248,13 +255,13 @@ mod tests {
         let obj = rect_obj((50.0, 50.0), (150.0, 100.0));
         let f = frame_of(&obj);
         // 左上角手柄
-        assert_eq!(hit_handle(&obj, f.x, f.y), Some(ObjHandle::NW));
+        assert_eq!(hit_handle(&obj, f.x, f.y, base()), Some(ObjHandle::NW));
         // 右边中点（E）
-        assert_eq!(hit_handle(&obj, f.x + f.w, f.y + f.h / 2), Some(ObjHandle::E));
+        assert_eq!(hit_handle(&obj, f.x + f.w, f.y + f.h / 2, base()), Some(ObjHandle::E));
         // 内部不是手柄（未填充矩形的内部要留给新标注）
-        assert_eq!(hit_handle(&obj, f.x + f.w / 2, f.y + f.h / 2), None);
+        assert_eq!(hit_handle(&obj, f.x + f.w / 2, f.y + f.h / 2, base()), None);
         // 远处 → 不命中
-        assert_eq!(hit_handle(&obj, f.x - 60, f.y - 60), None);
+        assert_eq!(hit_handle(&obj, f.x - 60, f.y - 60, base()), None);
     }
 
     /// 圆角控制柄必须优先于右上角缩放手柄命中，否则永远拖不到。
@@ -269,11 +276,11 @@ mod tests {
             },
             style: Style::new([255, 0, 0, 255], 2.0),
         };
-        let (hx, hy) = radius_handle_point(&obj).expect("矩形应有圆角控制柄");
-        assert_eq!(hit_handle(&obj, hx as i32, hy as i32), Some(ObjHandle::Radius));
+        let (hx, hy) = radius_handle_point(&obj, base()).expect("矩形应有圆角控制柄");
+        assert_eq!(hit_handle(&obj, hx as i32, hy as i32, base()), Some(ObjHandle::Radius));
         // 右上角本身仍归缩放手柄
         let f = frame_of(&obj);
-        assert_eq!(hit_handle(&obj, f.x + f.w, f.y), Some(ObjHandle::NE));
+        assert_eq!(hit_handle(&obj, f.x + f.w, f.y, base()), Some(ObjHandle::NE));
     }
 
     /// 四边形类（矩形 / 高亮 / 模糊 / 聚光）都有圆角控制柄，箭头与文本没有。
@@ -300,21 +307,21 @@ mod tests {
                 kind,
                 style: Style::new([255, 255, 0, 255], 2.0),
             };
-            assert!(radius_handle_point(&obj).is_some(), "{obj:?} 应有圆角控制柄");
+            assert!(radius_handle_point(&obj, base()).is_some(), "{obj:?} 应有圆角控制柄");
         }
         // 箭头与文本无圆角
         let arrow = Object {
             kind: Kind::arrow(Point::new(0.0, 0.0), Point::new(50.0, 50.0)),
             style: Style::new([255, 0, 0, 255], 2.0),
         };
-        assert!(radius_handle_point(&arrow).is_none(), "箭头不应有圆角控制柄");
+        assert!(radius_handle_point(&arrow, base()).is_none(), "箭头不应有圆角控制柄");
     }
 
     /// 小对象上圆角控制柄要按比例内缩，不能跑出包围框。
     #[test]
     fn radius_handle_stays_inside_small_frame() {
         let obj = rect_obj((0.0, 0.0), (20.0, 16.0));
-        let (hx, hy) = radius_handle_point(&obj).expect("矩形应有圆角控制柄");
+        let (hx, hy) = radius_handle_point(&obj, base()).expect("矩形应有圆角控制柄");
         let f = frame_of(&obj);
         assert!(hx > f.x as f32 && hx < (f.x + f.w) as f32, "横向越界：{hx} 不在 {f:?}");
         assert!(hy > f.y as f32 && hy < (f.y + f.h) as f32, "纵向越界：{hy} 不在 {f:?}");
@@ -324,9 +331,9 @@ mod tests {
     #[test]
     fn radius_handle_moves_inward_as_radius_grows() {
         let mut obj = rect_obj((0.0, 0.0), (400.0, 200.0));
-        let small = radius_handle_point(&obj).expect("应有控制柄");
+        let small = radius_handle_point(&obj, base()).expect("应有控制柄");
         obj.kind.set_corner(90.0);
-        let big = radius_handle_point(&obj).expect("应有控制柄");
+        let big = radius_handle_point(&obj, base()).expect("应有控制柄");
         assert!(
             big.0 < small.0 && big.1 > small.1,
             "半径变大后应向左下内移：{small:?} → {big:?}"
@@ -342,6 +349,17 @@ mod tests {
         assert!(radius_delta(10, -10) < 0.0);
         // 原地不动 = 不变
         assert_eq!(radius_delta(0, 0), 0.0);
+    }
+
+    /// 高 DPI 下命中半径放大：原本勉强能点到的手柄在 4K 上更好点（CAP-5）。
+    #[test]
+    fn handle_hit_radius_scales_with_dpi() {
+        let obj = rect_obj((50.0, 50.0), (250.0, 150.0));
+        let f = frame_of(&obj);
+        // 距左上角 10px：100% 下超出 6px 命中半径，200% 下在 12px 内
+        let (x, y) = (f.x - 10, f.y - 10);
+        assert_eq!(hit_handle(&obj, x, y, base()), None);
+        assert_eq!(hit_handle(&obj, x, y, Ui::from_dpi(192)), Some(ObjHandle::NW));
     }
 
     #[test]
@@ -393,11 +411,11 @@ mod tests {
             style: Style::new([255, 0, 0, 255], 4.0),
         };
         // 头尾端点命中
-        assert_eq!(hit_handle(&arrow, 40, 200), Some(ObjHandle::ArrowFrom));
-        assert_eq!(hit_handle(&arrow, 200, 60), Some(ObjHandle::ArrowTo));
+        assert_eq!(hit_handle(&arrow, 40, 200, base()), Some(ObjHandle::ArrowFrom));
+        assert_eq!(hit_handle(&arrow, 200, 60, base()), Some(ObjHandle::ArrowTo));
         // 包围框角上不应有手柄（箭头不画包围框）
         let f = frame_of(&arrow);
-        assert_eq!(hit_handle(&arrow, f.x, f.y), None, "箭头不应有包围框手柄");
+        assert_eq!(hit_handle(&arrow, f.x, f.y, base()), None, "箭头不应有包围框手柄");
     }
 
     #[test]

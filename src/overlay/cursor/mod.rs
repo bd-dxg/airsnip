@@ -4,20 +4,25 @@
 //! 自绘形状（十字 / 抓手）见 `paint`，方向与移动光标用系统内置。
 
 mod paint;
+mod radius;
 
-pub(in crate::overlay) use paint::cross_cursor;
+use paint::cross_cursor;
 
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetCursorPos, HCURSOR, IDC_ARROW, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE, LoadCursorW,
-    SetCursor,
+    GetCursorPos, HCURSOR, IDC_ARROW, IDC_CROSS, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS, IDC_SIZENWSE, IDC_SIZEWE,
+    LoadCursorW, SetCursor,
 };
 use windows::core::PCWSTR;
 
 use super::objedit::ObjHandle;
 use super::pick::Handle;
+use super::ui::Ui;
 use super::wndproc::space_down;
+
+/// 光标画布基准边长（100% DPI）：各形状按 `ui.px(CANVAS_BASE)` 等比缩放。
+pub(super) const CANVAS_BASE: f32 = 32.0;
 
 /// 光标形状：箭头（工具栏）、十字（默认）、抓手（空格移动选区）、移动与四个方向缩放。
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -37,17 +42,17 @@ pub(super) enum Shape {
 }
 
 impl Shape {
-    fn cursor(self) -> HCURSOR {
+    fn cursor(self, ui: Ui) -> HCURSOR {
         match self {
             Shape::Arrow => load(IDC_ARROW),
-            Shape::Cross => cross_cursor(),
-            Shape::Hand => paint::hand_cursor(),
+            Shape::Cross => cross_cursor(ui),
+            Shape::Hand => paint::hand_cursor(ui),
             Shape::Move => load(IDC_SIZEALL),
             Shape::NS => load(IDC_SIZENS),
             Shape::WE => load(IDC_SIZEWE),
             Shape::NWSE => load(IDC_SIZENWSE),
             Shape::NESW => load(IDC_SIZENESW),
-            Shape::Radius => paint::radius_cursor(),
+            Shape::Radius => radius::radius_cursor(ui),
         }
     }
 }
@@ -55,6 +60,12 @@ impl Shape {
 /// 系统光标句柄（进程共享，`LoadCursorW` 只是查表，无需额外缓存）。
 fn load(id: PCWSTR) -> HCURSOR {
     unsafe { LoadCursorW(None, id).unwrap_or_default() }
+}
+
+/// 窗口类默认光标（系统十字）：真正的光标由 `WM_SETCURSOR` 主动 `SetCursor`，
+/// 这里只做兜底——窗口类不持有会随 DPI 重建的自绘光标句柄（CAP-5）。
+pub(in crate::overlay) fn class_cursor() -> HCURSOR {
+    load(IDC_CROSS)
 }
 
 /// 选区手柄 → 光标形状。
@@ -85,7 +96,7 @@ impl super::Overlay {
     /// 按鼠标位置设置光标。
     pub(super) fn apply_cursor_at(&self, x: i32, y: i32) {
         unsafe {
-            let _ = SetCursor(Some(self.cursor_at(x, y).cursor()));
+            let _ = SetCursor(Some(self.cursor_at(x, y).cursor(self.ui)));
         }
     }
 
@@ -130,7 +141,7 @@ impl super::Overlay {
                     .doc
                     .objects()
                     .get(i)
-                    .and_then(|o| super::objedit::hit_handle(o, x, y))
+                    .and_then(|o| super::objedit::hit_handle(o, x, y, self.ui))
             {
                 return obj_shape(h);
             }
@@ -138,7 +149,7 @@ impl super::Overlay {
                 // 曲线控制柄：拖动改变弯曲程度，用四向移动光标
                 return Shape::Move;
             }
-            if let Some(h) = super::pick::hit_handle(sel, x, y) {
+            if let Some(h) = super::pick::hit_handle(sel, x, y, self.ui) {
                 return sel_shape(h);
             }
             if self.hit_object(x, y).is_some() {

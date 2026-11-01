@@ -2,6 +2,8 @@
 //! 长截图视口边框（M4）：在待滚动视口四周画 2px 高亮框，让用户看清截取范围。
 //! 分层窗口 + 颜色键：边框不透明、内部完全透明（可点击穿透，不挡目标窗口）。
 
+use std::sync::atomic::{AtomicI32, Ordering};
+
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateSolidBrush, DeleteObject, EndPaint, FillRect, GetDC, HBRUSH, ReleaseDC,
@@ -9,10 +11,14 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
+use crate::overlay::ui::Ui;
+
 /// 窗口类名。
 const CLASS: windows::core::PCWSTR = w!("airsnip.longshot.border");
-/// 边框厚度（像素）。
-const EDGE: i32 = 2;
+/// 边框厚度基准值（像素，经 `Ui` 缩放）。
+const EDGE_BASE: f32 = 2.0;
+/// 当前边框厚度（`spawn` 时按 DPI 算好，`draw` 读取；进程内同时只有一个长截图边框）。
+static EDGE_PX: AtomicI32 = AtomicI32::new(2);
 /// 内部透明用的颜色键（极罕见颜色，LWA_COLORKEY）。
 const KEY: COLORREF = COLORREF(0x00030201); // RGB(1,2,3)
 /// 边框颜色（主题蓝）。
@@ -20,7 +26,9 @@ const BORDER: COLORREF = COLORREF(0x00E8731A); // RGB(26,115,232)
 
 /// 在视口四周创建边框窗口（覆盖 x-EDGE .. x+w+EDGE 区域）。
 /// 返回窗口句柄；失败返回 None。调用方在结束后 `destroy`。
-pub fn spawn(x: i32, y: i32, w: u32, h: u32, hinstance: HINSTANCE) -> Option<HWND> {
+pub fn spawn(x: i32, y: i32, w: u32, h: u32, hinstance: HINSTANCE, ui: Ui) -> Option<HWND> {
+    let edge = ui.px(EDGE_BASE);
+    EDGE_PX.store(edge, Ordering::Relaxed);
     unsafe {
         let wc = WNDCLASSW {
             style: CS_HREDRAW | CS_VREDRAW,
@@ -31,10 +39,10 @@ pub fn spawn(x: i32, y: i32, w: u32, h: u32, hinstance: HINSTANCE) -> Option<HWN
             ..Default::default()
         };
         let _ = RegisterClassW(&wc);
-        let bx = x - EDGE;
-        let by = y - EDGE;
-        let bw = w as i32 + EDGE * 2;
-        let bh = h as i32 + EDGE * 2;
+        let bx = x - edge;
+        let by = y - edge;
+        let bw = w as i32 + edge * 2;
+        let bh = h as i32 + edge * 2;
         let hwnd = CreateWindowExW(
             // WS_EX_TRANSPARENT：鼠标点击/滚轮穿透到下面的目标窗口；
             // 颜色键区域本身命中后也穿透（LWA_COLORKEY）。
@@ -95,6 +103,7 @@ fn draw(hwnd: HWND) {
         let _ = FillRect(hdc, &rc, key_brush);
         let _ = DeleteObject(HBRUSH(key_brush.0).into());
         // 四条边画边框色
+        let edge = EDGE_PX.load(Ordering::Relaxed);
         let border_brush = CreateSolidBrush(BORDER);
         let w = rc.right - rc.left;
         let h = rc.bottom - rc.top;
@@ -103,22 +112,22 @@ fn draw(hwnd: HWND) {
                 left: 0,
                 top: 0,
                 right: w,
-                bottom: EDGE,
+                bottom: edge,
             }, // 上
             RECT {
                 left: 0,
-                top: h - EDGE,
+                top: h - edge,
                 right: w,
                 bottom: h,
             }, // 下
             RECT {
                 left: 0,
                 top: 0,
-                right: EDGE,
+                right: edge,
                 bottom: h,
             }, // 左
             RECT {
-                left: w - EDGE,
+                left: w - edge,
                 top: 0,
                 right: w,
                 bottom: h,

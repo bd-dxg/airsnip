@@ -15,23 +15,24 @@ use windows::core::w;
 use crate::overlay::geometry::SelRect;
 use crate::overlay::shape::{paint_of, rounded_path};
 use crate::overlay::surface::create_dib_surface;
+use crate::overlay::ui::Ui;
 use crate::theme::Palette;
 
 use super::present::{premul_bgra, present};
 use super::session::Session;
 
-/// 预览窗与屏幕边缘 / 视口之间的间距。
-const MARGIN: i32 = 10;
-/// 预览窗最大宽度。
-const MAX_W: i32 = 240;
-/// 预览窗最大高度。
-const MAX_H: i32 = 560;
-/// 最小可用宽度（低于此值不显示预览）。
-const MIN_W: i32 = 120;
-/// 预览窗最小高度。
-const MIN_H: i32 = 120;
-/// 内容内边距。
-const PAD: i32 = 6;
+/// 预览窗与屏幕边缘 / 视口之间的间距基准值。
+const MARGIN_BASE: f32 = 10.0;
+/// 预览窗最大宽度基准值。
+const MAX_W_BASE: f32 = 240.0;
+/// 预览窗最大高度基准值。
+const MAX_H_BASE: f32 = 560.0;
+/// 最小可用宽度基准值（低于此值不显示预览）。
+const MIN_W_BASE: f32 = 120.0;
+/// 预览窗最小高度基准值。
+const MIN_H_BASE: f32 = 120.0;
+/// 内容内边距基准值。
+const PAD_BASE: f32 = 6.0;
 
 /// 窗口类名。
 const CLASS: windows::core::PCWSTR = w!("airsnip.longshot.preview");
@@ -41,6 +42,8 @@ pub struct Preview {
     hwnd: HWND,
     w: i32,
     h: i32,
+    /// 内容内边距（按 DPI 缩放）。
+    pad: i32,
     mem_dc: HDC,
     dib_bmp: HBITMAP,
     dib_bits: *mut u8,
@@ -51,31 +54,38 @@ pub struct Preview {
 
 impl Preview {
     /// 计算预览窗矩形（屏幕坐标）：优先视口右侧，其次左侧；剩余宽度不足返回 None。
-    pub fn layout(vp: SelRect, screen: SelRect) -> Option<SelRect> {
-        let right = screen.x + screen.w - (vp.x + vp.w) - MARGIN * 2;
-        let left = vp.x - screen.x - MARGIN * 2;
+    pub fn layout(vp: SelRect, screen: SelRect, ui: Ui) -> Option<SelRect> {
+        let margin = ui.px(MARGIN_BASE);
+        let (max_w, max_h, min_w, min_h) = (
+            ui.px(MAX_W_BASE),
+            ui.px(MAX_H_BASE),
+            ui.px(MIN_W_BASE),
+            ui.px(MIN_H_BASE),
+        );
+        let right = screen.x + screen.w - (vp.x + vp.w) - margin * 2;
+        let left = vp.x - screen.x - margin * 2;
         // 宽度已定，再算左边位置：左侧时右缘贴视口左边缘
-        let w = right.max(left).min(MAX_W);
+        let w = right.max(left).min(max_w);
         let (x, w) = if right >= left {
-            (vp.x + vp.w + MARGIN, w)
+            (vp.x + vp.w + margin, w)
         } else {
-            (vp.x - MARGIN - w, w)
+            (vp.x - margin - w, w)
         };
-        if w < MIN_W {
+        if w < min_w {
             return None;
         }
-        let max_h = (screen.h - MARGIN * 2).max(MIN_H);
-        let h = (vp.h as i32).clamp(MIN_H, MAX_H).min(max_h);
+        let screen_h = (screen.h - margin * 2).max(min_h);
+        let h = (vp.h as i32).clamp(min_h, max_h).min(screen_h);
         // 底边与视口底边对齐；超出屏幕时夹回屏幕内
         let y = (vp.y + vp.h - h)
-            .min(screen.y + screen.h - MARGIN - h)
-            .max(screen.y + MARGIN);
+            .min(screen.y + screen.h - margin - h)
+            .max(screen.y + margin);
         Some(SelRect { x, y, w, h })
     }
 
     /// 按视口位置创建预览窗（放不下时返回 None，长截图照常进行）。
-    pub fn spawn(vp: SelRect, hinstance: HINSTANCE, palette: &'static Palette) -> Option<Self> {
-        let rect = Self::layout(vp, virtual_screen())?;
+    pub fn spawn(vp: SelRect, hinstance: HINSTANCE, palette: &'static Palette, ui: Ui) -> Option<Self> {
+        let rect = Self::layout(vp, virtual_screen(), ui)?;
         let (mem_dc, dib_bmp, dib_bits) = create_dib_surface(rect.w as u32, rect.h as u32).ok()?;
         unsafe {
             let wc = WNDCLASSW {
@@ -108,6 +118,7 @@ impl Preview {
                 hwnd,
                 w: rect.w,
                 h: rect.h,
+                pad: ui.px(PAD_BASE),
                 mem_dc,
                 dib_bmp,
                 dib_bits,
@@ -130,13 +141,13 @@ impl Preview {
         let Some(mut pixmap) = Pixmap::new(self.w as u32, self.h as u32) else {
             return;
         };
-        let inner_w = (self.w - PAD * 2).max(1) as u32;
-        let inner_h = (self.h - PAD * 2).max(1) as u32;
+        let inner_w = (self.w - self.pad * 2).max(1) as u32;
+        let inner_h = (self.h - self.pad * 2).max(1) as u32;
         if let Some(thumb) = session.thumbnail(inner_w, inner_h) {
             let (tw, th) = (thumb.width() as i32, thumb.height() as i32);
             let dx = (self.w - tw) / 2;
             // 缩略图底部与窗口底部对齐：图的底端即拼接进度末端
-            let dy = self.h - PAD - th;
+            let dy = self.h - self.pad - th;
             pixmap.draw_pixmap(
                 dx,
                 dy,
@@ -212,6 +223,10 @@ fn virtual_screen() -> SelRect {
 mod tests {
     use super::*;
 
+    fn base() -> Ui {
+        Ui::from_dpi(96)
+    }
+
     fn screen() -> SelRect {
         SelRect {
             x: 0,
@@ -229,9 +244,9 @@ mod tests {
             w: 800,
             h: 600,
         };
-        let r = Preview::layout(vp, screen()).expect("右侧有空间");
+        let r = Preview::layout(vp, screen(), base()).expect("右侧有空间");
         assert!(r.x >= vp.x + vp.w, "应放在视口右侧");
-        assert_eq!(r.w, MAX_W);
+        assert_eq!(r.w, base().px(MAX_W_BASE));
         assert!(r.x + r.w <= screen().x + screen().w);
     }
 
@@ -244,21 +259,21 @@ mod tests {
             w: 700,
             h: 600,
         };
-        let r = Preview::layout(vp, screen()).expect("左侧有空间");
+        let r = Preview::layout(vp, screen(), base()).expect("左侧有空间");
         assert!(r.x + r.w <= vp.x, "应放在视口左侧");
         assert!(r.x >= screen().x);
     }
 
     #[test]
     fn hides_when_no_room() {
-        // 视口几乎占满屏幕宽度，两侧都不足 MIN_W
+        // 视口几乎占满屏幕宽度，两侧都不足最小宽度
         let vp = SelRect {
             x: 30,
             y: 0,
             w: 1860,
             h: 900,
         };
-        assert_eq!(Preview::layout(vp, screen()), None);
+        assert_eq!(Preview::layout(vp, screen(), base()), None);
     }
 
     #[test]
@@ -269,7 +284,7 @@ mod tests {
             w: 800,
             h: 170,
         };
-        let r = Preview::layout(vp, screen()).expect("有空间");
+        let r = Preview::layout(vp, screen(), base()).expect("有空间");
         assert!(r.y >= 0 && r.y + r.h <= 1080, "预览窗不得超出屏幕：{r:?}");
     }
 
@@ -281,7 +296,28 @@ mod tests {
             w: 800,
             h: 600,
         };
-        let r = Preview::layout(vp, screen()).expect("有空间");
+        let r = Preview::layout(vp, screen(), base()).expect("有空间");
         assert_eq!(r.y + r.h, vp.y + vp.h, "预览窗底边应与视口底边对齐");
+    }
+
+    /// 高 DPI 下预览窗整体放大（CAP-5）。
+    #[test]
+    fn preview_scales_with_dpi() {
+        let vp = SelRect {
+            x: 400,
+            y: 100,
+            w: 800,
+            h: 600,
+        };
+        let hidpi_screen = SelRect {
+            x: 0,
+            y: 0,
+            w: 3840,
+            h: 2160,
+        };
+        let ui = Ui::from_dpi(192);
+        let r = Preview::layout(vp, hidpi_screen, ui).expect("有空间");
+        assert_eq!(r.w, ui.px(MAX_W_BASE), "预览窗宽度应按 DPI 放大");
+        assert_eq!(r.h, 600, "高度跟随视口，不缩放");
     }
 }

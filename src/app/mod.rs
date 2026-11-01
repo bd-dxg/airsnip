@@ -180,6 +180,8 @@ impl App {
         let tool_keys = self.config.tool_keys.clone();
         // 长截图键（覆盖层内按下，默认 S）
         let longshot_key = self.config.hotkey.longshot_key;
+        // 覆盖层界面缩放（CAP-5）：随配置快照传入覆盖层线程
+        let ui_scale = self.config.ui_scale;
         let default_tool = crate::settings::last_tool();
         // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名、默认筛选器与初始位置
         let save = crate::settings::SavePrefs {
@@ -199,12 +201,13 @@ impl App {
                         longshot_key,
                         default_tool,
                         save,
+                        ui_scale,
                         hinstance,
                         main_hwnd,
                     );
                     // M4：工具栏长截图按钮 / 长截图键返回视口选区，进入长截图拼接。
                     if let crate::overlay::OverlayResult::Viewport((x, y, w, h)) = result {
-                        crate::longshot::run(x, y, w, h, hinstance, max_height, palette);
+                        crate::longshot::run(x, y, w, h, hinstance, max_height, palette, ui_scale);
                     }
                 }
                 Err(e) => message_box(None, &format!("抓屏失败：{e}"), MB_OK | MB_ICONERROR),
