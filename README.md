@@ -148,3 +148,5 @@ pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip
 ## 许可
 
 [GPL-3.0-only](LICENSE)。源文件均带 SPDX 标注；依赖均为宽松许可证（MIT / Apache-2.0 / BSD / Zlib / IJG 等），与 GPL-3.0 兼容。
+
+感谢 [LinuxDo](https://linux.do/) 社区
