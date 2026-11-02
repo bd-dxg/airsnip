@@ -239,6 +239,10 @@ pub struct Config {
     pub last_save_dir: Option<String>,
     /// 长截图拼接高度上限（像素，LNG-7，默认 30000）。
     pub longshot_max_height: u32,
+    /// 启动后自动检查更新（SYS-7，默认开）。关闭后只能从关于页手动检查。
+    pub auto_check_update: bool,
+    /// 用户选择「跳过此版本」的版本号（SYS-7）。
+    pub skipped_version: Option<String>,
 }
 
 impl Default for Config {
@@ -257,6 +261,8 @@ impl Default for Config {
             last_save_ext: None,
             last_save_dir: None,
             longshot_max_height: 30000,
+            auto_check_update: true,
+            skipped_version: None,
         }
     }
 }

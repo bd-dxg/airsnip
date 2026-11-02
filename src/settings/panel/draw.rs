@@ -135,6 +135,7 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
         RowKind::About => draw_about(pixmap, panel, row),
         RowKind::Link => super::link::draw_link(pixmap, panel, row),
         RowKind::Action => super::link::draw_action(pixmap, panel, row),
+        RowKind::Button => super::link::draw_button(pixmap, panel, row),
         RowKind::Qr => super::reward::draw_block(pixmap, panel, row),
     }
 }
@@ -145,6 +146,7 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let s = panel.scale;
     let on = match row.id {
         RowId::Autostart => panel.autostart_on,
+        RowId::AutoCheckUpdate => panel.config.auto_check_update,
         _ => false,
     };
     let c = &row.control;

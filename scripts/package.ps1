@@ -49,11 +49,20 @@ $zip = Join-Path $dist "$name.zip"
 if (Test-Path $zip) { Remove-Item $zip -Force }
 Compress-Archive -Path (Join-Path $pkg "*") -DestinationPath $zip -CompressionLevel Optimal
 
+# 自动更新包（SYS-7）：裸 exe（自动更新只需替换 exe，不用解压 zip）
+$updExe = Join-Path $dist "$name.exe"
+Copy-Item $exe $updExe -Force
+
 $zipMb = (Get-Item $zip).Length / 1MB
 $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+$exeSha = (Get-FileHash $updExe -Algorithm SHA256).Hash.ToLower()
 Write-Host ""
-Write-Host "产物：dist\$name.zip"
+Write-Host "产物：dist\$name.zip（手动下载）"
+Write-Host "      dist\$name.exe（自动更新）"
 Write-Host ("体积：{0:N2} MB" -f $zipMb)
-Write-Host "SHA256：$sha"
+Write-Host "zip SHA256：$sha"
+Write-Host "exe SHA256：$exeSha"
 Write-Host ""
-Write-Host "下一步：gh release create v$ver `"dist\$name.zip`" --title `"AirSnip v$ver`" --notes-file <说明文件>"
+Write-Host "下一步："
+Write-Host "  1. gh release create v$ver `"dist\$name.zip`" `"dist\$name.exe`" --title `"AirSnip v$ver`" --notes-file <说明文件>"
+Write-Host "  2. pwsh -File scripts/gen-latest-json.ps1   # 生成并签名 latest.json，再上传到同一 Release"

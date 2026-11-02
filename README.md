@@ -109,10 +109,11 @@
 4. 托盘左键打开设置，右键为「设置 / 退出」
 5. 配置位置：`%APPDATA%\airsnip\config.toml`
 
+**自动更新**：启动后 3 秒静默检查一次新版本（可在设置 → 关于页关闭），发现新版本时弹托盘气泡提示；到「关于 → 版本更新」点一下即可下载并自动替换重启。清单与安装包优先走国内加速镜像，GitHub 直连兜底；清单用 ed25519 签名 + SHA-256 校验，验签不过不会安装。
+
 **首次运行提示**：exe 未做代码签名，Windows SmartScreen 可能提示「已保护你的电脑」——点「更多信息」→「仍要运行」。
 
 **从旧版 `jietu`（v0.5.0 及更早）升级**：本版改名为 AirSnip，**不做自动迁移**，请手动完成三件事——
-
 1. 删除旧的开机自启任务（管理员 PowerShell）：`schtasks /delete /tn jietu /f`
 2. 退出并删除旧版 `jietu.exe`：新旧版的单实例互不排斥，同时运行会抢同一组热键
 3. 设置需重设一次（新配置在 `%APPDATA%\airsnip\config.toml`）；旧截图仍在 `图片\jietu`，不会自动搬家
@@ -122,10 +123,11 @@
 ```powershell
 cargo run                 # 开发版（不提权，可调试）
 cargo build --release     # 发布版（manifest 要求管理员权限，单文件）
-cargo test                # 单测（186 项）
+cargo test                # 单测（216 项）
 cargo fmt --check         # 格式化检查
 cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
-pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip
+pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip / .exe
+pwsh scripts/gen-latest-json.ps1 -Notes "说明"  # 生成并签名自动更新清单 latest.json
 ```
 
 技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。当前版本 v0.6.0。

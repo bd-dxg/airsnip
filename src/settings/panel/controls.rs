@@ -122,6 +122,10 @@ pub enum RowId {
     Repo,
     /// 第三方组件声明入口（M5，PRD §9）。
     Licenses,
+    /// 检查更新（SYS-7）：右侧显示当前更新状态，整行可点。
+    CheckUpdate,
+    /// 启动时自动检查更新开关（SYS-7）。
+    AutoCheckUpdate,
     /// 支持项目（关于页：文案 + 微信赞赏码）。
     Reward,
 }
@@ -143,6 +147,8 @@ pub enum RowKind {
     Link,
     /// 操作按钮：右侧强调色文字，点击执行一次动作（如「恢复默认」）。
     Action,
+    /// 状态行：右侧按钮（文案随状态变，忙时置灰），整行可点。
+    Button,
     /// 支持项目块：高行（左侧文案 + 右侧赞赏码）。
     Qr,
 }
@@ -250,7 +256,14 @@ mod tests {
                     RowId::UiScale175,
                     RowId::UiScale200,
                 ],
-                Section::About => vec![RowId::About, RowId::Repo, RowId::Licenses, RowId::Reward],
+                Section::About => vec![
+                    RowId::About,
+                    RowId::Repo,
+                    RowId::Licenses,
+                    RowId::CheckUpdate,
+                    RowId::AutoCheckUpdate,
+                    RowId::Reward,
+                ],
             };
             assert_eq!(rows, expected, "节 {sec:?} 行集合错误");
         }
