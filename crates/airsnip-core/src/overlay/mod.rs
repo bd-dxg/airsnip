@@ -20,6 +20,7 @@ mod objedit;
 mod pick;
 mod selection;
 pub mod shape;
+mod snap;
 pub mod surface;
 mod text_edit_state;
 mod textinput;
@@ -94,6 +95,10 @@ pub struct Overlay {
     /// 界面缩放（按显示器 DPI，CAP-5）：工具栏、手柄、尺寸提示与光标随之缩放。
     pub ui: ui::Ui,
     pub selection: Option<SelRect>,
+    /// 窗口识别（CAP-6）：截图时屏幕上各窗口的矩形（覆盖层像素，前到后）；`None` = 平台未提供，功能关闭。
+    windows: Option<Vec<SelRect>>,
+    /// 还没有选区时鼠标下识别到的窗口（或整屏），单击即选中（CAP-6/7）。
+    hover: Option<SelRect>,
     /// 修饰键状态（平台层在分发输入事件前写入）。
     pub mods: Mods,
     phase: Phase,

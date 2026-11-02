@@ -36,9 +36,6 @@ const char *airsnip_last_error(void);
 /// 按扩展名（png / jpg / jpeg / webp）编码并写入 path。
 int32_t airsnip_save_image(const AsImage *img, const char *path);
 
-/// 截图热键：kVK_* 键码与 Carbon 修饰位（controlKey 0x1000 / optionKey 0x0800 / shiftKey 0x0200 / cmdKey 0x0100）。
-void airsnip_config_shot_hotkey(uint32_t *key, uint32_t *mods);
-
 // ---------------------------------------------------------------- 覆盖层
 
 /// 光标形状（airsnip_core::overlay::Shape 的判别值）。
@@ -98,14 +95,73 @@ void airsnip_overlay_mouse_move(AsOverlay *ov, int32_t x, int32_t y);
 void airsnip_overlay_mouse_up(AsOverlay *ov);
 void airsnip_overlay_double_click(AsOverlay *ov, int32_t x, int32_t y);
 void airsnip_overlay_cancel(AsOverlay *ov);
+/// 贴选区并结束截图（截图期间按贴图热键，同 Windows 截图时按 F3）。
+void airsnip_overlay_pin(AsOverlay *ov);
+/// 截图时屏幕上各窗口的矩形（rects 为 count 组 x, y, w, h，覆盖层像素，前到后），开启窗口识别（CAP-6）。
+void airsnip_overlay_set_windows(AsOverlay *ov, const int32_t *rects, size_t count);
+/// 鼠标离开本屏：撤掉窗口识别的悬停高亮。
+void airsnip_overlay_leave(AsOverlay *ov);
 /// 滚轮：steps 为带符号格数（触控板连续滚动由调用方归并成格）。
 void airsnip_overlay_wheel(AsOverlay *ov, int32_t x, int32_t y, int32_t steps, uint32_t mods);
 /// 按键（kVK_* 键码）：返回非 0 表示已处理。
 int32_t airsnip_overlay_key(AsOverlay *ov, uint32_t code, uint32_t mods);
 /// 是否正在文本输入（此时空格是字符，不是「按住拖动选区」）。
 int32_t airsnip_overlay_editing_text(AsOverlay *ov);
+/// 输入法文字：commit 非 0 为上屏，0 为组合串（空串 = 组合结束）。
+void airsnip_overlay_text(AsOverlay *ov, const char *text, int32_t commit);
+/// 输入中的光标竖线（像素，左上原点）写入 out[3]：x, y, 高；不在输入中返回 0。
+int32_t airsnip_overlay_caret(AsOverlay *ov, int32_t *out);
 int32_t airsnip_overlay_has_selection(AsOverlay *ov);
 /// 关闭后的结果：0 完成、1 取消、2 长截图（viewport 写入 x, y, w, h，可为 NULL）。
 int32_t airsnip_overlay_result(AsOverlay *ov, int32_t *viewport);
+
+// ---------------------------------------------------------------- 贴图
+
+/// 贴图配置（PIN-1~6）：键码 kVK_*，修饰为 Carbon 修饰位
+/// （controlKey 0x1000 / optionKey 0x0800 / shiftKey 0x0200 / cmdKey 0x0100）。
+typedef struct {
+    uint32_t key, mods;               ///< 剪贴板贴图全局热键
+    uint32_t border_key, border_mods; ///< 贴图窗口内的边框开关键
+    int32_t center;                   ///< 非 0：截图贴图放屏幕中央；0：选区原位置
+    int32_t border;                   ///< 非 0：显示 1px 蓝色边框
+} AsPinConfig;
+
+void airsnip_config_pin(AsPinConfig *out);
+/// 记住边框开关（之后的新贴图沿用）。
+void airsnip_config_set_pin_border(int32_t on);
+/// 默认截图目录下的新 PNG 路径（时间戳文件名，目录不存在时创建）写入 out；失败返回非 0。
+int32_t airsnip_default_save_path(char *out, size_t len);
+
+// ---------------------------------------------------------------- 长截图
+
+/// 长截图（LNG-1/3/6/7）：Swift 抓视口帧推入，核心拼接。只在主线程调用。
+typedef struct AsLongshot AsLongshot;
+/// 视口 w × h 像素；失败返回 NULL。由 airsnip_longshot_free 释放。
+AsLongshot *airsnip_longshot_new(uint32_t w, uint32_t h);
+void airsnip_longshot_free(AsLongshot *ls);
+/// 推入一帧并拼接：0 继续、1 已达高度上限（应结束）、负数失败。
+int32_t airsnip_longshot_push(AsLongshot *ls, const AsImage *frame);
+/// 状态条提示（空串 = 显示默认操作提示），下次调用前有效。
+const char *airsnip_longshot_hint(AsLongshot *ls);
+int32_t airsnip_longshot_can_undo(AsLongshot *ls);
+void airsnip_longshot_undo(AsLongshot *ls);
+/// 拼接结果缩略图（还没有内容时宽高为 0），下次调用前有效。
+AsImage airsnip_longshot_thumbnail(AsLongshot *ls, uint32_t max_w, uint32_t max_h);
+/// 完成：保存 PNG 到默认目录，并借出 PNG 字节写剪贴板（释放前有效）；保存失败仍借出 PNG 并返回非 0。
+int32_t airsnip_longshot_finish(AsLongshot *ls, float scale, const uint8_t **out_png, size_t *out_len);
+
+// ---------------------------------------------------------------- 设置
+
+/// 设置窗口可改的配置项（SYS-3）。枚举为序号：theme 0 跟随系统 / 1 浅色 / 2 深色；
+/// ui_scale 0 自动 / 1–5 = 100%–200%；name_style 0 日期 + 时间 / 1 时间戳 / 2 仅日期。
+typedef struct {
+    int32_t auto_start, theme, ui_scale, name_style, pin_center;
+    uint32_t shot_key, shot_mods, pin_key, pin_mods, border_key, border_mods, longshot_key;
+    uint32_t tool_rect, tool_arrow, tool_text, tool_blur, tool_highlight, tool_glow;
+} AsSettings;
+
+void airsnip_settings_load(AsSettings *out);
+/// 立即写入配置文件；全局热键由调用方重新注册。
+int32_t airsnip_settings_save(const AsSettings *s);
 
 #endif

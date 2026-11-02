@@ -23,12 +23,14 @@ final class OverlayWindow: NSWindow {
 }
 
 final class OverlayController {
-    private var sessions: [(window: OverlayWindow, view: OverlayView)] = []
-    private let onEnd: () -> Void
+    private var sessions: [(window: OverlayWindow, view: OverlayView, display: DisplayInfo)] = []
+    /// 结束回调：参数为长截图请求（选区转为滚动视口时），否则为 nil。
+    private let onEnd: (LongshotRequest?) -> Void
     private var ending = false
 
     /// 为每张抓屏创建覆盖层；全部失败时返回 nil（详情见 `airsnip_last_error`）。
-    init?(shots: [DisplayShot], onEnd: @escaping () -> Void) {
+    /// `windows`：截图时屏幕上的窗口（CG 全局坐标，前到后），换算成各屏像素后用于窗口识别（CAP-6）。
+    init?(shots: [DisplayShot], windows: [CGRect], onEnd: @escaping (LongshotRequest?) -> Void) {
         self.onEnd = onEnd
         let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         for shot in shots {
@@ -43,9 +45,11 @@ final class OverlayController {
             }
             guard let ov else { continue }
             view.overlay = ov
+            let rects = OverlayController.pixelRects(windows, display: shot.displayID, scale: shot.scale)
+            airsnip_overlay_set_windows(ov, rects, rects.count / 4)
             let window = OverlayWindow(frame: shot.frame)
             window.contentView = view
-            sessions.append((window, view))
+            sessions.append((window, view, DisplayInfo(displayID: shot.displayID, frame: shot.frame, scale: shot.scale)))
         }
         guard !sessions.isEmpty else { return nil }
         sessions.forEach { $0.view.controller = self }
@@ -59,6 +63,25 @@ final class OverlayController {
         NSApp.activate(ignoringOtherApps: true)
         key.window.makeKeyAndOrderFront(nil)
         key.window.makeFirstResponder(key.view)
+        key.view.hover(at: mouse)  // 不等鼠标移动，先高亮鼠标下的窗口
+    }
+
+    /// 窗口矩形（CG 全局坐标，左上原点 points）→ 该显示器像素坐标（x, y, w, h 展平，向外取整）。
+    private static func pixelRects(_ windows: [CGRect], display: CGDirectDisplayID, scale: CGFloat) -> [Int32] {
+        let origin = CGDisplayBounds(display).origin
+        return windows.flatMap { r -> [Int32] in
+            let x0 = ((r.minX - origin.x) * scale).rounded(.down)
+            let y0 = ((r.minY - origin.y) * scale).rounded(.down)
+            let x1 = ((r.maxX - origin.x) * scale).rounded(.up)
+            let y1 = ((r.maxY - origin.y) * scale).rounded(.up)
+            return [Int32(x0), Int32(y0), Int32(x1 - x0), Int32(y1 - y0)]
+        }
+    }
+
+    /// 截图期间按贴图热键：贴有选区的那块屏的选区（同 Windows 截图时按 F3）；还没有选区或已在收尾时不处理。
+    func pinSelection() {
+        guard !ending, let s = sessions.first(where: { airsnip_overlay_has_selection($0.view.overlay) != 0 }) else { return }
+        airsnip_overlay_pin(s.view.overlay)
     }
 
     /// 某屏已有选区时，其他屏不接受按下。
@@ -76,6 +99,13 @@ final class OverlayController {
     private func end(from view: OverlayView) {
         var viewport = [Int32](repeating: 0, count: 4)
         let result = airsnip_overlay_result(view.overlay, &viewport)
+        // 长截图：选区（该显示器像素）→ 屏幕矩形（points），覆盖层释放前算好
+        var longshot: LongshotRequest?
+        if result == 2, let s = sessions.first(where: { $0.view === view }) {
+            let (x, y, w, h) = (Int(viewport[0]), Int(viewport[1]), Int(viewport[2]), Int(viewport[3]))
+            let r = view.viewRect(x: x, y: y, w: w, h: h).offsetBy(dx: s.display.frame.minX, dy: s.display.frame.minY)
+            longshot = LongshotRequest(display: s.display, viewport: r, width: w, height: h)
+        }
         for s in sessions {
             s.window.orderOut(nil)
             let ov = s.view.overlay
@@ -85,9 +115,6 @@ final class OverlayController {
         sessions.removeAll()
         // 把焦点还给截图前的应用（菜单栏应用自己没有窗口可留）
         NSApp.hide(nil)
-        if result == 2 {
-            Alerts.show("长截图将在 M6 提供，当前版本请先用普通截图。")
-        }
-        onEnd()
+        onEnd(longshot)
     }
 }

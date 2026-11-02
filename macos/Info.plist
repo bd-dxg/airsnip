@@ -10,6 +10,8 @@
     <string>AirSnip</string>
     <key>CFBundleDisplayName</key>
     <string>AirSnip</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleExecutable</key>
     <string>AirSnip</string>
     <key>CFBundlePackageType</key>
@@ -28,6 +30,6 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSHumanReadableCopyright</key>
-    <string>AirSnip 轻截 · GPL-3.0-only</string>
+    <string>AirSnip 轻截 · 原作者 冰冻大西瓜（bd-dxg）· GPL-3.0-only</string>
 </dict>
 </plist>

@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! macOS 覆盖层按键分发：与 Windows `overlay::wndproc` 的 `WM_KEYDOWN` 规则一致，
-//! 编辑快捷键换成 ⌘（⌘C 复制、⌘S 保存、⌘Z 撤销、⌘⇧Z 重做）。键码为 `kVK_*`。
+//! 编辑快捷键换成 ⌘（⌘C 复制、⌘S 保存、⌘Z 撤销、⌘⇧Z 重做、⌘A 全选整屏）。键码为 `kVK_*`。
 
 use airsnip_core::overlay::Overlay;
 
+const KEY_A: u32 = 0x00;
 const KEY_S: u32 = 0x01;
 const KEY_Z: u32 = 0x06;
 const KEY_C: u32 = 0x08;
@@ -30,6 +31,7 @@ pub(crate) fn on_key(ov: &mut Overlay, code: u32, cmd: bool, shift: bool) -> boo
         KEY_ESCAPE => ov.on_cancel(),
         KEY_RETURN | KEY_ENTER => ov.on_copy(),
         KEY_C if cmd => ov.on_copy(),
+        KEY_A if cmd => ov.select_all(), // 全选整屏（CAP-7）
         KEY_S if cmd => ov.on_save(),
         KEY_Z if cmd && shift => ov.on_redo(),
         KEY_Z if cmd => ov.on_undo(),
@@ -62,6 +64,9 @@ fn on_text_key(ov: &mut Overlay, code: u32, cmd: bool, shift: bool) -> bool {
     let vk = match code {
         KEY_DELETE => 0x08,
         KEY_FORWARD_DELETE => 0x2E,
+        // ⌘← / ⌘→：行首 / 行尾（Mac 键盘没有 Home / End）
+        KEY_LEFT if cmd => 0x24,
+        KEY_RIGHT if cmd => 0x23,
         KEY_LEFT => 0x25,
         KEY_RIGHT => 0x27,
         KEY_HOME => 0x24,
@@ -115,6 +120,54 @@ mod tests {
         assert!(on_key(&mut ov, KEY_RETURN, false, false));
         assert_eq!(log.borrow().copied, Some((60, 40)));
         assert_eq!(ov.result(), OverlayResult::Done);
+    }
+
+    fn sel(ov: &Overlay) -> Option<(i32, i32, i32, i32)> {
+        ov.selection.map(|s| (s.x, s.y, s.w, s.h))
+    }
+
+    /// 窗口识别（CAP-6/7）：单击（含小抖动）选中鼠标下的窗口；空白处单击 = 整屏；
+    /// 拖出容差仍是手动框选；⌘A 全选整屏；未提供窗口列表时单击不出选区（旧行为）。
+    #[test]
+    fn click_selects_window_or_full_screen() {
+        use airsnip_core::overlay::geometry::SelRect;
+        let win = |ov: &mut Overlay| {
+            ov.set_windows(vec![SelRect {
+                x: 50,
+                y: 40,
+                w: 120,
+                h: 80,
+            }])
+        };
+
+        let (mut ov, _) = test_overlay(400, 300);
+        win(&mut ov);
+        ov.on_mouse_move(60, 50);
+        ov.on_lbutton_down(60, 50);
+        ov.on_mouse_move(62, 53);
+        ov.on_lbutton_up();
+        assert_eq!(sel(&ov), Some((50, 40, 120, 80)), "单击窗口应选中整个窗口");
+
+        let (mut ov, _) = test_overlay(400, 300);
+        win(&mut ov);
+        ov.on_lbutton_down(300, 250);
+        ov.on_lbutton_up();
+        assert_eq!(sel(&ov), Some((0, 0, 400, 300)), "空白处单击应选中整屏");
+
+        let (mut ov, _) = test_overlay(400, 300);
+        win(&mut ov);
+        ov.on_lbutton_down(60, 50);
+        ov.on_mouse_move(160, 150);
+        ov.on_lbutton_up();
+        assert_eq!(sel(&ov), Some((60, 50, 100, 100)), "拖动应手动框选");
+
+        assert!(on_key(&mut ov, KEY_A, true, false));
+        assert_eq!(sel(&ov), Some((0, 0, 400, 300)), "⌘A 应全选整屏");
+
+        let (mut ov, _) = test_overlay(400, 300);
+        ov.on_lbutton_down(60, 50);
+        ov.on_lbutton_up();
+        assert_eq!(sel(&ov), None, "没有窗口列表时单击不出选区");
     }
 
     #[test]

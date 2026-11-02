@@ -57,7 +57,8 @@ pub(crate) fn as_image(p: &Pixmap) -> AsImage {
     }
 }
 
-pub(crate) struct MacHost(pub AsHost);
+/// 第二项为显示器 backingScaleFactor：复制时写入图片分辨率（OUT-1）。
+pub(crate) struct MacHost(pub AsHost, pub f32);
 
 impl Host for MacHost {
     fn present(&mut self, _display: &Pixmap, r: SelRect) {
@@ -84,10 +85,10 @@ impl Host for MacHost {
         }
     }
 
-    /// PNG 编码在后台完成（大选区可达上百毫秒），结果交给 Swift 写剪贴板。
+    /// PNG 编码在后台完成（大选区可达上百毫秒），结果交给 Swift 写剪贴板（PNG 带 Retina 分辨率）。
     fn copy_image(&mut self, img: Pixmap) {
-        let (done, fail) = (self.0.clipboard_png, self.0.notify);
-        std::thread::spawn(move || match airsnip_core::output::encode_png(&img) {
+        let (done, fail, scale) = (self.0.clipboard_png, self.0.notify, self.1);
+        std::thread::spawn(move || match airsnip_core::output::encode_png_scaled(&img, scale) {
             Ok(png) => {
                 if let Some(f) = done {
                     unsafe { f(png.as_ptr(), png.len(), img.width(), img.height()) }

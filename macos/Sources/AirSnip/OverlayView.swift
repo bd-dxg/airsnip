@@ -9,14 +9,24 @@ final class OverlayView: NSView {
     /// Rust 覆盖层（由 OverlayController 创建与释放；释放前先置空）。
     var overlay: OpaquePointer?
     weak var controller: OverlayController?
-    /// 文本输入期间为 true（EDT-4，M3 接 NSTextInputClient）。
-    var imeEnabled = false
+    /// 文本输入期间为 true（EDT-4，核心经宿主回调 set_ime 切换）。
+    var imeEnabled = false {
+        didSet {
+            guard !imeEnabled, oldValue else { return }
+            marked = ""
+            // 此刻还在核心的调用栈里，输入法可能同步回调 insertText，推迟到下一轮
+            DispatchQueue.main.async { [weak self] in self?.inputContext?.discardMarkedText() }
+        }
+    }
+    /// 输入法组合串（NSTextInputClient，见 OverlayTextInput.swift）。
+    var marked = ""
+    var markedSelection = NSRange(location: 0, length: 0)
     let scale: CGFloat
     let pixelHeight: Int
     private var cursor = NSCursor.crosshair
     private var cursorShape: Int32 = -1
     private var spaceDown = false
-    private var wheelAccum: CGFloat = 0
+    private var wheel = WheelSteps()
     private var lastPixel: (x: Int32, y: Int32) = (0, 0)
 
     init(frame: NSRect, scale: CGFloat, pixelHeight: Int) {
@@ -35,7 +45,9 @@ final class OverlayView: NSView {
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
-        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self))
+        addTrackingArea(
+            NSTrackingArea(
+                rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
     }
 
     // MARK: 坐标
@@ -119,7 +131,7 @@ final class OverlayView: NSView {
 
     // MARK: 鼠标
 
-    private func mods(_ flags: NSEvent.ModifierFlags) -> UInt32 {
+    func mods(_ flags: NSEvent.ModifierFlags) -> UInt32 {
         var m: UInt32 = 0
         if flags.contains(.shift) { m |= AIRSNIP_MOD_SHIFT }
         if spaceDown { m |= AIRSNIP_MOD_SPACE }
@@ -150,9 +162,24 @@ final class OverlayView: NSView {
     override func mouseDragged(with event: NSEvent) { move(event) }
     override func mouseMoved(with event: NSEvent) { move(event) }
 
+    /// 别的屏已有选区时本屏不接受按下，也就不做窗口识别的悬停高亮。
     private func move(_ event: NSEvent) {
-        guard let p = sync(event), let ov = overlay else { return }
+        guard controller?.mayInteract(self) ?? false, let p = sync(event), let ov = overlay else { return }
         airsnip_overlay_mouse_move(ov, p.x, p.y)
+    }
+
+    /// 鼠标离开本屏：撤掉窗口识别的悬停高亮（多屏时只有鼠标所在屏高亮）。
+    override func mouseExited(with event: NSEvent) {
+        guard let ov = overlay else { return }
+        airsnip_overlay_leave(ov)
+    }
+
+    /// 覆盖层刚出现、鼠标还没动：按屏幕坐标 `point` 先做一次悬停识别。
+    func hover(at point: NSPoint) {
+        guard let ov = overlay, let window else { return }
+        let p = convert(window.convertPoint(fromScreen: point), from: nil)
+        airsnip_overlay_mouse_move(
+            ov, Int32((p.x * scale).rounded(.down)), Int32(((bounds.height - p.y) * scale).rounded(.down)))
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -166,21 +193,12 @@ final class OverlayView: NSView {
         airsnip_overlay_cancel(ov)
     }
 
-    /// 滚轮：普通鼠标每个事件一格；触控板连续滚动按 12pt 归并为一格。方向统一为「设备向上 = 增大」。
+    /// 滚轮（按格，见 WheelSteps）：设备向上 = 增大。
     override func scrollWheel(with event: NSEvent) {
         guard let p = sync(event), let ov = overlay else { return }
-        var dy = event.scrollingDeltaY
-        if event.isDirectionInvertedFromDevice { dy = -dy }
-        let steps: Int32
-        if event.hasPreciseScrollingDeltas {
-            wheelAccum += dy
-            steps = Int32((wheelAccum / 12).rounded(.towardZero))
-            wheelAccum -= CGFloat(steps) * 12
-        } else {
-            steps = dy > 0 ? 1 : (dy < 0 ? -1 : 0)
-        }
+        let steps = wheel.take(event)
         if steps != 0 {
-            airsnip_overlay_wheel(ov, p.x, p.y, steps, mods(event.modifierFlags))
+            airsnip_overlay_wheel(ov, p.x, p.y, Int32(steps), mods(event.modifierFlags))
         }
     }
 
@@ -188,8 +206,14 @@ final class OverlayView: NSView {
 
     override func keyDown(with event: NSEvent) {
         guard let ov = overlay else { return }
-        // 空格（非文本输入时）：按住拖动整个选区（CAP-2）
-        if event.keyCode == 49, airsnip_overlay_editing_text(ov) == 0 {
+        // 文字输入中：按键先交输入法，字符经 NSTextInputClient、编辑键经 doCommand 回到核心。
+        // 其余时候不经输入法，工具键、长截图键不会被中文输入法截走。
+        if airsnip_overlay_editing_text(ov) != 0 {
+            interpretKeyEvents([event])
+            return
+        }
+        // 空格：按住拖动整个选区（CAP-2）
+        if event.keyCode == 49 {
             if !event.isARepeat {
                 spaceDown = true
                 airsnip_overlay_set_mods(ov, mods(event.modifierFlags), lastPixel.x, lastPixel.y)
@@ -197,7 +221,13 @@ final class OverlayView: NSView {
             return
         }
         _ = airsnip_overlay_key(ov, UInt32(event.keyCode), mods(event.modifierFlags))
-        // 未处理的按键（文本输入中的字符）在 M3 经 NSTextInputClient 送入核心
+    }
+
+    /// 输入法不处理的按键（insertNewline:、deleteBackward:、moveLeft:、cancelOperation: 等）：
+    /// 把原始按键交给核心的按键分发（键码规则见 airsnip-macos keys.rs）。
+    override func doCommand(by selector: Selector) {
+        guard let ov = overlay, let event = NSApp.currentEvent, event.type == .keyDown else { return }
+        _ = airsnip_overlay_key(ov, UInt32(event.keyCode), mods(event.modifierFlags))
     }
 
     /// ⌘ 组合先走这里（菜单快捷键通道）：交给核心，处理了就吞掉。

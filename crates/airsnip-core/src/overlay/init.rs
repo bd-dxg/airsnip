@@ -55,6 +55,8 @@ impl Overlay {
             palette,
             ui,
             selection: None,
+            windows: None,
+            hover: None,
             mods: Mods::default(),
             first_paint: true,
             phase: Phase::Adjusting,

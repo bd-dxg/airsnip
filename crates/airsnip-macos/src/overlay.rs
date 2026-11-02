@@ -4,6 +4,7 @@
 //! 不得在宿主回调执行期间释放（`close` 回调里只能安排异步释放）。
 
 use airsnip_core::capture::CapturedScreen;
+use airsnip_core::overlay::geometry::SelRect;
 use airsnip_core::overlay::ui::Ui;
 use airsnip_core::overlay::{Mods, Overlay, OverlayResult};
 use airsnip_core::settings::{self, Config, SavePrefs, ThemeSetting};
@@ -20,7 +21,7 @@ const MOD_SHIFT: u32 = 1;
 const MOD_SPACE: u32 = 2;
 const MOD_CMD: u32 = 4;
 
-unsafe fn ov<'a>(p: *mut AsOverlay) -> Option<&'a mut Overlay> {
+pub(crate) unsafe fn ov<'a>(p: *mut AsOverlay) -> Option<&'a mut Overlay> {
     unsafe { p.as_mut() }.map(|o| &mut o.0)
 }
 
@@ -50,7 +51,7 @@ fn build(screen: CapturedScreen, backing_scale: f32, dark: bool, host: AsHost) -
         settings::last_tool(),
         save,
         ui,
-        Box::new(MacHost(host)),
+        Box::new(MacHost(host, backing_scale)),
     )
 }
 
@@ -95,7 +96,11 @@ pub unsafe extern "C" fn airsnip_overlay_free(p: *mut AsOverlay) {
     }
     guard(|| {
         let ov = unsafe { Box::from_raw(p) };
-        settings::last_tool_store(ov.0.tool());
+        // 多屏时每块屏各有一个覆盖层：只记有选区的那块（用户在那里选的工具），
+        // 否则后释放的空白屏会把工具改回默认
+        if ov.0.selection.is_some() {
+            settings::last_tool_store(ov.0.tool());
+        }
         drop(ov);
         let (ext, dir) = (settings::last_save_ext_take(), settings::last_save_dir_take());
         if ext.is_some() || dir.is_some() {
@@ -127,7 +132,7 @@ pub unsafe extern "C" fn airsnip_overlay_display(p: *mut AsOverlay) -> AsImage {
 
 /// 在覆盖层上执行一次操作（空句柄忽略，panic 转错误码）。
 /// 仅供本文件的 `unsafe extern "C"` 函数调用：`p` 的有效性由它们的调用方保证。
-fn with(p: *mut AsOverlay, f: impl FnOnce(&mut Overlay)) {
+pub(crate) fn with(p: *mut AsOverlay, f: impl FnOnce(&mut Overlay)) {
     if let Some(o) = unsafe { ov(p) } {
         guard(|| {
             f(o);
@@ -202,6 +207,47 @@ pub unsafe extern "C" fn airsnip_overlay_double_click(p: *mut AsOverlay, x: i32,
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn airsnip_overlay_cancel(p: *mut AsOverlay) {
     with(p, |o| o.on_cancel());
+}
+
+/// 截图时屏幕上各窗口的矩形（CAP-6）：`rects` 为 `count` 组 x, y, w, h（覆盖层像素，前到后），开启窗口识别。
+///
+/// # Safety
+/// `p` 为有效覆盖层或 NULL；`rects` 为 NULL 或指向 `count * 4` 个 int32。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn airsnip_overlay_set_windows(p: *mut AsOverlay, rects: *const i32, count: usize) {
+    let flat = if rects.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(rects, count * 4) }
+    };
+    let list = flat
+        .chunks_exact(4)
+        .map(|c| SelRect {
+            x: c[0],
+            y: c[1],
+            w: c[2],
+            h: c[3],
+        })
+        .collect();
+    with(p, |o| o.set_windows(list));
+}
+
+/// 鼠标离开本屏：撤掉窗口识别的悬停高亮（CAP-6）。
+///
+/// # Safety
+/// `p` 为有效覆盖层或 NULL。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn airsnip_overlay_leave(p: *mut AsOverlay) {
+    with(p, |o| o.clear_hover());
+}
+
+/// 贴选区并结束截图（PIN-1）：截图期间按贴图热键，同 Windows 截图时按 F3。
+///
+/// # Safety
+/// `p` 为有效覆盖层或 NULL。
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn airsnip_overlay_pin(p: *mut AsOverlay) {
+    with(p, |o| o.on_pin());
 }
 
 /// 滚轮一格（`steps` 为带符号格数，Swift 侧已把触控板连续滚动归并成格）；⌘ 时 3 倍步进。

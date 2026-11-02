@@ -16,7 +16,11 @@ use tiny_skia::{IntSize, Pixmap};
 
 mod host;
 mod keys;
+mod longshot;
 mod overlay;
+mod pin;
+mod settings;
+mod text;
 
 pub const AIRSNIP_OK: i32 = 0;
 pub const AIRSNIP_ERR_FAILED: i32 = -1;
@@ -66,23 +70,6 @@ pub extern "C" fn airsnip_version() -> *const c_char {
 #[unsafe(no_mangle)]
 pub extern "C" fn airsnip_last_error() -> *const c_char {
     LAST_ERROR.with(|e| e.borrow().as_ptr())
-}
-
-/// 截图热键（SYS-2）：`kVK_*` 键码与 Carbon 修饰位，读自配置（缺省 ⌃⌘A）。
-///
-/// # Safety
-/// `key`、`mods` 为 NULL 或指向可写的 uint32。
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn airsnip_config_shot_hotkey(key: *mut u32, mods: *mut u32) {
-    let h = airsnip_core::settings::Config::load().hotkey;
-    unsafe {
-        if let Some(k) = key.as_mut() {
-            *k = h.screenshot_key;
-        }
-        if let Some(m) = mods.as_mut() {
-            *m = h.screenshot_modifiers;
-        }
-    }
 }
 
 /// 按扩展名（png / jpg / jpeg / webp）编码并写入文件（OUT-2/OUT-5）。

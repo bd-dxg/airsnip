@@ -76,6 +76,11 @@ impl super::Overlay {
         self.text_edit.is_some()
     }
 
+    /// 输入中的光标竖线 (x, y, 高)，像素（macOS 输入法候选框跟随光标）。
+    pub fn text_caret(&self) -> Option<(f32, f32, f32)> {
+        self.text_edit.as_ref().map(TextEdit::caret_rect)
+    }
+
     /// 提交当前输入（EDT-4）：空文本不创建（编辑时清空 = 删除对象）；Enter / 点击别处触发。
     /// 修改文档前才建撤销快照（begin），避免输入期间其它 begin 覆盖；结束后重绘整个选区。
     pub(super) fn commit_text(&mut self) {
@@ -233,9 +238,8 @@ pub(super) fn draw_edit(pixmap: &mut Pixmap, edit: &TextEdit, color: [u8; 4]) {
     );
 
     // 光标（竖线，白底 + 黑描边，任意底色下可见）；多行时光标按行定位
-    let cx = (edit.pos.x + edit.caret_x()).round();
-    let cy = edit.pos.y + edit.caret_row() as f32 * edit.line_height() + pad * 0.4;
-    if let Some(rect) = tiny_skia::Rect::from_xywh(cx, cy, 2.0, edit.font_size * 1.1)
+    let (cx, cy, ch) = edit.caret_rect();
+    if let Some(rect) = tiny_skia::Rect::from_xywh(cx, cy, 2.0, ch)
         && let Some(path) = caret_path(rect)
     {
         let mut black = tiny_skia::Paint::default();

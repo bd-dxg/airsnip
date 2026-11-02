@@ -1,6 +1,6 @@
 # AirSnip macOS 原生移植：M0 审计与开发计划
 
-> 状态：M0、M1 完成；M2 自动化部分完成、GUI 待人工验证（记录见 §7）。本文是 M1–M7 的依据，随阶段推进更新。
+> 状态：M0–M2 完成；M3–M7 自动化部分完成、GUI 待人工验证（记录见 §7）。本文是 M1–M7 的依据，随阶段推进更新。
 > 基线：`main` @ `f3e0718`（v0.6.0 + PR #55 覆盖层 DPI 缩放），分支 `feat/macos-port`。
 
 ## 1. 实测基线（2026-11-01）
@@ -276,3 +276,94 @@ scripts/package-macos.sh   # cargo build → swift build → 组装 AirSnip.app 
 - 剪贴板图像未写入分辨率信息，粘贴到按 points 排版的应用（Pages / Keynote）会按像素显示成 2 倍大；M4 处理。
 - 贴图、长截图按钮目前提示「将在 M5 / M6 提供」。
 - 抓屏统一转 sRGB，P3 广色域外的颜色会被裁剪。
+
+M2 人工验证已通过（2026-11-01），M1–M2 提交为 `29d1de3`。
+
+### M3–M7 标注、输出、贴图、长截图、设置（2026-11-01，自动化部分完成，GUI 待人工验证）
+
+**完成内容**
+
+- **M3 标注**：标注、对象编辑、撤销重做、滚轮、工具键在 M2 已随覆盖层进入核心，这里补文字输入。
+  覆盖视图实现 `NSTextInputClient`（`OverlayTextInput.swift`）：文字输入中按键先交 `interpretKeyEvents`，
+  组合串经 `setMarkedText`、上屏经 `insertText` 送核心（`airsnip_overlay_text`），输入法不要的编辑键经 `doCommand`
+  按原始键码交回核心按键分发；其余时候不经输入法，工具键、长截图键不会被中文输入法截走。
+  候选框跟随光标（`airsnip_overlay_caret` ← 核心 `TextEdit::caret_rect`，与绘制光标共用）；
+  `windowLevel()` 返回覆盖层层级，让输入法把候选框放在屏蔽窗口层级之上。⌘← / ⌘→ 为行首 / 行尾。
+  光标保留系统光标（Retina 下本来清晰，Windows 自绘是为了随界面缩放）；圆角柄用手指，不移植 Windows 的自绘圆弧光标。
+- **M4 输出**：另存为对话框加「格式」下拉（PNG / JPEG / WebP 无损，同 Windows），切换时扩展名随之更新；
+  选过的格式与目录在释放覆盖层时写回配置（`airsnip_overlay_free`，M2 已有）。复制的 PNG 写入 pHYs（72 × scale DPI，
+  `output::encode_png_scaled`），TIFF 随之带分辨率，Pages / Keynote 按屏幕上的大小显示。
+- **M5 贴图**（`Pins.swift`）：`NSPanel`（浮动、不激活应用、所有桌面空间、`canHide = false` 不随应用隐藏），
+  内容是图层，缩放由 Core Animation 合成，不移植 Windows 的重采样与预览 / 精修。截图贴图（原位置或居中，读配置）、
+  ⌃⌥P 剪贴板贴图（按图片自带分辨率定大小）、拖动、滚轮 / 双指捏合缩放 0.1–8 倍、⌘ + 滚轮透明度、方向键、
+  双击 / Esc 关闭、右键菜单（复制 / 保存 / 关闭 / 关闭全部）、⌃F3 切换全部边框并记住、上限 20 张。
+  抓屏改为排除本应用除贴图外的窗口（贴图与 Windows 一样会被截进去）。
+- **M6 长截图**（`Longshot.swift`、`LongshotViews.swift`）：核心 `Session` 的帧源是同步拉取，ScreenCaptureKit 是异步的，
+  FFI 用「待取帧」槽位衔接（`airsnip_longshot_push`）。每 90ms 一拍（上一帧未处理完则跳过，只在会话期间运行），
+  `SCStreamConfiguration.sourceRect` 只抓视口；视口外 2px 蓝框（不挡鼠标）、视口下方（放不下则上方）原生状态条
+  [提示 · 撤销 · 完成 · 取消]、旁边缩略预览。会话期间注册 Return / Esc / ⌘Z 全局热键，焦点留在被滚动的应用。
+  完成时等在途帧并补抓一帧，结果复制（带 Retina 分辨率）并保存 PNG 到默认目录（同 Windows）。
+- **M7 设置与集成**：原生设置窗口（`Settings.swift`，工具栏切页：通用 / 快捷键 / 保存 / 外观 / 关于，选项同 Windows 面板），
+  改动即时保存（`airsnip_settings_load` / `_save`），快捷键录制（`ShortcutField`，Esc 取消，录制期间暂停全局热键）
+  与冲突检查（规则同 Windows `conflict_for`）。开机自启用 `SMAppService.mainApp`，以系统实际状态为准。
+  再次打开 App（双击）→ `applicationShouldHandleReopen` 打开设置；直接运行二进制时若已有实例，交给它后退出。
+  菜单栏菜单：截图 / 设置… / 退出。应用图标由 `assets/icons/logo-512.png` 经 `sips` + `iconutil` 生成，赞赏码随包分发。
+  新增 `.github/workflows/ci.yml`：Windows（fmt / test / release）+ macOS（test / 打包 / 自检，上传 zip 构建产物）。
+
+**实际执行的命令与结果**
+
+| 平台 | 命令 | 结果 |
+|---|---|---|
+| Windows | `cargo test` | 根包 54 + core 148 = **202 通过**（新增 PNG 分辨率测试 1 项） |
+| Windows | `cargo fmt --all --check` | 通过 |
+| macOS | `cargo test -p airsnip-core -p airsnip-macos` | core **145**、FFI **11** 通过（新增：输入法组合 → 上屏 → 提交 → 双击再编辑；长截图推帧拼接 / 撤销 / 尺寸校验 / 缩略图；设置往返与越界夹取） |
+| macOS | `scripts/package-macos.sh`、`--selftest` | 通过，无编译警告；`AirSnip.app` 1.2 MB，zip 664 KB |
+| macOS | 热键 → 覆盖层可见（日志） | 两块屏：抓屏 72 ms + 建覆盖层并显示 23 ms ≈ **95 ms** |
+| macOS | 待机（`vmmap --summary`、`top`） | Physical footprint **11.8 MB**，CPU **0.0%** |
+| — | GitHub Actions | 未运行（仓库未推送）；首次推送后确认两个任务是否通过 |
+
+**待人工验证**
+
+| 功能 | 步骤 | 预期 |
+|---|---|---|
+| 中文输入 | 文字工具点选区 → 拼音输入、选词、退格改拼音、⌘← / ⌘→、⇧Return 换行、Return 提交 | 候选框在光标旁、不被遮住；组合串带下划线；提交后双击文字可再编辑 |
+| 标注对照 | 六种工具各画一个，选中后拖手柄、圆角柄、曲线控制点，⌘Z / ⌘⇧Z | 与 Windows 一致 |
+| 另存为 | ⌘S → 切格式 → 保存；再次截图 ⌘S | 扩展名随格式变；第二次默认上次的目录与格式 |
+| 复制到 Pages / Keynote | 回车复制后粘贴 | 与屏幕上看到的大小一致 |
+| 贴图 | 工具栏贴图；⌃⌥P 贴剪贴板；拖动、滚轮、捏合、⌘ + 滚轮、方向键、⌃F3（MacBook 需 fn）、右键四项、双击 / Esc | 截图结束后贴图仍在；第 21 张提示上限；新截图里能截到贴图 |
+| 长截图 | 浏览器里框选正文 → S → 滚动 → Return | 蓝框、状态条、预览出现；剪贴板与「图片 › airsnip」各有一份完整长图；⌘Z 撤销一段；Esc 取消 |
+| 设置 | 菜单栏 › 设置…；双击 AirSnip.app；改截图键、录到已占用的键、改主题 / 缩放 / 文件名、开机自启 | 改键立刻生效且菜单显示新键；冲突有提示；开机自启在「登录项」里出现 |
+
+**已知差异与限制**
+
+- 光标：四向移动用「张开的手」，圆角柄用手指（系统没有圆弧光标）。
+- 长截图期间 Return / Esc / ⌘Z 是全局热键（同 Windows），会话结束即注销。
+- 贴图边框画在内容边缘之内（1 物理像素），不像 Windows 向外扩 1px；导出（复制 / 保存）不含边框，与 Windows 相同。
+- 构建产物为临时签名、未公证；正式分发需要 Developer ID 签名 + 公证（`AIRSNIP_SIGN_ID`）。
+- 抓屏统一转 sRGB，P3 广色域外的颜色会被裁剪。
+
+**代码审查后修复（2026-11-02）**
+
+- 多屏时工具记忆被空白屏覆盖：释放覆盖层时只记有选区那块屏的工具。
+- 另存为 / 提示框开着时按贴图热键会重入保存流程并提前释放覆盖层：模态窗口存在或会话收尾中时忽略贴图热键。
+- 设置里录快捷键时关窗口，全局热键一直处于暂停：窗口失去焦点即结束录制并重新注册。
+- 设置窗口：每次到前台重读开机自启状态；各页设 `preferredContentSize`。
+- 长截图状态条与预览按屏幕可用区域（`visibleFrame`）摆放，不再被 Dock 挡住或跑出屏幕。
+- 权限提示框开着时再按截图热键不再叠出第二个提示框。
+- 截图期间按贴图热键（⌃⌥P）直接贴当前选区（对应 Windows 截图时按 F3）。
+- 删除与 `airsnip_overlay_free` 重复的 `airsnip_session_end`。
+
+### 窗口识别与全屏（PRD CAP-6 / CAP-7，2026-11-02，macOS 先行）
+
+两项在 PRD 中为 P1，Windows 版此前也未实现。逻辑放在共享核心 `overlay/snap.rs`，平台层只需提供截图时的窗口矩形：
+
+- 还没有选区时，鼠标下最前面的窗口（不在任何窗口上则为整屏）恢复原图亮度、描边并显示尺寸；
+  单击选中，按下后拖出 4px（`CLICK_SLOP`）以上才开始手动框选。选中后在选区内双击即复制，
+  所以「双击窗口 / 双击桌面」= 一步截窗口 / 截全屏。⌘A 全选整屏。
+- 平台层未调用 `set_windows` 时功能关闭，交互与之前完全一致：**Windows 外壳暂未接入**
+  （需要 `EnumWindows` + `DwmGetWindowAttribute(DWMWA_EXTENDED_FRAME_BOUNDS)` 取窗口矩形，另加 Ctrl+A），行为不变。
+- macOS：截图前用 `CGWindowListCopyWindowInfo` 取当前桌面空间的窗口（层级 0–3、≥ 20pt、不透明度 > 0，
+  排除本应用除贴图外的窗口），按 `CGDisplayBounds` 换算成各屏像素交给 `airsnip_overlay_set_windows`。
+  多屏时只有鼠标所在屏高亮（`mouseExited` → `airsnip_overlay_leave`），别的屏已有选区时本屏不高亮。
+- 测试：`keys::tests::click_selects_window_or_full_screen`（单击含抖动选窗口、空白处整屏、拖动框选、⌘A、未提供窗口列表时保持旧行为）。
+- 已知限制：取的是窗口外框，不识别窗口内部控件；全屏模式的 Chrome 顶部有一条 124pt 的工具栏窗口，鼠标停在那一条时只高亮它。

@@ -39,11 +39,15 @@ impl super::Overlay {
         self.font_list = None;
         self.bar = new.map(|s| toolbar::layout(s, vw, vh, self.text_row_visible(), self.ui));
         let new_chrome = self.chrome_rect();
+        // 有了选区，窗口识别的悬停高亮（CAP-6）随之撤掉
+        let hover = if new.is_some() { self.hover.take() } else { None };
 
         let mut dirty: Option<SelRect> = None;
         let bar_h = self.bar.as_ref().map(|b| b.rect.h).unwrap_or(0);
         let pad = self.dirty_pad();
         for r in [
+            hover.map(|h| self.hover_dirty(h)),
+            hover.map(|h| self.hover_text(h)),
             old.map(|o| expand_rect(o, pad)),
             new.map(|n| expand_rect(n, pad)),
             old.map(|o| text_rect(o, vw, vh, bar_h, self.ui)),
@@ -122,6 +126,11 @@ impl super::Overlay {
                 }
             }
         }
+        // 1b) 窗口识别（CAP-6/7）：还没有选区时，悬停的窗口（或整屏）恢复原图亮度
+        let hover = self.hover.filter(|_| self.selection.is_none());
+        if let Some(overlap) = hover.and_then(|h| intersect_rect(region, h)) {
+            blit_region(&mut self.display, &self.original, overlap);
+        }
         // 2) 标注对象（含正在拖拽的草稿）；二次编辑中的文本对象隐藏，由输入框呈现（EDT-4）
         render::draw_objects(
             &mut self.display,
@@ -144,12 +153,16 @@ impl super::Overlay {
                 textinput::draw_edit(&mut self.display, edit, crate::editor::PALETTE[self.color_index]);
             }
         }
-        // 3) 选区边框与手柄（只在与选区装饰区域相交时重画）
+        // 3) 选区边框与手柄（只在与选区装饰区域相交时重画）；悬停高亮只有边框
         if let Some(sel) = self.selection {
             if intersect_rect(expand_rect(sel, self.dirty_pad()), region).is_some() {
                 draw_rect(&mut self.display, sel, self.ui);
                 draw_handles(&mut self.display, sel, self.ui);
             }
+        } else if let Some(h) = hover
+            && intersect_rect(self.hover_dirty(h), region).is_some()
+        {
+            draw_rect(&mut self.display, h, self.ui);
         }
         // 4) 工具栏
         let state = self.bar_state();
@@ -166,8 +179,8 @@ impl super::Overlay {
             let panel = self.font_list.clone().expect("已判定为 Some");
             toolbar::fontlist::render(&mut self.display, &panel, &family, self.palette);
         }
-        // 6) 选区尺寸提示（HUD）：走 DirectWrite 栅格化，与工具栏文字同一套渲染
-        if let Some(sel) = self.selection {
+        // 6) 选区（或悬停窗口）尺寸提示（HUD）：走 DirectWrite 栅格化，与工具栏文字同一套渲染
+        if let Some(sel) = self.selection.or(hover) {
             let bar_h = self.bar.as_ref().map(|b| b.rect.h).unwrap_or(0);
             if intersect_rect(text_rect(sel, w, h, bar_h, self.ui), region).is_some() {
                 draw_info_text(&mut self.display, sel, w, h, bar_h, self.ui);

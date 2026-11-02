@@ -4,7 +4,6 @@
 
 import AppKit
 import CAirsnip
-import UniformTypeIdentifiers
 
 enum HostBridge {
     static func make(for view: OverlayView) -> AsHost {
@@ -16,12 +15,14 @@ enum HostBridge {
             alert: { _, msg in
                 if let msg { Alerts.show(String(cString: msg)) }
             },
-            pin: { _, _, _, _ in
-                Alerts.show("贴图功能将在 M5 提供，当前版本请先用复制（回车 / ⌘C）。")
-                return 0
+            pin: { ctx, img, x, y in
+                guard let view = HostBridge.view(ctx), let img, let image = CGImage.copyRGBA(img.pointee) else {
+                    return 0
+                }
+                return view.pin(image, x: x, y: y) ? 1 : 0
             },
-            pick_save_file: { ctx, dir, name, ext, out, len in
-                HostBridge.view(ctx)?.pickSaveFile(dir: dir, name: name, out: out, len: len) ?? 0
+            pick_save_file: { _, dir, name, ext, out, len in
+                HostBridge.pickSaveFile(dir: dir, name: name, ext: ext, out: out, len: len)
             },
             set_ime: { ctx, on in HostBridge.view(ctx)?.imeEnabled = on != 0 },
             clipboard_png: { png, len, _, _ in
@@ -40,18 +41,17 @@ enum HostBridge {
     }
 }
 
-extension OverlayView {
-    /// 另存为对话框（OUT-2）：盖在覆盖层之上；选定路径写入 `out`（NUL 结尾）。
-    /// 格式下拉与更多选项在 M4 补齐，当前按文件扩展名决定格式（核心校验扩展名）。
-    func pickSaveFile(
-        dir: UnsafePointer<CChar>?, name: UnsafePointer<CChar>?, out: UnsafeMutablePointer<CChar>?, len: Int
+extension HostBridge {
+    /// 另存为（OUT-2，见 SaveDialog）：选定路径写入 `out`（NUL 结尾）。
+    static func pickSaveFile(
+        dir: UnsafePointer<CChar>?, name: UnsafePointer<CChar>?, ext: UnsafePointer<CChar>?,
+        out: UnsafeMutablePointer<CChar>?, len: Int
     ) -> Int32 {
-        guard let out, let name, len > 0 else { return 0 }
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = String(cString: name)
-        if let dir { panel.directoryURL = URL(fileURLWithPath: String(cString: dir), isDirectory: true) }
-        panel.allowedContentTypes = [.png, .jpeg, .webP]
-        guard Alerts.runAbove(panel, { panel.runModal() }) == .OK, let url = panel.url else { return 0 }
+        guard let out, let name, len > 0,
+            let url = SaveDialog.run(
+                dir: dir.map { String(cString: $0) }, name: String(cString: name),
+                ext: ext.map { String(cString: $0) } ?? "png")
+        else { return 0 }
         let bytes = Array(url.path.utf8)
         guard bytes.count < len else {
             Alerts.show("保存路径过长：\(url.path)")
@@ -67,6 +67,18 @@ extension OverlayView {
     }
 }
 
+extension OverlayView {
+    /// 截图贴图（PIN-1）：与屏幕上一样大；按设置放在选区原位置或屏幕中央。
+    func pin(_ image: CGImage, x: Int32, y: Int32) -> Bool {
+        let size = NSSize(width: CGFloat(image.width) / scale, height: CGFloat(image.height) / scale)
+        var origin: NSPoint?
+        if Pins.config.center == 0, let window {
+            origin = window.convertToScreen(viewRect(x: Int(x), y: Int(y), w: image.width, h: image.height)).origin
+        }
+        return Pins.show(image, size: size, at: origin)
+    }
+}
+
 enum Clipboard {
     /// 写剪贴板（OUT-1）：PNG + TIFF 两种表示（部分应用只认 TIFF）。数据已复制，可从任意线程调用。
     static func writePNG(_ png: Data) {
@@ -76,10 +88,24 @@ enum Clipboard {
             if let tiff = NSBitmapImageRep(data: png)?.tiffRepresentation {
                 item.setData(tiff, forType: .tiff)
             }
-            let pb = NSPasteboard.general
-            pb.clearContents()
-            pb.writeObjects([item])
+            publish(item)
         }
+    }
+
+    /// 贴图复制（PIN-4）：PNG + TIFF，带显示大小（Retina 截图的分辨率信息）。
+    static func write(_ image: CGImage, size: NSSize) {
+        let rep = NSBitmapImageRep(cgImage: image)
+        rep.size = size
+        let item = NSPasteboardItem()
+        if let png = rep.representation(using: .png, properties: [:]) { item.setData(png, forType: .png) }
+        if let tiff = rep.tiffRepresentation { item.setData(tiff, forType: .tiff) }
+        publish(item)
+    }
+
+    private static func publish(_ item: NSPasteboardItem) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([item])
     }
 }
 

@@ -162,12 +162,26 @@ pub fn rgba_to_bgra(rgba: &[u8]) -> Vec<u8> {
 
 /// 编码 PNG（快速压缩）。
 pub fn encode_png(pixmap: &Pixmap) -> Result<Vec<u8>, String> {
+    encode_png_scaled(pixmap, 1.0)
+}
+
+/// 编码 PNG，并按显示器缩放写入分辨率（pHYs，72 × scale DPI；scale 为 1 时不写）：
+/// macOS 上按 points 排版的应用（Pages、Keynote）据此按屏幕上看到的大小显示 Retina 截图。
+pub fn encode_png_scaled(pixmap: &Pixmap, scale: f32) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
     {
         let mut enc = png::Encoder::new(&mut out, pixmap.width(), pixmap.height());
         enc.set_color(png::ColorType::Rgba);
         enc.set_depth(png::BitDepth::Eight);
         enc.set_compression(png::Compression::Fast);
+        if scale != 1.0 {
+            let ppm = (72.0 * scale / 0.0254).round() as u32;
+            enc.set_pixel_dims(Some(png::PixelDimensions {
+                xppu: ppm,
+                yppu: ppm,
+                unit: png::Unit::Meter,
+            }));
+        }
         let mut writer = enc.write_header().map_err(|e| e.to_string())?;
         writer.write_image_data(pixmap.data()).map_err(|e| e.to_string())?;
     }
@@ -225,5 +239,18 @@ mod tests {
             assert!(r.is_ok(), "{name} 应写入成功：{r:?}");
             let _ = std::fs::remove_file(&path);
         }
+    }
+
+    /// Retina 复制（OUT-1）：2x 写入 144 DPI，1x 不写分辨率。
+    #[test]
+    fn png_scaled_writes_dpi() {
+        let px = Pixmap::new(4, 4).unwrap();
+        let dims = |bytes: Vec<u8>| {
+            let r = png::Decoder::new(std::io::Cursor::new(bytes)).read_info().unwrap();
+            r.info().pixel_dims
+        };
+        let d = dims(encode_png_scaled(&px, 2.0).unwrap()).expect("2x 应写 pHYs");
+        assert_eq!((d.xppu, d.yppu, d.unit), (5669, 5669, png::Unit::Meter));
+        assert!(dims(encode_png(&px).unwrap()).is_none(), "1x 不写分辨率");
     }
 }

@@ -33,15 +33,15 @@ struct DisplayInfo {
 }
 
 enum ScreenCapture {
-    /// 并行抓取所有显示器；排除本应用窗口（菜单栏菜单收起前的残影等）。
-    static func captureAll(_ displays: [DisplayInfo]) async throws -> [DisplayShot] {
+    /// 并行抓取所有显示器；排除本应用窗口（菜单栏菜单收起前的残影等），贴图（`keep`）除外，与 Windows 一致。
+    static func captureAll(_ displays: [DisplayInfo], keep: Set<CGWindowID>) async throws -> [DisplayShot] {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let pid = ProcessInfo.processInfo.processIdentifier
-        let me = content.applications.filter { $0.processID == pid }
+        let mine = content.windows.filter { $0.owningApplication?.processID == pid && !keep.contains($0.windowID) }
         return try await withThrowingTaskGroup(of: DisplayShot?.self) { group in
             for info in displays {
                 guard let display = content.displays.first(where: { $0.displayID == info.displayID }) else { continue }
-                let filter = SCContentFilter(display: display, excludingApplications: me, exceptingWindows: [])
+                let filter = SCContentFilter(display: display, excludingWindows: mine)
                 group.addTask { try await capture(filter: filter, info: info) }
             }
             var shots: [DisplayShot] = []
@@ -65,6 +65,26 @@ enum ScreenCapture {
         return DisplayShot(
             displayID: info.displayID, frame: info.frame, scale: info.scale,
             width: width, height: height, rgba: rgba)
+    }
+
+    /// 截图时屏幕上的窗口（CAP-6 窗口识别）：前到后，CG 全局坐标（主屏左上原点，points）。
+    /// 只取普通与浮动层级（不含菜单栏、Dock、弹出菜单）、太小或全透明的不要；
+    /// 本应用的窗口不在截图里（贴图 `keep` 除外），也不要。
+    static func windowRects(keep: Set<CGWindowID>) -> [CGRect] {
+        let pid = Int(ProcessInfo.processInfo.processIdentifier)
+        let list =
+            CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] ?? []
+        return list.compactMap { w in
+            guard let layer = w[kCGWindowLayer as String] as? Int, (0...3).contains(layer),
+                (w[kCGWindowAlpha as String] as? Double ?? 1) > 0,
+                let bounds = w[kCGWindowBounds as String] as? NSDictionary,
+                let r = CGRect(dictionaryRepresentation: bounds as CFDictionary), r.width >= 20, r.height >= 20
+            else { return nil }
+            let mine = w[kCGWindowOwnerPID as String] as? Int == pid
+            let id = (w[kCGWindowNumber as String] as? NSNumber)?.uint32Value ?? 0
+            return mine && !keep.contains(id) ? nil : r
+        }
     }
 
     /// CGImage → RGBA8 预乘 sRGB（尺寸不符时按目标尺寸绘制）。

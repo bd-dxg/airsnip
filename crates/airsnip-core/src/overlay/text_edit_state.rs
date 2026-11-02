@@ -64,6 +64,14 @@ impl TextEdit {
         w + comp_w
     }
 
+    /// 光标竖线 (x, y, 高)，像素：绘制光标与 macOS 输入法候选框定位共用。
+    pub fn caret_rect(&self) -> (f32, f32, f32) {
+        let pad = crate::editor::text::pad(self.font_size);
+        let x = (self.pos.x + self.caret_x()).round();
+        let y = self.pos.y + self.caret_row() as f32 * self.line_height() + pad * 0.4;
+        (x, y, self.font_size * 1.1)
+    }
+
     /// 光标所在行号（chars[..caret] 中的换行次数）。
     pub fn caret_row(&self) -> usize {
         self.chars[..self.caret].iter().filter(|&&c| c == '\n').count()

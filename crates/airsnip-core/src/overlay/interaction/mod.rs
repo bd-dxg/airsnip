@@ -87,6 +87,12 @@ impl super::Overlay {
         }
         self.down_started_draw = false;
         let new = match self.selection {
+            // 窗口识别（CAP-6）：先不建选区，拖出容差才开始框选，没拖动则弹起时选中悬停的窗口
+            None if self.snapping() => {
+                self.update_hover(x, y);
+                self.begin_select(x, y);
+                return;
+            }
             None => Some(self.begin_select(x, y)),
             Some(sel) => {
                 // 1) 选中对象的八向手柄（EDT-7）：可能压在选区装饰或对象描边上，最优先
@@ -166,12 +172,21 @@ impl super::Overlay {
             return;
         }
         let Some(drag) = &self.drag else {
+            self.update_hover(x, y);
             return;
         };
         let (dx, dy) = (x - drag.px, y - drag.py);
         let handle = drag.handle;
         let orig = drag.orig;
         let phase = self.phase;
+        // 按下后还在单击容差内：仍是单击，保留悬停高亮（CAP-6）
+        if phase == Phase::Selecting
+            && self.snapping()
+            && dx.abs() <= super::snap::CLICK_SLOP
+            && dy.abs() <= super::snap::CLICK_SLOP
+        {
+            return;
+        }
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
         let max_x = vw.saturating_sub(1);
         let max_y = vh.saturating_sub(1);
@@ -235,13 +250,13 @@ impl super::Overlay {
         self.drag = None;
         let new = match self.selection {
             Some(sel) if sel.w < 2 || sel.h < 2 => None, // 误触，放弃
-            other => {
-                if other.is_some() {
-                    self.phase = Phase::Adjusting;
-                }
-                other
-            }
+            // 单击（没拖出选区）：选中悬停识别的窗口或整屏（CAP-6/7；功能关闭时 hover 恒为 None）
+            None => self.hover,
+            other => other,
         };
+        if new.is_some() {
+            self.phase = Phase::Adjusting;
+        }
         self.set_selection(new);
     }
 
