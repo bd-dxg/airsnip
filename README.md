@@ -13,8 +13,8 @@
 
 | 指标 | 实测 | 说明 |
 |---|---|---|
-| **单文件体积** | **1.06 MB** | 绿色免安装，一个 exe 就是全部 |
-| **下载包** | **0.61 MB** | zip，含文档与许可证 |
+| **单文件体积** | **1.21 MB** | 绿色免安装，一个 exe 就是全部 |
+| **下载包** | **0.67 MB** | zip，含文档与许可证 |
 | **待机内存** | **1.2 MB** | 常驻托盘时的 Private Working Set |
 | **待机 CPU** | **0.00%** | 事件驱动，无定时轮询 |
 | **热键 → 可用画面** | **124 ms** | 2560×1440：全屏抓取 + 暗化 + 覆盖层就绪 |
@@ -123,7 +123,7 @@
 ```powershell
 cargo run                 # 开发版（不提权，可调试）
 cargo build --release     # 发布版（manifest 要求管理员权限，单文件）
-cargo test                # 单测（216 项）
+cargo test                # 单测（220 项）
 cargo fmt --check         # 格式化检查
 cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
 pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip / .exe
