@@ -83,6 +83,24 @@ pub fn check_in_background(skipped: Option<String>) {
 mod tests {
     use super::*;
 
+    /// 端到端：走真实加速线路取线上 `latest.json` → 验签 → 比版本。
+    /// 依赖已发布的 Release，手动跑：`cargo test update::check -- --ignored`
+    #[test]
+    #[ignore = "需要网络与已发布的 latest.json"]
+    fn checks_real_release() {
+        let checked = check(None).unwrap_or_else(|e| panic!("应能取到并验签线上清单：{e}"));
+        match checked {
+            // 本地版本已是最新（刚发版时的情况）
+            Checked::UpToDate => {}
+            // 线上已更新的版本：确认清单字段完整
+            Checked::Available(u) => {
+                assert!(!u.manifest.url.is_empty(), "清单 url 不应为空");
+                assert_eq!(u.manifest.sha256.len(), 64, "摘要应为 64 位十六进制");
+                assert!(u.version.is_newer_than(&version::current()));
+            }
+        }
+    }
+
     /// 清单解析：缺少必填字段应报错，多余字段应忽略（向前兼容）。
     #[test]
     fn manifest_json_shape() {
