@@ -189,6 +189,8 @@ impl App {
             last_ext: self.config.last_save_ext.clone(),
             last_dir: self.config.last_save_dir.clone(),
         };
+        // 长截图完成后也要弹同一个对话框（「另存为」入口），单独快照一份
+        let longshot_save = save.clone();
         std::thread::spawn(move || {
             let hinstance = HINSTANCE(hinstance as *mut _);
             let main_hwnd = HWND(main_hwnd as *mut _);
@@ -207,7 +209,7 @@ impl App {
                     );
                     // M4：工具栏长截图按钮 / 长截图键返回视口选区，进入长截图拼接。
                     if let crate::overlay::OverlayResult::Viewport((x, y, w, h)) = result {
-                        crate::longshot::run(x, y, w, h, hinstance, max_height, palette, ui_scale);
+                        crate::longshot::run(x, y, w, h, hinstance, max_height, palette, ui_scale, longshot_save);
                     }
                 }
                 Err(e) => message_box(None, &format!("抓屏失败：{e}"), MB_OK | MB_ICONERROR),

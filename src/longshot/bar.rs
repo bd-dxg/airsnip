@@ -17,8 +17,8 @@ use crate::theme::Palette;
 
 /// 状态条高度基准值（物理像素）。
 const BAR_H_BASE: f32 = 40.0;
-/// 状态条最小宽度基准值。
-const BAR_MIN_W_BASE: f32 = 420.0;
+/// 状态条最小宽度基准值（四个按钮 + 一行完整提示文字）。
+const BAR_MIN_W_BASE: f32 = 470.0;
 /// 状态条最大宽度基准值。
 const BAR_MAX_W_BASE: f32 = 760.0;
 /// 按钮边长基准值。
@@ -35,6 +35,8 @@ const FONT_BASE: f32 = 14.0;
 pub enum Button {
     /// 撤销最后一段。
     Undo,
+    /// 另存为（弹出系统对话框，自选路径与格式）。
+    SaveAs,
     /// 完成。
     Done,
     /// 取消。
@@ -83,10 +85,10 @@ pub fn layout(vp_x: i32, vp_w: u32, vp_y: i32, vp_h: u32, screen_h: i32, ui: Ui)
     } else {
         (vp_y - bar_h - margin).max(0)
     };
-    // 按钮从右往左排：取消、完成、撤销（命中区高度用整条高，点偏上下也能命中）
+    // 按钮从右往左排：取消、完成、另存为、撤销（命中区高度用整条高，点偏上下也能命中）
     let mut hits = Vec::new();
     let mut bx = bar_w - pad - btn;
-    for b in [Button::Cancel, Button::Done, Button::Undo] {
+    for b in [Button::Cancel, Button::Done, Button::SaveAs, Button::Undo] {
         hits.push((
             SelRect {
                 x: bx,
@@ -138,6 +140,7 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
     for (r, button) in &bar.hits {
         let (glyph, color) = match button {
             Button::Undo => (Icon::Undo, if state.can_undo { p.icon } else { p.icon_dim }),
+            Button::SaveAs => (Icon::Save, p.icon),
             Button::Done => (Icon::Check, p.icon),
             Button::Cancel => (Icon::Cross, p.icon),
         };
@@ -148,7 +151,7 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
 
     // 中间提示文字（像素数不再显示：右侧预览窗已给出拼接结果，LNG-3）
     let text = if state.hint.is_empty() {
-        "滚轮滚动页面 · Enter 完成"
+        "滚轮滚动 · Enter 完成 · Ctrl+S 另存为"
     } else {
         state.hint
     };
@@ -182,19 +185,34 @@ mod tests {
         let bar = layout(100, 800, 100, 600, 1080, ui);
         let (bar_h, btn, pad, gap) = (ui.px(BAR_H_BASE), ui.px(BTN_BASE), ui.px(PAD_BASE), ui.px(4.0));
         let cy = bar_h / 2; // 客户区坐标（窗口 = 状态条矩形）
-        // 右侧三个按钮：取消在最右
-        let cancel = bar.hit(bar.rect.w - pad - btn / 2, cy);
-        assert_eq!(cancel, Some(Button::Cancel));
-        // 完成在取消左侧
-        let done = bar.hit(bar.rect.w - pad - btn - gap - btn / 2, cy);
-        assert_eq!(done, Some(Button::Done));
-        // 撤销在完成左侧
-        let undo = bar.hit(bar.rect.w - pad - (btn + gap) * 2 - btn / 2, cy);
-        assert_eq!(undo, Some(Button::Undo));
+        let at = |i: i32| bar.rect.w - pad - i * (btn + gap) - btn / 2;
+        // 右侧四个按钮：取消在最右，向左依次完成、另存为、撤销
+        assert_eq!(bar.hit(at(0), cy), Some(Button::Cancel));
+        assert_eq!(bar.hit(at(1), cy), Some(Button::Done));
+        assert_eq!(bar.hit(at(2), cy), Some(Button::SaveAs));
+        assert_eq!(bar.hit(at(3), cy), Some(Button::Undo));
         // 左侧空白（原模式按钮位置）无命中
         assert_eq!(bar.hit(pad + btn / 2, cy), None);
         // 中间空白无命中
         assert_eq!(bar.hit(bar.rect.w / 2, cy), None);
+    }
+
+    /// 提示文字在最窄状态下也能完整放下（四个按钮不能把文字挤没）。
+    #[test]
+    fn hint_text_fits_min_width() {
+        let ui = base();
+        let bar = layout(100, 300, 100, 600, 1080, ui);
+        let btn = ui.px(BTN_BASE);
+        let undo_x = bar
+            .hits
+            .iter()
+            .find(|(_, b)| *b == Button::Undo)
+            .map(|(r, _)| r.x)
+            .unwrap_or(bar.rect.w);
+        let avail = undo_x as f32 - ui.px(PAD_BASE) as f32 - ui.f(4.0);
+        let spec = dwrite::FontSpec::new(ui.f(FONT_BASE));
+        let (tw, _) = dwrite::measure("滚轮滚动 · Enter 完成 · Ctrl+S 另存为", &spec);
+        assert!(tw < avail, "提示文字宽 {tw} 应小于可用宽度 {avail}（按钮 {btn}px）");
     }
 
     #[test]
