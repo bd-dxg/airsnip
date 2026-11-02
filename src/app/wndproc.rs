@@ -8,8 +8,8 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
 use super::{
-    App, WINDOW_CLASS, WM_OVERLAY_DONE, WM_PIN_BORDER_CHANGED, WM_PIN_FROM_EDITOR, WM_TRAY, icon_resource,
-    last_save_dir_take, last_save_ext_take, tray,
+    App, TIMER_UPDATE_CHECK, WINDOW_CLASS, WM_OVERLAY_DONE, WM_PIN_BORDER_CHANGED, WM_PIN_FROM_EDITOR, WM_TRAY,
+    icon_resource, last_save_dir_take, last_save_ext_take, tray,
 };
 
 /// 注册消息窗口类并创建窗口（隐藏）。
@@ -92,6 +92,16 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             }
             LRESULT(0)
         }
+        WM_TIMER if wparam.0 == TIMER_UPDATE_CHECK => {
+            // 启动后一次性检查更新（SYS-7）：立刻停掉定时器，不留常驻轮询
+            unsafe {
+                let _ = KillTimer(Some(hwnd), TIMER_UPDATE_CHECK);
+            }
+            if let Some(app) = app_from(hwnd) {
+                app.check_update_silently();
+            }
+            LRESULT(0)
+        }
         WM_POWERBROADCAST => {
             // 休眠唤醒后通知区可能重建：explorer 未重启时不会有 TaskbarCreated
             let event = wparam.0 as u32;
@@ -167,6 +177,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             // 贴图窗口内快捷键切了边框：更新默认配置（M2b）
             if let Some(app) = app_from(hwnd) {
                 app.toggle_pin_border();
+            }
+            LRESULT(0)
+        }
+        crate::update::notify::WM_UPDATE_FOUND => {
+            // 后台检查发现新版本（SYS-7）：弹托盘气泡，设置面板关于页可看详情
+            if let Some(app) = app_from(hwnd)
+                && let crate::update::state::Phase::Available { version } = crate::update::state::phase()
+            {
+                app.balloon(
+                    "AirSnip 有新版本",
+                    &format!("v{version} 已发布，点托盘图标打开设置更新"),
+                );
             }
             LRESULT(0)
         }

@@ -12,6 +12,13 @@
 
 - 当前处于 **M5 打磨进行中**：M0–M4 与 M5a 全部交付并合并（阶段 A 保存 PR #24、阶段 B 对象二次编辑 PR #26、阶段 B′ 交互打磨 PR #27、阶段 C 文本字体 PR #29），`main` 已合并 PR #32–#50（release 版黑窗修复、设置窗口比例与图标、v0.3.1/v0.3.2/v0.4.0/v0.5.0/v0.6.0 发布、开机自启托盘图标消失修复 + `WM_SETTINGCHANGE` 指针加固、`app/mod.rs` 拆分、长截图改纯手动滚动 + 拼接预览 + 输入法屏蔽、保存对话框记住上次目录、界面图标统一、圆角内部控制柄 + 扩展到四类、README 重写 + 头图、提权进程托盘图标自愈、改名 AirSnip + 新应用图标、选区尺寸提示收尾），工作区干净。M5a 交付要点：另存为对话框（PNG / JPEG / WebP 无损 + 文件名模板）、选中对象包围框与八向手柄 + `Shift` 约束（`overlay/objedit/`、`editor/transform.rs`）、方向键微调（1px / `Shift` 5px）、系统字体枚举 + 工具栏第二行字体面板（`render::fonts`、`overlay::font`、`overlay::toolbar::fontlist`）；决策见 `docs/adr/0007-drop-delete-and-layering.md`、`0008-font-picker.md`、`0010-radius-handle.md`、`0011-corner-all-kinds.md`；`cargo test` 186 项绿。
 - M5 打磨进度：✅ 许可证合规（`deny.toml` + `cargo deny check` 四类全绿；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 生成；设置面板「关于」页含项目地址、微信赞赏码（`assets/reward-code.png` 编译期嵌入）与第三方声明入口）；✅ 性能剖析（`docs/perf-m5.md`：热键→可见 124ms、交互 4.6ms/帧、待机 0% CPU / 1.2MB，全部红线达标；埋点 `src/perf.rs`，采集 `scripts/perf-capture.ps1` + `scripts/perf.ps1`）；✅ 打包分发（`scripts/package.ps1` → `dist\airsnip-v0.6.0-win-x64.zip`，exe 1.06MB / zip 0.61MB，图标 16–256 八尺寸）；⬜ 多屏混合 DPI 测试（**当前无多屏环境，暂跳**）。
+- 自动更新（v0.7.0 开发中，看板 #59，ADR 0018）：`src/update/` 九个子模块 —— `manifest`（清单 + ed25519 验签）、`version`（三段式版本比较，预发布不推正式版）、`endpoints`（三个 gh-proxy 镜像 + GitHub 直连兜底）、`http`（WinHTTP，不引 reqwest）、`install`（边下边算 SHA-256 + cmd 脚本替换 exe）、`check`（按镜像顺序取清单）、`state`（跨线程进度）、`notify`（后台线程唤醒界面）。
+  - **验签优先于一切字段**：签名载荷为 `airsnip-update-v1\n<版本>\n<小写摘要>`，版本号参与签名，把「新版本号 + 旧包」拼一起会验签失败；纯 hash 不作为安全判断（清单与包同源，能改包的人也能改 hash）。
+  - **清单存 GitHub 规范地址**，加速前缀由客户端套用（`endpoints::candidates`），换镜像域名不用重新发版 —— 与 issue 建议的「清单里写死加速地址」不同，理由见 ADR 0018 §4。
+  - **更新包是裸 exe**：`package.ps1` 同时产出 zip（手动下载，含文档）与 exe（自动更新），清单指向后者。
+  - **替换流程**：下载到 `%TEMP%` → 校验和比对 → 写 `.cmd` → 主进程退出 → 脚本等进程消失后 `copy /y` 覆盖并重启 → 自删；`copy` 失败仍启旧版（避免「更新完打不开」）。
+  - **触发**：启动后 3s 一次性 `SetTimer`（回调里立刻 `KillTimer`，不引入常驻轮询），失败静默，发现新版本弹托盘气泡；设置面板「关于」页显示状态并可手动检查 / 一键更新，另有「启动时自动检查」开关。
+  - **密钥管理**：私钥在 `%USERPROFILE%\.airsnip\update.key`（**不在仓库**），公钥写死在 `src/update/manifest.rs` 的 `UPDATE_PUBKEY_HEX`；生成用 `cargo run --example update-keygen`，签名用 `cargo run --example update-sign -- --version <ver> --sha256 <摘要>`。**换密钥等于切断旧版本的自动更新能力**。
 - 界面图标统一（ADR 0009）：覆盖层工具栏与长截图状态条的图标改为 `assets/icons/ui/` 下的 SVG 资源（`render/icon/` 解析 + 按包围盒归一化绘制），删掉 17 个手绘几何图标与重复实现；`overlay/shape.rs` 承接共用绘制小工具。规格与素材来源见 `assets/icons/ui/README.md`，视觉重量由 `render::icon` 的 4 项单测守门。**v0.6.0 换源（ADR 0015）**：原先 11 个图标来自 iconfont 多作者素材、来源与授权无法确认；现全组 19 个图标统一换成 **Material Symbols（outlined，Apache-2.0）**，风格从「粗细不一的混搭」变为统一的线框风，许可证链也干净了（已在 `THIRD-PARTY.md` 登记）。
 - 圆角改为对象上的内部控制柄（ADR 0010）：删掉工具栏二值「圆角」开关（`Action::ToggleRound` / `State.round` / `round.svg`），选中对象时在包围框内侧右上角显示一个白色小圆，朝中心拖增大、朝角拖减小，上限短边一半；新增自绘圆角光标（`overlay/cursor`）。圆角读写集中在 `editor/corner.rs`。**已扩展到四类**（`feat/corner-all-kinds`）：矩形 / 高亮 / 高斯模糊 / 聚光灯共用同一 `corner` 字段与手柄，三处渲染（高亮逐像素插值、模糊备份后按遮罩恢复、聚光恢复亮度）统一走 `render/mask.rs`；`corner == 0` 仍走原快速路径。
 - 长截图与输入法打磨（待验证）：自动滚动模式已移除（靠「连续静帧」判定到底会误判，拼接提前结束），改为纯手动滚动 + `Enter` 收尾；长截图键从硬编码 `S` 改为配置项 `hotkey.longshot_key`（默认 `S`，设置面板「快捷键」页可改并参与冲突检测）；截图覆盖层打开后禁用 IME，仅在文本输入时恢复，避免 `S`/回车等按键被输入法截走。
@@ -47,7 +54,9 @@
 - 测试：`cargo test`（当前 186 个：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量与字体（粗斜体渲染、族间测量、未知族名回退）/系统字体枚举/长截图拼接/WebP/变换与手柄/光标映射/布局/字体面板/设置面板布局与 DPI 缩放/设置变更消息内存校验/图标 SVG 解析与视觉重量/圆角读写与手柄/圆角遮罩覆盖率与回贴）
 - 格式化检查：`cargo fmt --check`（提交前必须通过）
 - 性能采集：`scripts/perf-capture.ps1`（热键延迟 + 帧耗时，需管理员）与 `scripts/perf.ps1`（待机 CPU/内存）；报告见 `docs/perf-m5.md`
-- 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标 → 输出 `dist\airsnip-v{版本}-win-x64.zip`）
+- 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标 → 输出 `dist\airsnip-v{版本}-win-x64.zip` 与自动更新用的 `.exe`）
+- 生成更新清单：`scripts/gen-latest-json.ps1 -Notes "说明"`（算 SHA-256 → 调 `update-sign` 签名 → 输出 `dist\latest.json`，需先跑 package.ps1）
+- 更新密钥：`cargo run --example update-keygen`（私钥写 `%USERPROFILE%\.airsnip\update.key`，公钥打印出来填进 `UPDATE_PUBKEY_HEX`）
 - 许可证与依赖检查：`cargo deny check`（配置在 `deny.toml`；依赖变更后重跑 `scripts/gen-third-party.ps1` 更新 `THIRD-PARTY.md`）
 
 ## 开发流程（AI 驱动约定）
@@ -84,4 +93,5 @@
 - 长截图（M4）是最大风险点：采用纯手动滚动（自动滚动易误判到底，已移除），拼接要处理固定区域（页眉/页脚），失败提供撤销最后一段入口。
 - 贴图窗口用 `WS_EX_TOPMOST | WS_EX_TOOLWINDOW` 分层窗口，窗口静止时禁止任何重绘。
 - 二期 OCR/翻译涉及第三方服务：默认关闭、首次显式授权、密钥用 DPAPI 加密、不留存请求内容。
+- 自动更新私钥（`%USERPROFILE%\.airsnip\update.key`）**绝不入库、不进日志、不外传**；它同时决定「旧版本能否继续自动更新」，丢了只能让用户手动下载新版。
 - 发布前跑 `cargo deny check`（配置 `deny.toml`）；依赖变更后用 `scripts/gen-third-party.ps1` 重新生成 `THIRD-PARTY.md`。

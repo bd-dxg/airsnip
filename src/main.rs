@@ -17,6 +17,7 @@ pub mod pin;
 pub mod render;
 pub mod settings;
 pub mod theme;
+pub mod update;
 
 fn main() {
     std::process::exit(app::run());

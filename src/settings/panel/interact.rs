@@ -160,6 +160,17 @@ impl Panel {
                 self.end_capture();
                 crate::app::open::url(crate::app::open::THIRD_PARTY_URL);
             }
+            // 检查更新（SYS-7）：无待装更新则检查，已有则下载并安装
+            RowId::CheckUpdate => {
+                self.end_capture();
+                self.start_update();
+            }
+            // 启动时自动检查开关（SYS-7）
+            RowId::AutoCheckUpdate => {
+                self.end_capture();
+                self.config.auto_check_update = !self.config.auto_check_update;
+                self.config_dirty = true;
+            }
             _ => self.end_capture(),
         }
     }

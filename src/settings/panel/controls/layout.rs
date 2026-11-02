@@ -107,6 +107,8 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             push(RowId::About, RowKind::About, "AirSnip 轻截", &mut y, items);
             push(RowId::Repo, RowKind::Link, "项目地址", &mut y, items);
             push(RowId::Licenses, RowKind::Link, "第三方许可", &mut y, items);
+            push(RowId::CheckUpdate, RowKind::Button, "版本更新", &mut y, items);
+            push(RowId::AutoCheckUpdate, RowKind::Toggle, "启动时自动检查", &mut y, items);
             let qh = (QR_ROW_H as f32 * s) as i32;
             items.push(Item::Row(mk_row_tall(RowId::Reward, RowKind::Qr, "支持项目", y, s, qh)));
         }

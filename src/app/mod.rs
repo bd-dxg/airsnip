@@ -79,6 +79,12 @@ pub const IDM_PIN: usize = 40002;
 pub const IDM_SETTINGS: usize = 40003;
 pub const IDM_EXIT: usize = 40004;
 
+/// 启动后延迟检查更新的定时器 id（SYS-7）：一次性触发后立即 KillTimer，不常驻轮询。
+pub const TIMER_UPDATE_CHECK: usize = 0x7B01;
+
+/// 启动后延迟多久才检查更新（毫秒）：错开热键/托盘初始化，不影响启动耗时。
+const UPDATE_CHECK_DELAY_MS: u32 = 3_000;
+
 /// 应用运行时状态。
 pub struct App {
     pub config: Config,
@@ -124,8 +130,16 @@ pub fn run() -> i32 {
     app.ensure_tray();
     app.maybe_warn_no_modifier_clash();
     app.register_hotkeys();
+    // 更新检查的后台线程要通知主窗口弹气泡（SYS-7）
+    crate::update::notify::register_main(hwnd);
     // 贴图内边框快捷键（M2b，非全局热键：仅贴图窗口聚焦时生效）
     crate::pin::set_border_key(app.config.hotkey.border_key, app.config.hotkey.border_modifiers);
+    // 启动后延迟检查更新（SYS-7）：一次性定时器，不引入常驻轮询（其他性能红线不变）
+    if app.config.auto_check_update {
+        unsafe {
+            SetTimer(Some(hwnd), TIMER_UPDATE_CHECK, UPDATE_CHECK_DELAY_MS, None);
+        }
+    }
 
     unsafe {
         let mut msg = MSG::default();
@@ -267,6 +281,12 @@ impl App {
             // M0 记录当前主题；设置面板（M3）与覆盖层（M1）消费。
             let _ = theme::system_theme();
         }
+    }
+
+    /// 启动后静默检查更新（SYS-7）：失败不打扰用户（国内网络下加速站挂掉是常态）。
+    pub fn check_update_silently(&mut self) {
+        let skipped = self.config.skipped_version.clone();
+        crate::update::check::check_in_background(skipped);
     }
 }
 
