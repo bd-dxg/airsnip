@@ -10,7 +10,7 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use super::{App, ID_TRAY, IDM_EXIT, IDM_SETTINGS, IDM_SHOT, WM_TRAY, icon_resource, popmenu, wide_array};
+use super::{App, ID_TRAY, IDM_EXIT, IDM_PIN, IDM_SETTINGS, IDM_SHOT, WM_TRAY, icon_resource, popmenu, wide_array};
 use std::mem::size_of;
 use std::sync::OnceLock;
 
@@ -107,13 +107,24 @@ impl App {
         }
     }
 
-    /// 右键托源自绘菜单：设置 / 退出。
+    /// 右键托源自绘菜单：截图 / 从剪贴板贴图 / 设置 / 退出。
+    /// 截图与贴图不只有全局热键入口：热键被用户清空（SYS-2）时仍能从菜单触发。
     fn show_tray_menu(&mut self) {
         let items = vec![
             popmenu::Item {
+                id: IDM_SHOT,
+                text: "截图",
+                separator_before: false,
+            },
+            popmenu::Item {
+                id: IDM_PIN,
+                text: "从剪贴板贴图",
+                separator_before: false,
+            },
+            popmenu::Item {
                 id: IDM_SETTINGS,
                 text: "设置...",
-                separator_before: false,
+                separator_before: true,
             },
             popmenu::Item {
                 id: IDM_EXIT,
@@ -131,6 +142,8 @@ impl App {
     pub fn handle_command(&mut self, id: u16) {
         match id as usize {
             IDM_SHOT => self.start_capture(),
+            // 热键被清空时的贴图退路（PIN-2）
+            IDM_PIN => crate::pin::from_clipboard(self.hinstance, self.config.pin_position, self.config.pin_border),
             IDM_SETTINGS => self.open_settings(),
             IDM_EXIT => unsafe {
                 let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));

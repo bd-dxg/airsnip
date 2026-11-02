@@ -15,6 +15,7 @@ use super::Panel;
 use super::controls::{
     Item, MOD_ALT_BIT, MOD_CTRL_BIT, MOD_SHIFT_BIT, MOD_WIN_BIT, NAV_H, RowId, Section, conflict_for,
 };
+use super::keycap::Zone;
 
 impl Panel {
     /// 命中：导航区 → (分类, None)；内容区 → (None, 行下标)。
@@ -26,14 +27,22 @@ impl Panel {
         (None, self.hit_line(x, y).map(|(i, _, _)| i))
     }
 
-    /// 命中当前节的内容行：返回 (行下标, 控件 ID, 是否落在右侧控件区)。
-    fn hit_line(&self, x: i32, y: i32) -> Option<(usize, RowId, bool)> {
+    /// 命中当前节的内容行：返回 (行下标, 控件 ID, 行内区域)。
+    fn hit_line(&self, x: i32, y: i32) -> Option<(usize, RowId, Zone)> {
         let layout = super::controls::layout(self.section, self.scale);
         let mut idx = 0usize;
         for item in &layout.items {
             if let Item::Row(r) = item {
                 if in_rect(r.rect, x, y) {
-                    return Some((idx, r.id, in_rect(r.control, x, y)));
+                    // 清除按钮在控件区内部，必须先判，否则会被当成键帽进捕获（SYS-2）
+                    let zone = if in_rect(r.clear, x, y) {
+                        Zone::Clear
+                    } else if in_rect(r.control, x, y) {
+                        Zone::Control
+                    } else {
+                        Zone::Label
+                    };
+                    return Some((idx, r.id, zone));
                 }
                 idx += 1;
             }
@@ -52,38 +61,29 @@ impl Panel {
             }
             return;
         }
-        let Some((_, id, in_control)) = self.hit_line(x, y) else {
+        let Some((_, id, zone)) = self.hit_line(x, y) else {
             // 点空白处退出捕获态
             self.capturing = None;
             return;
         };
-        match id {
-            // 热键/工具键：点右侧控件区进入捕获
-            RowId::HotkeyShot
-            | RowId::HotkeyPin
-            | RowId::HotkeyBorder
-            | RowId::HotkeyLongshot
-            | RowId::ToolRect
-            | RowId::ToolArrow
-            | RowId::ToolText
-            | RowId::ToolBlur
-            | RowId::ToolHighlight
-            | RowId::ToolGlow
-                if in_control =>
-            {
-                self.end_capture();
-                self.begin_capture(id);
+        // 快捷键行（SYS-2）：点键帽进捕获、点右侧清除按钮直接清空
+        if super::keycap::is_key_row(id) {
+            match zone {
+                Zone::Clear => self.clear_key(id),
+                Zone::Control => {
+                    self.end_capture();
+                    self.begin_capture(id);
+                }
+                Zone::Label => self.end_capture(),
             }
-            RowId::HotkeyShot
-            | RowId::HotkeyPin
-            | RowId::HotkeyBorder
-            | RowId::HotkeyLongshot
-            | RowId::ToolRect
-            | RowId::ToolArrow
-            | RowId::ToolText
-            | RowId::ToolBlur
-            | RowId::ToolHighlight
-            | RowId::ToolGlow => self.end_capture(),
+            return;
+        }
+        // 一键恢复默认（SYS-2，快捷键页底部）
+        if id == RowId::ResetKeys {
+            self.reset_keys();
+            return;
+        }
+        match id {
             RowId::Autostart => {
                 self.end_capture();
                 let next = !self.autostart_on;
@@ -239,7 +239,7 @@ impl Panel {
     }
 
     /// 结束捕获：恢复输入法。
-    fn end_capture(&mut self) {
+    pub(super) fn end_capture(&mut self) {
         self.capturing = None;
         unsafe {
             if !self.ime_old.0.is_null() {

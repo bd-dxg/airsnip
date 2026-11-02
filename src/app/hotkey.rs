@@ -25,6 +25,10 @@ impl App {
     }
 
     fn register_one(&self, id: i32, key: u32, modifiers: u32, name: &str) {
+        // 已清空（`UNBOUND`）：调用方已 UnregisterHotKey，这里既不注册也不提示失败（SYS-2）
+        if key == crate::settings::UNBOUND {
+            return;
+        }
         let mods = mod_flags(modifiers);
         let ok = unsafe { RegisterHotKey(Some(self.hwnd), id, mods, key) }.is_ok();
         if !ok {
@@ -39,10 +43,14 @@ impl App {
     }
 
     /// SYS-2：无修饰键的全局热键会抢占其他程序的按键，仅首次启动提示一次。
+    /// 已被清空的键不参与（否则把两个全局热键都关掉时还会提示没修饰键）。
     pub fn maybe_warn_no_modifier_clash(&mut self) {
+        let hk = &self.config.hotkey;
         if !self.config.hotkey_warned
-            && self.config.hotkey.screenshot_modifiers == 0
-            && self.config.hotkey.pin_modifiers == 0
+            && hk.screenshot_key != crate::settings::UNBOUND
+            && hk.pin_key != crate::settings::UNBOUND
+            && hk.screenshot_modifiers == 0
+            && hk.pin_modifiers == 0
         {
             self.config.hotkey_warned = true;
             self.config.save();

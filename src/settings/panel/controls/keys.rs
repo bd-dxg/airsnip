@@ -3,9 +3,12 @@
 
 use super::RowId;
 
-/// 虚拟键 → 显示名（如 F1、Ctrl+C）。
+/// 虚拟键 → 显示名（如 F1、Ctrl+C）。未绑定（0）显示为「未设置」。
 /// 修饰位与 Windows `MOD_*` 一致：ALT=0x1、CONTROL=0x2、SHIFT=0x4、WIN=0x8。
 pub fn key_name(vk: u32, mods: u32) -> String {
+    if vk == crate::settings::UNBOUND {
+        return "未设置".into();
+    }
     let mut s = String::new();
     if mods & MOD_CTRL_BIT != 0 {
         s += "Ctrl+";
@@ -98,6 +101,9 @@ pub fn conflict_for(
         if kv == self_vk && km == self_mods {
             continue; // 自身旧值
         }
+        if kv == crate::settings::UNBOUND {
+            continue; // 已被清空的项不参与冲突（SYS-2）
+        }
         let hit = if is_hotkey {
             kv == vk && km == mods
         } else {
@@ -120,6 +126,27 @@ mod tests {
         assert_eq!(vk_name(0x70), "F1");
         assert_eq!(key_name(0x43, MOD_CTRL_BIT), "Ctrl+C");
         assert_eq!(vk_name(0x1B), "Esc");
+        assert_eq!(key_name(0, 0), "未设置", "未绑定的键不应显示为「键 0x0」");
+    }
+
+    /// 清空后的项不再参与冲突检测（否则清空 A 后把 B 设为 A 原来的键会误判）。
+    #[test]
+    fn unbound_keys_skip_conflict_check() {
+        let mut hk = crate::settings::HotkeyConfig::default();
+        let tk = crate::settings::ToolKeys::default();
+        hk.screenshot_key = crate::settings::UNBOUND;
+        assert_eq!(
+            conflict_for(&hk, &tk, RowId::HotkeyPin, 0x70, 0),
+            None,
+            "截图热键已清空，F1 应可分配给贴图"
+        );
+        // 反向：清空前的行为保持不变
+        let hk = crate::settings::HotkeyConfig::default();
+        assert_eq!(
+            conflict_for(&hk, &tk, RowId::HotkeyPin, 0x70, 0),
+            Some("截图"),
+            "未清空时仍应报冲突"
+        );
     }
 
     /// 长截图键：默认 S 不冲突；改成工具键或截图热键的键位应报冲突。

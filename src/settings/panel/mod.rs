@@ -8,6 +8,7 @@
 mod controls;
 mod draw;
 mod interact;
+mod keycap;
 mod link;
 mod reward;
 mod window;
