@@ -29,6 +29,8 @@ fn glyphs() -> &'static [svg::SvgIcon] {
 fn optical_scale(icon: Icon) -> f32 {
     match icon {
         Icon::Save => 0.92,
+        // 垃圾桶结构密集（盖 + 桶身 + 两条竖线），不缩小会比邻居重得多
+        Icon::Delete => 0.85,
         _ => 1.0,
     }
 }

@@ -1,6 +1,6 @@
 # 界面图标（UI icons）
 
-覆盖层工具栏、长截图状态条使用的单色矢量图标。统一取自 **Material Symbols（outlined）**，
+覆盖层工具栏、长截图状态条与设置面板使用的单色矢量图标。统一取自 **Material Symbols（outlined）**，
 运行时由 `src/render/icon/` 解析成 `tiny_skia::Path` 绘制，颜色由主题调色板注入。
 
 ## 目录
@@ -9,6 +9,7 @@
 ui/
   toolbar/   # 覆盖层工具栏 17 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
   status/    # 长截图状态条
+  panel/     # 设置面板行内按钮（快捷键行的清除按钮）
 ```
 
 文件名即 `Icon` 枚举变体的小写形式（`Icon::Longshot` → `toolbar/longshot.svg`），
@@ -58,6 +59,7 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | `toolbar/bold.svg` / `italic.svg` | `format_bold` / `format_italic` |
 | `toolbar/minus.svg` / `plus.svg` | `remove` / `add` |
 | `status/check.svg` / `cross.svg` | `check` / `close` |
+| `panel/delete.svg` | `delete` |
 
 历史：v0.6.0 之前这批图标来自 iconfont 上多个不同作者，**来源与授权无法确认**，已全部
 替换为 Material Symbols，避免与 GPL-3.0-only 冲突。新增图标请从同一套取，不要引入授权
@@ -65,23 +67,25 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 
 ## 视觉重量（实测）
 
-78px 归一化渲染、6% 内边距下的墨水覆盖率。`cargo test` 中的图标测试会校验该指标落在
-合理区间（5%～48%），防止后续新增图标视觉重量跑偏。
+26px 归一化渲染下的墨水覆盖率（与 `cargo test render::icon` 的测量尺一致）。
+测试会校验该指标落在 5%～48%，防止后续新增图标视觉重量跑偏。
 
 | 图标 | 墨水% | 图标 | 墨水% |
 |---|---|---|---|
-| rect | 14.5 | copy | 25.5 |
-| arrow | 27.5 | save | 31.7 |
-| text | 20.0 | bold | 34.0 |
-| highlight | 27.0 | italic | 22.8 |
-| blur | 15.4 | minus | 9.9 |
-| glow | 20.9 | plus | 18.1 |
-| fill | 21.8 | check | 10.8 |
-| cross | 21.9 | pin | 14.7 |
-| undo / redo | 20.6 | longshot | 9.2 |
+| rect | 19.5 | copy | 28.6 |
+| arrow | 30.9 | save | 29.6 |
+| text | 19.1 | bold | 37.6 |
+| highlight | 29.0 | italic | 25.4 |
+| blur | 23.1 | minus | 11.8 |
+| glow | 21.0 | plus | 21.3 |
+| fill | 27.2 | check | 14.2 |
+| cross | 25.4 | pin | 14.8 |
+| undo / redo | 27.2 | longshot | 12.4 |
+| delete | 29.0 | | |
 
-全组落在 9.2%～34.0%，均在测试区间（5%～48%）内。个别图标用
-`render::icon::optical_scale` 微调（`save` 0.92：软盘 bbox 偏大，不缩会在 26px 下盖过邻居）。
+全组落在 11.8%～37.6%，均在测试区间（5%～48%）内。个别图标用
+`render::icon::optical_scale` 微调：`save` 0.92（软盘 bbox 偏大）、
+`delete` 0.85（垃圾桶盖 + 桶身 + 两条竖线结构密集，不缩会明显重于邻居）。
 
 **验收要同时看深色与浅色主题**：线框图标在浅底上会显得更淡（实测 `highlight` 的
 outlined 版就是因此换成 fill1）。新增/替换图标后请在两种底色下各看一眼 26px 渲染。

@@ -75,6 +75,7 @@ pub const ID_HOTKEY_PIN: i32 = 102;
 
 /// 托盘菜单项 id（供 `tray` 子模块使用）。
 pub const IDM_SHOT: usize = 40001;
+pub const IDM_PIN: usize = 40002;
 pub const IDM_SETTINGS: usize = 40003;
 pub const IDM_EXIT: usize = 40004;
 

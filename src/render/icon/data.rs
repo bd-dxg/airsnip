@@ -46,4 +46,6 @@ icon_table! {
     // 长截图状态条（M4）
     Check => "status/check.svg",
     Cross => "status/cross.svg",
+    // 设置面板行内按钮（SYS-2）
+    Delete => "panel/delete.svg",
 }

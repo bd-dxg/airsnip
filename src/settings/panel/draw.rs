@@ -11,7 +11,7 @@ use crate::render::text as dwrite;
 use crate::settings::ThemeSetting;
 
 use super::Panel;
-use super::controls::{Item, Layout, NAV_W, RowId, RowKind, Section, key_name};
+use super::controls::{Item, Layout, NAV_W, RowId, RowKind, Section};
 
 /// 绘制整个面板：背景 → 导航栏 → 节标题 → 内容行。
 pub(super) fn render(pixmap: &mut Pixmap, panel: &Panel, layout: &Layout) {
@@ -123,15 +123,18 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
     // 支持项目块的标签由 `reward::draw_block` 自己画（高行顶对齐），此处不重复绘制
     if row.kind != RowKind::Qr {
         let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
-        draw_text(pixmap, lx, ly, row.label, size, p.text);
+        // 操作按钮行（如「恢复默认」）的标签用强调色，提示整行可点
+        let color = if row.kind == RowKind::Action { p.accent } else { p.text };
+        draw_text(pixmap, lx, ly, row.label, size, color);
     }
     match row.kind {
         RowKind::Toggle => draw_toggle(pixmap, panel, row),
-        RowKind::KeyCap => draw_keycap(pixmap, panel, row),
+        RowKind::KeyCap => super::keycap::draw(pixmap, panel, row),
         RowKind::Radio => draw_radio(pixmap, panel, row),
         RowKind::Readonly => draw_readonly(pixmap, panel, row),
         RowKind::About => draw_about(pixmap, panel, row),
         RowKind::Link => super::link::draw_link(pixmap, panel, row),
+        RowKind::Action => super::link::draw_action(pixmap, panel, row),
         RowKind::Qr => super::reward::draw_block(pixmap, panel, row),
     }
 }
@@ -171,58 +174,6 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         h: kd,
     };
     rounded_rect(pixmap, knob, (kd / 2) as f32, [255, 255, 255, 255], None);
-}
-
-/// 热键捕获按钮：按键框 + 当前组合键文本。
-fn draw_keycap(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
-    let p = panel.palette;
-    let s = panel.scale;
-    let capturing = panel.capturing == Some(row.id);
-    let c = &row.control;
-    let kh = (30.0 * s) as i32;
-    let kb = SelRect {
-        x: c.x,
-        y: c.y + (c.h - kh) / 2,
-        w: c.w,
-        h: kh,
-    };
-    let fill = if capturing {
-        p.accent_soft
-    } else {
-        [p.bg[0], p.bg[1], p.bg[2], 255]
-    };
-    let border = if capturing { p.accent } else { p.border };
-    rounded_rect(pixmap, kb, (6.0 * s) as f32, fill, Some(border));
-
-    let text = keycap_text(panel, row.id);
-    let size = 16.0 * s;
-    let color = if capturing { p.accent } else { p.text };
-    let (w, _) = dwrite::measure(&text, &dwrite::FontSpec::new(size));
-    let x = c.x as f32 + (c.w as f32 - w) / 2.0;
-    let y = kb.y as f32 + (kh as f32 - size * 1.2) / 2.0;
-    draw_text(pixmap, x, y, &text, size, color);
-}
-
-/// 热键按钮文本。
-fn keycap_text(panel: &Panel, id: RowId) -> String {
-    if panel.capturing == Some(id) {
-        return "按下新按键...（Esc 取消）".into();
-    }
-    let hk = &panel.config.hotkey;
-    let tk = &panel.config.tool_keys;
-    match id {
-        RowId::HotkeyShot => key_name(hk.screenshot_key, hk.screenshot_modifiers),
-        RowId::HotkeyPin => key_name(hk.pin_key, hk.pin_modifiers),
-        RowId::HotkeyBorder => key_name(hk.border_key, hk.border_modifiers),
-        RowId::HotkeyLongshot => key_name(hk.longshot_key, 0),
-        RowId::ToolRect => key_name(tk.rect, 0),
-        RowId::ToolArrow => key_name(tk.arrow, 0),
-        RowId::ToolText => key_name(tk.text, 0),
-        RowId::ToolBlur => key_name(tk.blur, 0),
-        RowId::ToolHighlight => key_name(tk.highlight, 0),
-        RowId::ToolGlow => key_name(tk.glow, 0),
-        _ => String::new(),
-    }
 }
 
 /// 主题单选：○ 外圈 + 选中时 ● 内圈。
@@ -292,8 +243,8 @@ fn draw_right_text(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Ro
     draw_text(pixmap, x as f32, y, text, size, panel.palette.text_dim);
 }
 
-/// 经 DirectWrite 栅格化文本（位置为左上角物理像素）。
-fn draw_text(pixmap: &mut Pixmap, x: f32, y: f32, text: &str, size: f32, color: [u8; 4]) {
+/// 经 DirectWrite 栅格化文本（位置为左上角物理像素）；其他绘制模块共用。
+pub(super) fn draw_text(pixmap: &mut Pixmap, x: f32, y: f32, text: &str, size: f32, color: [u8; 4]) {
     let spec = dwrite::FontSpec::new(size);
     dwrite::draw(pixmap, Point::new(x, y), text, &spec, color, Transform::identity());
 }

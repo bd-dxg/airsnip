@@ -4,8 +4,10 @@
 use crate::overlay::geometry::SelRect;
 
 mod keys;
+mod layout;
 mod scale;
 pub use keys::*;
+pub use layout::*;
 pub use scale::*;
 
 /// 窗口内容总宽（横向桌面窗口，宽高比约 1.4）。
@@ -25,6 +27,10 @@ pub const CONTENT_HEADER_H: i32 = 40;
 pub const ROW_H: i32 = 46;
 /// 支持项目行高度（文案 + 赞赏码，高于标准行）。
 pub const QR_ROW_H: i32 = 200;
+/// 快捷键行右侧清除按钮边长（与键帽同高，视觉上齐平）。
+pub const CLEAR_BTN: i32 = 30;
+/// 键帽与清除按钮之间的间隔。
+pub const CLEAR_GAP: i32 = 8;
 
 /// 分类页。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -80,6 +86,8 @@ pub enum RowId {
     ToolGlow,
     /// 无修饰键风险提示（只读）。
     Widenote,
+    /// 一键恢复默认快捷键（SYS-2，快捷键页底部）。
+    ResetKeys,
     /// 贴图位置：截图原位置（M2b）。
     PinPosOriginal,
     /// 贴图位置：屏幕中间（M2b）。
@@ -133,6 +141,8 @@ pub enum RowKind {
     About,
     /// 外部链接：右侧强调色文字，点击用浏览器打开。
     Link,
+    /// 操作按钮：右侧强调色文字，点击执行一次动作（如「恢复默认」）。
+    Action,
     /// 支持项目块：高行（左侧文案 + 右侧赞赏码）。
     Qr,
 }
@@ -154,6 +164,9 @@ pub struct Row {
     pub rect: SelRect,
     /// 右侧控件区（开关/按键框/说明文本）。
     pub control: SelRect,
+    /// 行内清除按钮（SYS-2，仅 `KeyCap` 行有意义；其余行为空矩形）。
+    /// 与 `control` 分开命中：点键帽进捕获态，点这里是直接清空。
+    pub clear: SelRect,
 }
 
 /// 面板内容布局：导航项 + 当前分类的行 + 总高度。
@@ -161,123 +174,6 @@ pub struct Row {
 pub struct Layout {
     pub items: Vec<Item>,
     pub height: i32,
-}
-
-/// 内容行几何（`s` 为 DPI 缩放系数，x 从导航栏右缘开始）。
-fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row {
-    // 横向几何同样按 DPI 缩放，否则高 DPI 下内容区宽度不变、行高变大（比例失真）
-    let h = (ROW_H as f32 * s) as i32;
-    let w = (W as f32 * s) as i32;
-    let nav_w = (NAV_W as f32 * s) as i32;
-    let pad = (PAD as f32 * s) as i32;
-    let cw = (260.0 * s) as i32;
-    Row {
-        id,
-        kind,
-        label,
-        rect: SelRect {
-            x: nav_w,
-            y,
-            w: w - nav_w - pad,
-            h,
-        },
-        control: SelRect {
-            x: w - pad - cw,
-            y,
-            w: cw,
-            h,
-        },
-    }
-}
-
-/// 高行：高度按内容给（支持项目块），几何与标准行一致。
-fn mk_row_tall(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32, h: i32) -> Row {
-    let mut row = mk_row(id, kind, label, y, s);
-    row.rect.h = h;
-    row.control.h = h;
-    row
-}
-
-/// 指定分类的内容行。
-fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
-    let mut y = y0;
-    let push = |id: RowId, kind: RowKind, label: &'static str, y: &mut i32, items: &mut Vec<Item>| {
-        items.push(Item::Row(mk_row(id, kind, label, *y, s)));
-        *y += (ROW_H as f32 * s) as i32;
-    };
-    match section {
-        Section::General => {
-            push(RowId::Autostart, RowKind::Toggle, "开机自启", &mut y, items);
-            push(RowId::Lang, RowKind::Readonly, "语言", &mut y, items);
-            push(RowId::PinPosOriginal, RowKind::Radio, "贴图位置·原位置", &mut y, items);
-            push(RowId::PinPosCenter, RowKind::Radio, "贴图位置·屏幕中间", &mut y, items);
-        }
-        Section::Hotkeys => {
-            push(RowId::HotkeyShot, RowKind::KeyCap, "截图", &mut y, items);
-            push(RowId::HotkeyPin, RowKind::KeyCap, "贴图", &mut y, items);
-            push(RowId::HotkeyBorder, RowKind::KeyCap, "贴图边框·窗口内", &mut y, items);
-            push(RowId::HotkeyLongshot, RowKind::KeyCap, "长截图·截图内", &mut y, items);
-            push(RowId::ToolRect, RowKind::KeyCap, "工具·矩形", &mut y, items);
-            push(RowId::ToolArrow, RowKind::KeyCap, "工具·箭头", &mut y, items);
-            push(RowId::ToolText, RowKind::KeyCap, "工具·文本", &mut y, items);
-            push(RowId::ToolBlur, RowKind::KeyCap, "工具·模糊", &mut y, items);
-            push(RowId::ToolHighlight, RowKind::KeyCap, "工具·荧光笔", &mut y, items);
-            push(RowId::ToolGlow, RowKind::KeyCap, "工具·聚光灯", &mut y, items);
-            push(RowId::Widenote, RowKind::Readonly, "提示", &mut y, items);
-        }
-        Section::Save => {
-            push(RowId::NameDateTime, RowKind::Radio, "文件名·日期 + 时间", &mut y, items);
-            push(
-                RowId::NameTimestamp,
-                RowKind::Radio,
-                "文件名·时间戳（毫秒）",
-                &mut y,
-                items,
-            );
-            push(RowId::NameDate, RowKind::Radio, "文件名·仅日期", &mut y, items);
-        }
-        Section::Appearance => {
-            push(RowId::ThemeFollow, RowKind::Radio, "跟随系统", &mut y, items);
-            push(RowId::ThemeLight, RowKind::Radio, "浅色", &mut y, items);
-            push(RowId::ThemeDark, RowKind::Radio, "深色", &mut y, items);
-            for m in crate::settings::UiScale::ALL {
-                push(ui_scale_row(m), RowKind::Radio, m.title(), &mut y, items);
-            }
-        }
-        Section::About => {
-            push(RowId::About, RowKind::About, "AirSnip 轻截", &mut y, items);
-            push(RowId::Repo, RowKind::Link, "项目地址", &mut y, items);
-            push(RowId::Licenses, RowKind::Link, "第三方许可", &mut y, items);
-            let qh = (QR_ROW_H as f32 * s) as i32;
-            items.push(Item::Row(mk_row_tall(RowId::Reward, RowKind::Qr, "支持项目", y, s, qh)));
-        }
-    }
-}
-
-/// 构建布局：导航项 + 当前节内容；高度固定为 `H`（内容更高时按内容兜底）。
-pub fn layout(section: Section, scale: f32) -> Layout {
-    let s = scale;
-    let mut items = Vec::new();
-    for sec in Section::ALL {
-        items.push(Item::Nav(sec));
-    }
-    // 内容区：节标题 + 各节最大行数（每节各自累计，取最高者）
-    let mut max_content = 0i32;
-    for sec in Section::ALL {
-        let mut rows = Vec::new();
-        section_rows(sec, 0, s, &mut rows);
-        let h = (CONTENT_HEADER_H as f32 * s) as i32 + rows.len() as i32 * (ROW_H as f32 * s) as i32;
-        max_content = max_content.max(h);
-    }
-    // 当前节的内容行（实际绘制用）
-    section_rows(section, (CONTENT_HEADER_H as f32 * s) as i32, s, &mut items);
-
-    let nav_h = (NAV_H as f32 * s) as i32 * Section::ALL.len() as i32;
-    let fixed_h = (H as f32 * s) as i32;
-    Layout {
-        items,
-        height: fixed_h.max(max_content).max(nav_h),
-    }
 }
 
 #[cfg(test)]
@@ -339,6 +235,7 @@ mod tests {
                     RowId::ToolBlur,
                     RowId::ToolHighlight,
                     RowId::ToolGlow,
+                    RowId::ResetKeys,
                     RowId::Widenote,
                 ],
                 Section::Save => vec![RowId::NameDateTime, RowId::NameTimestamp, RowId::NameDate],
@@ -356,6 +253,47 @@ mod tests {
                 Section::About => vec![RowId::About, RowId::Repo, RowId::Licenses, RowId::Reward],
             };
             assert_eq!(rows, expected, "节 {sec:?} 行集合错误");
+        }
+    }
+
+    /// 快捷键行的清除按钮（SYS-2）：只有键帽行有，且不压键帽、不越出控件区。
+    #[test]
+    fn keycap_rows_have_clear_button() {
+        let l = layout(Section::Hotkeys, 1.0);
+        let mut caps = 0;
+        for item in &l.items {
+            let Item::Row(r) = item else { continue };
+            if r.kind == RowKind::KeyCap {
+                caps += 1;
+                assert!(r.clear.w > 0 && r.clear.h > 0, "{:?} 应有清除按钮", r.id);
+                assert!(r.clear.x > r.control.x, "{:?} 清除按钮应在键帽右侧", r.id);
+                assert!(
+                    r.clear.x + r.clear.w <= r.control.x + r.control.w,
+                    "{:?} 清除按钮不应越出控件区",
+                    r.id
+                );
+            } else {
+                assert_eq!(r.clear.w, 0, "{:?} 非键帽行不应有清除按钮", r.id);
+            }
+        }
+        assert_eq!(caps, 10, "快捷键页应有 10 个键帽行");
+    }
+
+    /// 任意缩放下键帽仍有足够宽度显示组合键文本。
+    #[test]
+    fn keycap_keeps_usable_width_at_any_scale() {
+        for scale in [1.0f32, 1.25, 1.5, 2.0] {
+            let l = layout(Section::Hotkeys, scale);
+            for item in &l.items {
+                if let Item::Row(r) = item
+                    && r.kind == RowKind::KeyCap
+                {
+                    let gap = (CLEAR_GAP as f32 * scale) as i32;
+                    let kb_w = r.control.w - r.clear.w - gap;
+                    assert!(kb_w > 100, "{:?} 在 {scale}x 下键帽过窄：{kb_w}", r.id);
+                    assert!(r.clear.w >= 20, "{:?} 在 {scale}x 下清除按钮过小", r.id);
+                }
+            }
         }
     }
 
