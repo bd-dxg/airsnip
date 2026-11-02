@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 长截图执行窗口（LNG-1/3/6）：置顶**分层**状态条，风格与截图工具栏一致
-//! （tiny-skia 绘制，见 `bar`）。键位：Enter 完成、Esc 取消、Ctrl+Z 撤销；
+//! （tiny-skia 绘制，见 `bar`）。键位：Enter 完成、Ctrl+S 另存为、Esc 取消、Ctrl+Z 撤销；
 //! 也可用鼠标点条上的按钮。定时器每 ~90ms 驱动 `Session::tick` 抓帧拼接。
 //!
 //! 用户自行在目标页面上滚动鼠标滚轮（不做自动滚动）；执行窗口用 `WS_EX_NOACTIVATE`
 //! 不抢焦点，键盘走注册到本窗口的全局热键。
 
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{DeleteDC, DeleteObject, HBITMAP, HDC};
 use windows::Win32::UI::Input::Ime::{HIMC, ImmAssociateContext};
 use windows::Win32::UI::Input::KeyboardAndMouse::{HOT_KEY_MODIFIERS, MOD_CONTROL, RegisterHotKey, UnregisterHotKey};
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use super::bar::{self, Bar, Button};
+use super::bar::{self, Bar};
 use super::border;
-use super::present::{ctrl_down, redraw, win_from};
+use super::present::redraw;
 use super::preview::Preview;
 use super::session::Session;
 use crate::overlay::geometry::SelRect;
@@ -23,12 +23,13 @@ use crate::overlay::ui::Ui;
 use crate::theme::Palette;
 
 /// 定时器 ID。
-const TIMER_ID: usize = 1;
+pub(super) const TIMER_ID: usize = 1;
 
 /// 全局热键 ID（执行窗口无焦点，键盘走全局热键；Enter/Esc/Ctrl+Z）。
-const HK_ENTER: i32 = 301;
-const HK_ESC: i32 = 302;
-const HK_UNDO: i32 = 303;
+pub(super) const HK_ENTER: i32 = 301;
+pub(super) const HK_ESC: i32 = 302;
+pub(super) const HK_UNDO: i32 = 303;
+pub(super) const HK_SAVE: i32 = 304;
 /// 每拍间隔（毫秒）。
 const TICK_MS: u32 = 90;
 
@@ -38,6 +39,7 @@ fn register_hotkeys(hwnd: HWND) {
         let _ = RegisterHotKey(Some(hwnd), HK_ENTER, HOT_KEY_MODIFIERS(0), 0x0D);
         let _ = RegisterHotKey(Some(hwnd), HK_ESC, HOT_KEY_MODIFIERS(0), 0x1B);
         let _ = RegisterHotKey(Some(hwnd), HK_UNDO, MOD_CONTROL, 0x5A);
+        let _ = RegisterHotKey(Some(hwnd), HK_SAVE, MOD_CONTROL, 0x53);
     }
 }
 
@@ -46,6 +48,7 @@ fn unregister_hotkeys(hwnd: HWND) {
         let _ = UnregisterHotKey(Some(hwnd), HK_ENTER);
         let _ = UnregisterHotKey(Some(hwnd), HK_ESC);
         let _ = UnregisterHotKey(Some(hwnd), HK_UNDO);
+        let _ = UnregisterHotKey(Some(hwnd), HK_SAVE);
     }
 }
 
@@ -70,6 +73,13 @@ pub(super) struct Win {
     pub(super) h: i32,
     /// 是否有待上屏的变更。
     pub(super) dirty: bool,
+    /// 会话已结束，可以关窗。
+    /// 与 `session.finished` 分开：「另存为」对话框打开期间拼接已停，但窗口要留着做 owner。
+    pub(super) done: bool,
+    /// 用户通过「另存为」选定的路径（None = 未另存，完成后走自动保存）。
+    pub(super) save_as: Option<std::path::PathBuf>,
+    /// 保存偏好快照（文件名模板 / 上次格式 / 上次目录）。
+    pub(super) save: crate::settings::SavePrefs,
 }
 
 impl Drop for Win {
@@ -85,6 +95,14 @@ impl Drop for Win {
     }
 }
 
+/// 执行窗口结果：拼接图 + 用户另存为选定的路径。
+pub struct Outcome {
+    /// 拼接结果。
+    pub pixmap: tiny_skia::Pixmap,
+    /// 用户通过「另存为」选定的路径；`None` 时由调用方自动保存到默认目录。
+    pub save_as: Option<std::path::PathBuf>,
+}
+
 /// 启动长截图执行并阻塞到完成/取消。完成后返回拼接结果；取消返回 None。
 pub fn run(
     x: i32,
@@ -95,7 +113,8 @@ pub fn run(
     max_height: u32,
     palette: &'static Palette,
     ui_scale: crate::settings::UiScale,
-) -> Option<tiny_skia::Pixmap> {
+    save: crate::settings::SavePrefs,
+) -> Option<Outcome> {
     let session = match Session::new(x, y, w, h, max_height) {
         Ok(s) => s,
         Err(e) => {
@@ -113,7 +132,7 @@ pub fn run(
     unsafe {
         let wc = WNDCLASSW {
             style: CS_HREDRAW | CS_VREDRAW,
-            lpfnWndProc: Some(wndproc),
+            lpfnWndProc: Some(super::events::wndproc),
             hInstance: hinstance,
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
             lpszClassName: w!("airsnip.longshot"),
@@ -175,6 +194,9 @@ pub fn run(
             w: bw,
             h: bh,
             dirty: true,
+            done: false,
+            save_as: None,
+            save,
         });
         let raw = Box::into_raw(win);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, raw as isize);
@@ -199,7 +221,10 @@ pub fn run(
 
         // 局部持有 Box 指针，不重新查询窗口 userdata（销毁后不可靠，见 app 模块教训）。
         let result = if !(*raw).session.cancelled {
-            (*raw).session.result().ok()
+            (*raw).session.result().ok().map(|pixmap| Outcome {
+                pixmap,
+                save_as: (*raw).save_as.take(),
+            })
         } else {
             None
         };
@@ -209,88 +234,5 @@ pub fn run(
         }
         let _ = Box::from_raw(raw);
         result
-    }
-}
-
-/// 完成：先补抓一帧（用户滚动后立刻按 Enter 时，最后一屏还没被定时拍捕获），再收尾。
-fn finish(win: &mut Win) {
-    win.session.tick();
-    win.session.finished = true;
-}
-
-/// 绘制状态条并提交到分层窗口（实现见 `present::redraw`）。
-unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    match msg {
-        WM_DESTROY => {
-            unsafe {
-                let _ = KillTimer(Some(hwnd), TIMER_ID);
-                PostQuitMessage(0);
-            }
-            LRESULT(0)
-        }
-        WM_TIMER => {
-            if let Some(win) = win_from(hwnd) {
-                let changed = win.session.tick();
-                if changed {
-                    win.dirty = true;
-                }
-                if win.dirty {
-                    redraw(hwnd);
-                }
-                if win.session.finished || win.session.cancelled {
-                    unsafe {
-                        let _ = DestroyWindow(hwnd);
-                    }
-                }
-            }
-            LRESULT(0)
-        }
-        WM_LBUTTONDOWN => {
-            if let Some(win) = win_from(hwnd) {
-                let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
-                let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
-                match win.bar.hit(x, y) {
-                    Some(Button::Undo) => win.session.undo(),
-                    Some(Button::Done) => finish(win),
-                    Some(Button::Cancel) => win.session.cancelled = true,
-                    None => {}
-                }
-                win.dirty = true;
-                redraw(hwnd);
-                if win.session.finished || win.session.cancelled {
-                    unsafe {
-                        let _ = DestroyWindow(hwnd);
-                    }
-                }
-            }
-            LRESULT(0)
-        }
-        WM_KEYDOWN => {
-            if let Some(win) = win_from(hwnd) {
-                match wparam.0 as u32 {
-                    0x0D => finish(win),
-                    0x1B => win.session.cancelled = true,
-                    0x5A if ctrl_down() => win.session.undo(),
-                    _ => {}
-                }
-                win.dirty = true;
-                redraw(hwnd);
-            }
-            LRESULT(0)
-        }
-        WM_HOTKEY => {
-            if let Some(win) = win_from(hwnd) {
-                match wparam.0 as i32 {
-                    HK_ENTER => finish(win),
-                    HK_ESC => win.session.cancelled = true,
-                    HK_UNDO => win.session.undo(),
-                    _ => {}
-                }
-                win.dirty = true;
-                redraw(hwnd);
-            }
-            LRESULT(0)
-        }
-        _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
