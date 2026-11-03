@@ -217,7 +217,7 @@ scripts/package-macos.sh   # cargo build → swift build → 组装 AirSnip.app 
 
 **完成内容**
 
-- 覆盖层拆分（ADR 0017）：交互、选区、工具栏、标注、字体面板、光标形状判定全部移入 `airsnip-core::overlay`；
+- 覆盖层拆分（ADR 0019）：交互、选区、工具栏、标注、字体面板、光标形状判定全部移入 `airsnip-core::overlay`；
   平台能力抽为 `Host` trait（上屏、光标、关闭、提示、复制、贴图、保存对话框、后台保存、输入法）。
   Windows 外壳（`src/overlay/`）只剩窗口创建、消息分发、`WinHost`（原 DIB/BitBlt、HCURSOR、IME、贴图载荷逐字搬运）、
   自绘光标与 `dib`。修饰键改为 `Overlay::mods`，由平台层在每条消息/事件前写入。
