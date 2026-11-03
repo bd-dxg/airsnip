@@ -1,0 +1,11 @@
+# 构建配置：静态链接 MSVC 运行时（ADR 0021）
+#
+# Rust 的 MSVC 工具链默认动态链接 VC 运行时（/MD），产出的 exe 会导入
+# VCRUNTIME140.dll 与 api-ms-win-crt-*.dll。开发机装了 Visual Studio 所以能跑，
+# 但干净的 Windows 机器没有这些 DLL，双击直接报「找不到 VCRUNTIME140.dll」。
+#
+# +crt-static 把 CRT 静态链进 exe，导入表只剩 dwrite / KERNEL32 / ole32 / winhttp
+# 等系统自带 DLL，代价约 +125 KB。scripts/package.ps1 会扫描导入表守门，防止回归。
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
