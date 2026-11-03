@@ -5,6 +5,7 @@
 mod draw;
 pub(crate) mod fontlist;
 mod label;
+pub(crate) mod tip;
 
 use std::sync::Arc;
 
@@ -51,6 +52,8 @@ pub struct State {
     pub italic: bool,
     pub font_size: f32,
     pub font_open: bool,
+    /// 悬停中的按钮（EDT-10）：立即给底色，气泡延迟出现。
+    pub hover: Option<Action>,
 }
 
 /// 工具栏动作。

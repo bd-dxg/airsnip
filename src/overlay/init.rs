@@ -13,6 +13,7 @@ use super::Overlay;
 use super::OverlayOpts;
 use super::interaction::Phase;
 use super::surface;
+use super::toolbar;
 
 impl Overlay {
     pub(super) fn new(mut capture: CapturedScreen, opts: OverlayOpts) -> Result<Self, String> {
@@ -86,6 +87,7 @@ impl Overlay {
             obj_drag: None,
             text_edit: None,
             bar: None,
+            tip: toolbar::tip::Tip::default(),
             hwnd: HWND::default(),
             ime_old: HIMC(std::ptr::null_mut()),
             main_hwnd: HWND::default(),

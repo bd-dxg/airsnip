@@ -35,6 +35,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         WM_LBUTTONDOWN => {
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
+            // 按下即隐藏悬浮提示（EDT-10）：拖拽时气泡不应挡住标注
+            overlay.hide_tip();
             overlay.on_lbutton_down(x, y);
             LRESULT(0)
         }
@@ -47,6 +49,13 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             // 光标随鼠标位置变：手柄→方向光标、对象/曲线控制柄→移动光标（否则系统只在
             // 位置变化且命中窗口时发 WM_SETCURSOR，拖动手柄途中光标不会更新）
             overlay.apply_cursor_at(x, y);
+            // 悬浮提示（EDT-10）：悬停目标变化时重设定时器
+            overlay.on_tip_hover(x, y);
+            LRESULT(0)
+        }
+        // 悬浮提示延迟到时（EDT-10）：一次性定时器，见 `toolbar::tip`
+        WM_TIMER if wparam.0 == super::toolbar::tip::TIMER_ID => {
+            overlay.on_tip_timer();
             LRESULT(0)
         }
         WM_LBUTTONUP => {
