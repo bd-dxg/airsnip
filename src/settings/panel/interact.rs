@@ -197,7 +197,12 @@ impl Panel {
             // 纯修饰键：继续等待主键
             0x10 | 0x11 | 0x12 | 0x5B | 0x5C => {}
             _ => {
-                let mods = held_modifiers();
+                // 鼠标键不参与修饰键匹配（ADR 0019）：不记录，避免显示成「Ctrl+侧键」却不生效
+                let mods = if crate::app::mouse::is_mouse_key(vk) {
+                    0
+                } else {
+                    held_modifiers()
+                };
                 // 与其它已配置键冲突则拒绝（M3）：热键看键+修饰，工具键按虚拟键匹配
                 if let Some(name) = conflict_for(&self.config.hotkey, &self.config.tool_keys, id, vk, mods) {
                     message_box(

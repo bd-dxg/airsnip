@@ -4,7 +4,7 @@
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT};
 use windows::Win32::UI::Input::Ime::{IME_COMPOSITION_STRING, ImmGetVirtualKey};
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus, VK_SNAPSHOT};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::Overlay;
@@ -159,10 +159,10 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                         overlay.on_cancel();
                     }
                 }
-                0x72 => overlay.on_pin(),  // PIN-1：F3 贴选区（截图期间全局 F3 已撤销）
-                0x0D => overlay.on_copy(), // Enter
-                0x43 if ctrl_down() => overlay.on_copy(), // Ctrl+C
-                0x53 if ctrl_down() => overlay.on_save(), // Ctrl+S 保存（弹另存为对话框）
+                0x0D => overlay.on_copy(),                     // Enter
+                0x43 if ctrl_down() => overlay.on_copy(),      // Ctrl+C
+                0x53 if ctrl_down() => overlay.on_save(),      // Ctrl+S 保存（弹另存为对话框）
+                k if k == overlay.pin_key => overlay.on_pin(), // PIN-1：贴选区（键可配，默认 F3）
                 // 长截图键（默认 S，设置面板可改）：当前选区作为滚动视口（M4）
                 k if k == overlay.longshot_key => overlay.on_longshot(),
                 0x5A if ctrl_down() => {
@@ -211,11 +211,24 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             LRESULT(0)
         }
         WM_KEYUP => {
+            let vk = wparam.0 as u32;
             // 空格松开：光标回到按当前位置判定的形状
-            if wparam.0 as u32 == 0x20 {
+            if vk == 0x20 {
                 overlay.apply_cursor_now(hwnd);
+            } else if vk == VK_SNAPSHOT.0 as u32 {
+                // PrintScreen 系统只派发松键消息、没有 WM_KEYDOWN（#67）
+                overlay.on_aux_key(vk);
             }
             LRESULT(0)
+        }
+        // 鼠标中键 / 侧键当热键（ADR 0019）：长截图键 / 贴选区 / 工具切换键绑到它们时直接生效
+        WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
+            if !overlay.is_editing_text()
+                && let Some(vk) = crate::app::mouse::message_vk(msg, wparam.0)
+            {
+                overlay.on_aux_key(vk);
+            }
+            LRESULT(1) // XBUTTON 已处理
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }

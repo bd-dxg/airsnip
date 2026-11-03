@@ -6,6 +6,7 @@
 pub mod autostart;
 pub mod filedlg;
 pub(crate) mod hotkey;
+pub(crate) mod mouse;
 pub mod open;
 pub mod popmenu;
 mod tray;
@@ -37,37 +38,10 @@ pub const WM_OVERLAY_DONE: u32 = WM_APP + 4;
 pub const WM_PIN_BORDER_CHANGED: u32 = WM_APP + 5;
 
 /// 截图覆盖层是否在运行（跨线程；截图期间撤销全局贴图热键）。
+/// 鼠标热键（`mouse`）共用：截图期间同样不响应鼠标贴图键。
 static OVERLAY_RUNNING: AtomicBool = AtomicBool::new(false);
 
-/// 覆盖层保存时选定的格式扩展名（OUT-2）：覆盖层线程写，主线程在截图结束时写回配置。
-static LAST_SAVE_EXT: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-
-/// 覆盖层保存时选定的目录（OUT-2）：覆盖层线程写，主线程在截图结束时写回配置。
-static LAST_SAVE_DIR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-
-/// 记录本次保存用的格式扩展名（覆盖层线程调用）。
-pub fn last_save_ext_store(ext: &str) {
-    if let Ok(mut g) = LAST_SAVE_EXT.lock() {
-        *g = Some(ext.to_ascii_lowercase());
-    }
-}
-
-/// 取出并清空记录的扩展名（主线程写回配置用）。
-fn last_save_ext_take() -> Option<String> {
-    LAST_SAVE_EXT.lock().ok().and_then(|mut g| g.take())
-}
-
-/// 记录本次保存所在的目录（覆盖层线程调用，OUT-2）。
-pub fn last_save_dir_store(dir: &std::path::Path) {
-    if let Ok(mut g) = LAST_SAVE_DIR.lock() {
-        *g = Some(dir.to_string_lossy().into_owned());
-    }
-}
-
-/// 取出并清空记录的目录（主线程写回配置用）。
-fn last_save_dir_take() -> Option<String> {
-    LAST_SAVE_DIR.lock().ok().and_then(|mut g| g.take())
-}
+/// 覆盖层保存时选定的格式扩展名与目录（OUT-2）：见 `output::recent`。
 
 pub const ID_TRAY: u32 = 1;
 pub const ID_HOTKEY_SHOT: i32 = 101;
@@ -130,6 +104,8 @@ pub fn run() -> i32 {
     app.ensure_tray();
     app.maybe_warn_no_modifier_clash();
     app.register_hotkeys();
+    // 鼠标键热键（SYS-2，ADR 0019）：RegisterHotKey 不支持，改订阅 Raw Input
+    mouse::install(hwnd, mouse::wanted(&app.config.hotkey));
     // 更新检查的后台线程要通知主窗口弹气泡（SYS-7）
     crate::update::notify::register_main(hwnd);
     // 贴图内边框快捷键（M2b，非全局热键：仅贴图窗口聚焦时生效）
@@ -181,47 +157,45 @@ fn acquire_single_instance() -> bool {
 
 impl App {
     pub fn start_capture(&self) {
+        // 互斥：覆盖层已在运行时不再进入（F1 连按与鼠标截图键都会走到这里，
+        // 重入等于再抓一份全屏位图、再弹一个覆盖层）
+        if OVERLAY_RUNNING.swap(true, Ordering::AcqRel) {
+            return;
+        }
         crate::perf::mark_capture_start();
         let hinstance = self.hinstance.0 as usize;
         let main_hwnd = self.hwnd.0 as usize; // HWND 非 Send，跨线程传原生值
         let max_height = self.config.longshot_max_height;
         // 截图期间撤销贴图全局热键：F3 在覆盖层内走「贴选区」（PIN-1），
         // 否则 WM_HOTKEY 与覆盖层 WM_KEYDOWN 同时收到 F3 会双重触发（一次贴选区一次贴剪贴板）。
-        OVERLAY_RUNNING.store(true, Ordering::Release);
         let _ = unsafe { UnregisterHotKey(Some(self.hwnd), ID_HOTKEY_PIN) };
-        // 截图开始时解析一次主题调色板（M3：跟随设置，浅色模式工具栏为浅色）
-        let palette = crate::theme::palette(crate::theme::resolve(self.config.theme));
         // 工具切换键配置 + 默认工具（记住上次使用，M3）
-        let tool_keys = self.config.tool_keys.clone();
-        // 长截图键（覆盖层内按下，默认 S）
-        let longshot_key = self.config.hotkey.longshot_key;
-        // 覆盖层界面缩放（CAP-5）：随配置快照传入覆盖层线程
-        let ui_scale = self.config.ui_scale;
-        let default_tool = crate::settings::last_tool();
-        // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名、默认筛选器与初始位置
-        let save = crate::settings::SavePrefs {
-            name_style: self.config.name_style,
-            last_ext: self.config.last_save_ext.clone(),
-            last_dir: self.config.last_save_dir.clone(),
+        let opts = crate::overlay::OverlayOpts {
+            palette: crate::theme::palette(crate::theme::resolve(self.config.theme)),
+            tool_keys: self.config.tool_keys.clone(),
+            longshot_key: self.config.hotkey.longshot_key,
+            // 贴图键（覆盖层内贴选区，默认 F3；ADR 0019：可改为鼠标键）
+            pin_key: self.config.hotkey.pin_key,
+            default_tool: crate::settings::last_tool(),
+            // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名与初始位置
+            save: crate::settings::SavePrefs {
+                name_style: self.config.name_style,
+                last_ext: self.config.last_save_ext.clone(),
+                last_dir: self.config.last_save_dir.clone(),
+            },
+            // 覆盖层界面缩放（CAP-5）：随配置快照传入覆盖层线程
+            ui_scale: self.config.ui_scale,
         };
-        // 长截图完成后也要弹同一个对话框（「另存为」入口），单独快照一份
-        let longshot_save = save.clone();
+        // 长截图完成后也要弹同一个对话框（「另存为」入口）
+        let longshot_save = opts.save.clone();
+        let ui_scale = opts.ui_scale;
+        let palette = opts.palette;
         std::thread::spawn(move || {
             let hinstance = HINSTANCE(hinstance as *mut _);
             let main_hwnd = HWND(main_hwnd as *mut _);
             match crate::capture::capture_virtual_screen() {
                 Ok(screen) => {
-                    let result = crate::overlay::Overlay::run(
-                        screen,
-                        palette,
-                        tool_keys,
-                        longshot_key,
-                        default_tool,
-                        save,
-                        ui_scale,
-                        hinstance,
-                        main_hwnd,
-                    );
+                    let result = crate::overlay::run(screen, opts, hinstance, main_hwnd);
                     // M4：工具栏长截图按钮 / 长截图键返回视口选区，进入长截图拼接。
                     if let crate::overlay::OverlayResult::Viewport((x, y, w, h)) = result {
                         crate::longshot::run(x, y, w, h, hinstance, max_height, palette, ui_scale, longshot_save);

@@ -36,6 +36,18 @@ impl super::Overlay {
         }
     }
 
+    /// 鼠标键 / 仅在松键才发现的功能键（ADR 0019、#67）：落到长截图键或工具切换键时执行。
+    /// 覆盖层的 PrtScn（只有 WM_KEYUP）与中键/侧键（只有鼠标消息）共用。
+    pub(super) fn on_aux_key(&mut self, vk: u32) {
+        if vk == self.pin_key {
+            self.on_pin(); // PIN-1：贴选区
+        } else if vk == self.longshot_key {
+            self.on_longshot();
+        } else if let Some(t) = self.tool_by_key(vk) {
+            self.switch_tool(t);
+        }
+    }
+
     /// 切换到指定工具（经工具栏动作统一处理，使其重绘）。
     pub(super) fn switch_tool(&mut self, t: crate::editor::Tool) {
         self.apply_action(toolbar::Action::Tool(t));
@@ -254,10 +266,10 @@ impl super::Overlay {
         };
         // 记住本次格式与目录：下次打开对话框时默认选中/定位（OUT-2）
         if let Some(e) = path.extension().and_then(|e| e.to_str()) {
-            crate::app::last_save_ext_store(e);
+            crate::output::recent::last_save_ext_store(e);
         }
         if let Some(parent) = path.parent() {
-            crate::app::last_save_dir_store(parent);
+            crate::output::recent::last_save_dir_store(parent);
         }
         let Some(cropped) = self.baked_selection(sel) else {
             return;

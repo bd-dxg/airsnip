@@ -7,7 +7,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_ICONWARNING, MB_OK};
 
-use super::{App, ID_HOTKEY_PIN, ID_HOTKEY_SHOT, message_box};
+use super::{App, ID_HOTKEY_PIN, ID_HOTKEY_SHOT, message_box, mouse};
 
 const ERROR_HOTKEY_ALREADY_REGISTERED: u32 = 1409;
 
@@ -27,6 +27,10 @@ impl App {
     fn register_one(&self, id: i32, key: u32, modifiers: u32, name: &str) {
         // 已清空（`UNBOUND`）：调用方已 UnregisterHotKey，这里既不注册也不提示失败（SYS-2）
         if key == crate::settings::UNBOUND {
+            return;
+        }
+        // 鼠标键不走 RegisterHotKey（不支持）：由 Raw Input 分发（ADR 0019）
+        if crate::app::mouse::is_mouse_key(key) {
             return;
         }
         let mods = mod_flags(modifiers);
@@ -51,6 +55,8 @@ impl App {
             && hk.pin_key != crate::settings::UNBOUND
             && hk.screenshot_modifiers == 0
             && hk.pin_modifiers == 0
+            // 鼠标键不抢占其他程序的键盘（ADR 0019）：两个都是鼠标键就不必警告
+            && !(mouse::is_mouse_key(hk.screenshot_key) && mouse::is_mouse_key(hk.pin_key))
         {
             self.config.hotkey_warned = true;
             self.config.save();

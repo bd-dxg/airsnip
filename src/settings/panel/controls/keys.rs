@@ -35,6 +35,23 @@ pub fn vk_name(vk: u32) -> String {
         0x09 => "Tab".into(),
         0x0D => "Enter".into(),
         0x2E => "Del".into(),
+        0x08 => "Backspace".into(),
+        0x14 => "CapsLock".into(),
+        0x23 => "End".into(),
+        0x24 => "Home".into(),
+        0x21 => "PgUp".into(),
+        0x22 => "PgDn".into(),
+        0x2D => "Insert".into(),
+        0x90 => "NumLock".into(),
+        0x91 => "ScrollLock".into(),
+        // 少数紧凑键盘把 PrtScn 位置上报为 VK_PAUSE（#67）
+        0x13 => "Pause".into(),
+        // 鼠标键（ADR 0019）：沿用 winuser.h 的 VK_MBUTTON / VK_XBUTTON* 编号
+        0x04 => "鼠标中键".into(),
+        0x05 => "鼠标侧键1".into(),
+        0x06 => "鼠标侧键2".into(),
+        // PrintScreen：无对应字符，直接给键名（#67）
+        0x2C => "PrtScn".into(),
         0x27 => "→".into(),
         0x25 => "←".into(),
         0x26 => "↑".into(),
@@ -126,6 +143,10 @@ mod tests {
         assert_eq!(vk_name(0x70), "F1");
         assert_eq!(key_name(0x43, MOD_CTRL_BIT), "Ctrl+C");
         assert_eq!(vk_name(0x1B), "Esc");
+        assert_eq!(vk_name(0x2C), "PrtScn", "PrintScreen 应有可读键名（#67）");
+        // 无字符的功能键走系统键名，不应退化成「键 0x13」（#67）
+        assert!(!vk_name(0x13).contains("0x"), "Pause 应有可读键名：{}", vk_name(0x13));
+        assert_eq!(vk_name(0x05), "鼠标侧键1", "鼠标键应有可读键名（ADR 0019）");
         assert_eq!(key_name(0, 0), "未设置", "未绑定的键不应显示为「键 0x0」");
     }
 

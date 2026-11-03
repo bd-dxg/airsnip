@@ -21,6 +21,7 @@ use windows::Win32::Graphics::Gdi::{
     SRCCOPY, UpdateWindow,
 };
 use windows::Win32::UI::Input::Ime::HIMC;
+use windows::Win32::UI::Input::KeyboardAndMouse::VK_SNAPSHOT;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
@@ -200,6 +201,23 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             panel.fit_window(hwnd);
             repaint_full(hwnd, panel);
             LRESULT(0)
+        }
+        // PrintScreen（VK_SNAPSHOT）系统只派发松键消息、不派发按下消息，
+        // 只监听 WM_KEYDOWN 会导致「点键帽后按 PrtScn 无反应」（#67）
+        WM_SYSKEYUP | WM_KEYUP if (wparam.0 as u32) == VK_SNAPSHOT.0 as u32 && panel.capturing.is_some() => {
+            panel.on_key(VK_SNAPSHOT.0 as u32);
+            if panel.capturing.is_none() {
+                repaint_full(hwnd, panel);
+            }
+            LRESULT(0)
+        }
+        // 鼠标键也能当热键（ADR 0019）：仅在捕获态接收，非捕获态交默认处理
+        WM_MBUTTONDOWN | WM_XBUTTONDOWN if panel.capturing.is_some() => {
+            if let Some(vk) = crate::app::mouse::message_vk(msg, wparam.0) {
+                panel.on_key(vk);
+                repaint_full(hwnd, panel);
+            }
+            LRESULT(1) // XBUTTON 已处理，TRUE 阻止继续分发
         }
         WM_SYSKEYDOWN | WM_KEYDOWN => {
             // WM_SYSKEYDOWN：Alt 组合键走系统键路径，同样进入热键捕获（否则 Alt+A 捕获不到）

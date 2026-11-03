@@ -3,7 +3,7 @@
 //! 双击/Esc 关闭、右键菜单入口。
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL};
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, ReleaseCapture, SetCapture, VK_CONTROL, VK_SNAPSHOT};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::dib::pin_from;
@@ -97,6 +97,28 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 let _ = unsafe { notify_border_toggled() };
             }
             LRESULT(0)
+        }
+        // PrintScreen 系统只派发松键消息、没有 WM_KEYDOWN：绑定到它时在松键时触发（#67）
+        WM_KEYUP if (wparam.0 as u32) == VK_SNAPSHOT.0 as u32 => {
+            let (bk, bm) = super::border_key();
+            if bk == VK_SNAPSHOT.0 as u32 && held_modifiers() == bm {
+                // 贴图内边框快捷键（M2b）：交主窗口统一切全部贴图 + 写默认配置
+                let _ = unsafe { notify_border_toggled() };
+            } else {
+                return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+            }
+            LRESULT(0)
+        }
+        // 鼠标中键 / 侧键当边框快捷键（ADR 0019）：与键盘同一套对比
+        WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
+            if let Some(vk) = crate::app::mouse::message_vk(msg, wparam.0)
+                && let (bk, bm) = super::border_key()
+                && bk == vk
+                && held_modifiers() == bm
+            {
+                let _ = unsafe { notify_border_toggled() };
+            }
+            LRESULT(1) // XBUTTON 已处理
         }
         WM_CLOSE => {
             let _ = unsafe { DestroyWindow(hwnd) };

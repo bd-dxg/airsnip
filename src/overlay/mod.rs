@@ -75,6 +75,8 @@ pub struct Overlay {
     tool_keys: crate::settings::ToolKeys,
     /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
     longshot_key: u32,
+    /// 贴图键（覆盖层内按下贴选区，默认 F3；设置面板可改，ADR 0019）。
+    pin_key: u32,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
     save: crate::settings::SavePrefs,
     color_index: usize,
@@ -122,110 +124,113 @@ pub struct Overlay {
     dib_bits: *mut u8,
 }
 
-impl Overlay {
-    /// 注册窗口类并创建覆盖窗口（实现见 `setup`）。
+/// 覆盖层启动参数（SYS-2 / CAP-5 / OUT-2）：均为配置快照，
+/// 打包传入覆盖层线程，避开 `new` / `run` 的长参数列表。
+pub struct OverlayOpts {
+    pub palette: &'static Palette,
+    pub tool_keys: crate::settings::ToolKeys,
+    /// 长截图键（默认 S，设置面板可改）。
+    pub longshot_key: u32,
+    /// 贴图键（默认 F3，设置面板可改；ADR 0019：可为鼠标键）。
+    pub pin_key: u32,
+    /// 本次会话的默认工具（记住上次使用，M3）。
+    pub default_tool: Tool,
+    /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
+    pub save: crate::settings::SavePrefs,
+    /// 界面缩放（CAP-5）。
+    pub ui_scale: crate::settings::UiScale,
+}
 
-    /// 显示覆盖层并阻塞运行，直到截图完成、取消或触发长截图。
-    /// 返回类型区分三种结果（普通截图 / 取消 / 长截图视口选取）。
-    pub fn run(
-        capture: CapturedScreen,
-        palette: &'static Palette,
-        tool_keys: crate::settings::ToolKeys,
-        longshot_key: u32,
-        default_tool: Tool,
-        save: crate::settings::SavePrefs,
-        ui_scale: crate::settings::UiScale,
-        hinstance: HINSTANCE,
-        main_hwnd: HWND,
-    ) -> OverlayResult {
-        let t_show = std::time::Instant::now();
-        let (origin_x, origin_y) = (capture.origin_x, capture.origin_y);
-        let (vw, vh) = (capture.width as i32, capture.height as i32);
-        let t_win = std::time::Instant::now();
-        let hwnd = match Self::create_window(hinstance) {
-            Ok(h) => h,
-            Err(e) => {
-                crate::app::message_box(None, &e, MB_OK | MB_ICONERROR);
-                return OverlayResult::Cancelled;
-            }
-        };
-
-        let mut overlay = match Self::new(capture, palette, tool_keys, longshot_key, default_tool, save, ui_scale) {
-            Ok(o) => o,
-            Err(_) => {
-                unsafe {
-                    let _ = DestroyWindow(hwnd);
-                }
-                return OverlayResult::Cancelled;
-            }
-        };
-        let t_init_done = std::time::Instant::now();
-        overlay.hwnd = hwnd;
-        // 截图期间禁用输入法：否则 S（长截图）/ 回车等按键被 IME 截走；
-        // 进入文本输入时再恢复（见 `ime::set_ime_enabled`，EDT-4）。
-        overlay.set_ime_enabled(false);
-        overlay.main_hwnd = main_hwnd;
-        let raw = Box::into_raw(Box::new(overlay));
-
-        unsafe {
-            SetWindowLongPtrW(hwnd, GWLP_USERDATA, raw as isize);
-            let t_pos = std::time::Instant::now();
-            let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), origin_x, origin_y, vw, vh, SWP_SHOWWINDOW);
-            let pos = t_pos.elapsed();
-            // 显示后强制整窗重绘：隐藏窗口的 DC 内容在显示时会丢失，
-            // 用 InvalidateRect + UpdateWindow 同步触发 WM_PAINT 全窗绘制，避免闪烁。
-            let _ = InvalidateRect(Some(hwnd), None, false);
-            let _ = UpdateWindow(hwnd);
-            let paint = t_pos.elapsed() - pos;
-            // 前台与焦点改为异步（消息循环处理）：同步调用会阻塞至 ~45ms（M5 性能）
-            let _ = PostMessageW(Some(hwnd), wndproc::WM_FOCUS_OVERLAY, WPARAM(0), LPARAM(0));
-            if crate::perf::enabled() {
-                eprintln!(
-                    "[airsnip] 显示分解：建窗+初始化 {:?}，SetWindowPos {pos:?}，首帧 {paint:?}，前台+焦点 {:?}",
-                    t_init_done - t_win,
-                    t_pos.elapsed() - pos - paint
-                );
-            }
-            if std::env::var_os("AIRSNIP_TIMING").is_some() {
-                eprintln!("[airsnip] 覆盖层创建到显示完成 {:?}", t_show.elapsed());
-            }
-            // M5 性能剖析：热键 → 可见总耗时（含抓屏、线程创建与首帧绘制）
-            crate::perf::log_overlay_shown();
+/// 显示覆盖层并阻塞运行，直到截图完成、取消或触发长截图。
+/// 返回类型区分三种结果（普通截图 / 取消 / 长截图视口选取）。
+pub fn run(capture: CapturedScreen, opts: OverlayOpts, hinstance: HINSTANCE, main_hwnd: HWND) -> OverlayResult {
+    let t_show = std::time::Instant::now();
+    let (origin_x, origin_y) = (capture.origin_x, capture.origin_y);
+    let (vw, vh) = (capture.width as i32, capture.height as i32);
+    let t_win = std::time::Instant::now();
+    let hwnd = match Overlay::create_window(hinstance) {
+        Ok(h) => h,
+        Err(e) => {
+            crate::app::message_box(None, &e, MB_OK | MB_ICONERROR);
+            return OverlayResult::Cancelled;
         }
+    };
 
-        // 局部消息循环：WM_DESTROY 由 wndproc 调 PostQuitMessage(0) 结束（独立线程，
-        // 不影响主线程消息队列）。退出后 `Box::from_raw` 释放 Overlay 及其 4 份全屏位图。
-        unsafe {
-            let mut msg = MSG::default();
-            loop {
-                let ret = GetMessageW(&mut msg, None, 0, 0);
-                if ret.0 == 0 || msg.message == WM_QUIT {
-                    break;
-                }
-                let _ = TranslateMessage(&msg);
-                let _ = DispatchMessageW(&msg);
-                if msg.hwnd == hwnd && msg.message == WM_DESTROY {
-                    break;
-                }
+    let mut overlay = match Overlay::new(capture, opts) {
+        Ok(o) => o,
+        Err(_) => {
+            unsafe {
+                let _ = DestroyWindow(hwnd);
+            }
+            return OverlayResult::Cancelled;
+        }
+    };
+    let t_init_done = std::time::Instant::now();
+    overlay.hwnd = hwnd;
+    // 截图期间禁用输入法：否则 S（长截图）/ 回车等按键被 IME 截走；
+    // 进入文本输入时再恢复（见 `ime::set_ime_enabled`，EDT-4）。
+    overlay.set_ime_enabled(false);
+    overlay.main_hwnd = main_hwnd;
+    let raw = Box::into_raw(Box::new(overlay));
+
+    unsafe {
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, raw as isize);
+        let t_pos = std::time::Instant::now();
+        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), origin_x, origin_y, vw, vh, SWP_SHOWWINDOW);
+        let pos = t_pos.elapsed();
+        // 显示后强制整窗重绘：隐藏窗口的 DC 内容在显示时会丢失，
+        // 用 InvalidateRect + UpdateWindow 同步触发 WM_PAINT 全窗绘制，避免闪烁。
+        let _ = InvalidateRect(Some(hwnd), None, false);
+        let _ = UpdateWindow(hwnd);
+        let paint = t_pos.elapsed() - pos;
+        // 前台与焦点改为异步（消息循环处理）：同步调用会阻塞至 ~45ms（M5 性能）
+        let _ = PostMessageW(Some(hwnd), wndproc::WM_FOCUS_OVERLAY, WPARAM(0), LPARAM(0));
+        if crate::perf::enabled() {
+            eprintln!(
+                "[airsnip] 显示分解：建窗+初始化 {:?}，SetWindowPos {pos:?}，首帧 {paint:?}，前台+焦点 {:?}",
+                t_init_done - t_win,
+                t_pos.elapsed() - pos - paint
+            );
+        }
+        if std::env::var_os("AIRSNIP_TIMING").is_some() {
+            eprintln!("[airsnip] 覆盖层创建到显示完成 {:?}", t_show.elapsed());
+        }
+        // M5 性能剖析：热键 → 可见总耗时（含抓屏、线程创建与首帧绘制）
+        crate::perf::log_overlay_shown();
+    }
+
+    // 局部消息循环：WM_DESTROY 由 wndproc 调 PostQuitMessage(0) 结束（独立线程，
+    // 不影响主线程消息队列）。退出后 `Box::from_raw` 释放 Overlay 及其 4 份全屏位图。
+    unsafe {
+        let mut msg = MSG::default();
+        loop {
+            let ret = GetMessageW(&mut msg, None, 0, 0);
+            if ret.0 == 0 || msg.message == WM_QUIT {
+                break;
+            }
+            let _ = TranslateMessage(&msg);
+            let _ = DispatchMessageW(&msg);
+            if msg.hwnd == hwnd && msg.message == WM_DESTROY {
+                break;
             }
         }
+    }
 
-        // 记录本会话最后使用的工具（下次截图默认沿用，首次为矩形，M3）
-        crate::perf::log_frames_summary();
-        crate::settings::last_tool_store(unsafe { (*raw).tool });
+    // 记录本会话最后使用的工具（下次截图默认沿用，首次为矩形，M3）
+    crate::perf::log_frames_summary();
+    crate::settings::last_tool_store(unsafe { (*raw).tool });
 
-        let cancelled = unsafe { (*raw).cancelled };
-        let viewport = unsafe { (*raw).viewport };
-        unsafe {
-            let _ = Box::from_raw(raw);
-            let _ = DestroyWindow(hwnd);
-        }
-        if cancelled {
-            OverlayResult::Cancelled
-        } else if let Some(vp) = viewport {
-            OverlayResult::Viewport(vp)
-        } else {
-            OverlayResult::Done
-        }
+    let cancelled = unsafe { (*raw).cancelled };
+    let viewport = unsafe { (*raw).viewport };
+    unsafe {
+        let _ = Box::from_raw(raw);
+        let _ = DestroyWindow(hwnd);
+    }
+    if cancelled {
+        OverlayResult::Cancelled
+    } else if let Some(vp) = viewport {
+        OverlayResult::Viewport(vp)
+    } else {
+        OverlayResult::Done
     }
 }
