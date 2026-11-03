@@ -9,7 +9,7 @@ use windows::core::{PCWSTR, w};
 
 use super::{
     App, TIMER_UPDATE_CHECK, WINDOW_CLASS, WM_OVERLAY_DONE, WM_PIN_BORDER_CHANGED, WM_PIN_FROM_EDITOR, WM_TRAY,
-    icon_resource, last_save_dir_take, last_save_ext_take, tray,
+    icon_resource, tray,
 };
 
 /// 注册消息窗口类并创建窗口（隐藏）。
@@ -141,6 +141,19 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             }
             LRESULT(0)
         }
+        WM_INPUT => {
+            // Raw Input（ADR 0019）：鼠标中键 / 侧键热键。
+            // 必须交 DefWindowProc 处理 RIM_INPUT 的输入缓冲清理。
+            if let Some(app) = app_from(hwnd)
+                && let Some(vk) = crate::app::mouse::pressed_vk(lparam)
+            {
+                if crate::app::mouse::debug_enabled() {
+                    eprintln!("[airsnip] WM_INPUT 鼠标键 vk={vk:#x}");
+                }
+                app.handle_mouse_hotkey(vk);
+            }
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
         WM_PIN_FROM_EDITOR => {
             // 覆盖层线程送来的贴图载荷：由本（主）线程创建贴图窗口并释放内存
             let hg = HGLOBAL(wparam.0 as *mut core::ffi::c_void);
@@ -159,11 +172,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 app.register_hotkeys(); // 重注册截图期间撤销的贴图热键
                 // 本次保存用过对话框的话，记住格式与目录供下次默认（OUT-2）
                 let mut changed = false;
-                if let Some(ext) = last_save_ext_take() {
+                if let Some(ext) = crate::output::recent::last_save_ext_take() {
                     app.config.last_save_ext = Some(ext);
                     changed = true;
                 }
-                if let Some(dir) = last_save_dir_take() {
+                if let Some(dir) = crate::output::recent::last_save_dir_take() {
                     app.config.last_save_dir = Some(dir);
                     changed = true;
                 }

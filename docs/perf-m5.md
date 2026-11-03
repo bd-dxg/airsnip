@@ -62,6 +62,12 @@
 | 启动时预热覆盖层窗口 | 可消除冷启动 105 ms 的 `SetWindowPos`，但预热需显示窗口（用户会看到闪一下），代价大于收益 |
 | 减少 `Pixmap` 副本 | `original` / `dimmed` / `display` 三份是语义必需（底图、预生成暗图、可写显示缓冲），合并会牺牲脏区重绘的 O(局部) 特性 |
 
+## 待补测
+
+| 项 | 状态 |
+|---|---|
+| 鼠标 Raw Input 的移动开销（ADR 0019） | **未实测**。`RIDEV_INPUTSINK` 会让 airsnip 收到每一个鼠标移动批次的 `WM_INPUT`（125–1000 Hz），每次多一次 `GetRawInputData`（约 48 字节拷贝）与一次 `pressed_vk` 判断。待机（不碰鼠标）无消息，不影响 0% CPU 红线；需要测的是「持续移动鼠标时」的增量。方法：`scripts/perf.ps1 -Seconds 30` 分别在静止与持续画圈移动鼠标两种状态下跑，对比 CPU 占用差 |
+
 ## 复现
 
 ```powershell

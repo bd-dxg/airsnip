@@ -2,6 +2,8 @@
 //! 输出（OUT-1/2/3）：剪贴板 `CF_DIB` + `PNG` 格式、PNG/JPEG 文件保存。
 //! 编码调用方负责放到后台线程执行（OUT-2）。
 
+pub mod recent;
+
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
 

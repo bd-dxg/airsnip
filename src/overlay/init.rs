@@ -7,23 +7,24 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::Ime::HIMC;
 
 use crate::capture::CapturedScreen;
-use crate::editor::{self, Document, Tool};
-use crate::theme::Palette;
+use crate::editor::{self, Document};
 
 use super::Overlay;
+use super::OverlayOpts;
 use super::interaction::Phase;
 use super::surface;
 
 impl Overlay {
-    pub(super) fn new(
-        mut capture: CapturedScreen,
-        palette: &'static Palette,
-        tool_keys: crate::settings::ToolKeys,
-        longshot_key: u32,
-        default_tool: Tool,
-        save: crate::settings::SavePrefs,
-        ui_scale: crate::settings::UiScale,
-    ) -> Result<Self, String> {
+    pub(super) fn new(mut capture: CapturedScreen, opts: OverlayOpts) -> Result<Self, String> {
+        let OverlayOpts {
+            palette,
+            tool_keys,
+            longshot_key,
+            pin_key,
+            default_tool,
+            save,
+            ui_scale,
+        } = opts;
         let (w, h) = (capture.width, capture.height);
         let Some(size) = tiny_skia::IntSize::from_wh(w, h) else {
             return Err("虚拟屏幕尺寸非法".into());
@@ -67,6 +68,7 @@ impl Overlay {
             tool: default_tool, // 记住上次工具（M3），首次为矩形
             tool_keys,
             longshot_key,
+            pin_key,
             save,
             color_index: 1, // 默认红色
             line_width: editor::DEFAULT_LINE_WIDTH,
