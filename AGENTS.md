@@ -45,6 +45,7 @@
 - 系统 API：`windows` crate（windows-rs 0.62.2）
 - 渲染：`tiny-skia` 0.12（纯 CPU 矢量绘制）+ DirectWrite 文本栅格化
 - 配置/编码：`serde` + `toml`、`png`
+- 链接：**静态链接 MSVC 运行时**（`.cargo/config.toml` 的 `+crt-static`，ADR 0021）——发布 exe 不依赖 VC++ Redistributable
 
 ## 常用命令
 
@@ -54,7 +55,7 @@
 - 测试：`cargo test`（当前 186 个：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量与字体（粗斜体渲染、族间测量、未知族名回退）/系统字体枚举/长截图拼接/WebP/变换与手柄/光标映射/布局/字体面板/设置面板布局与 DPI 缩放/设置变更消息内存校验/图标 SVG 解析与视觉重量/圆角读写与手柄/圆角遮罩覆盖率与回贴）
 - 格式化检查：`cargo fmt --check`（提交前必须通过）
 - 性能采集：`scripts/perf-capture.ps1`（热键延迟 + 帧耗时，需管理员）与 `scripts/perf.ps1`（待机 CPU/内存）；报告见 `docs/perf-m5.md`
-- 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标 → 输出 `dist\airsnip-v{版本}-win-x64.zip` 与自动更新用的 `.exe`）
+- 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标/PE 导入表 → 输出 `dist\airsnip-v{版本}-win-x64.zip` 与自动更新用的 `.exe`）
 - 生成更新清单：`scripts/gen-latest-json.ps1 -Notes "说明"`（算 SHA-256 → 调 `update-sign` 签名 → 输出 `dist\latest.json`，需先跑 package.ps1）
 - 更新密钥：`cargo run --example update-keygen`（私钥写 `%USERPROFILE%\.airsnip\update.key`，公钥打印出来填进 `UPDATE_PUBKEY_HEX`）
 - 许可证与依赖检查：`cargo deny check`（配置在 `deny.toml`；依赖变更后重跑 `scripts/gen-third-party.ps1` 更新 `THIRD-PARTY.md`）
@@ -93,5 +94,6 @@
 - 长截图（M4）是最大风险点：采用纯手动滚动（自动滚动易误判到底，已移除），拼接要处理固定区域（页眉/页脚），失败提供撤销最后一段入口。
 - 贴图窗口用 `WS_EX_TOPMOST | WS_EX_TOOLWINDOW` 分层窗口，窗口静止时禁止任何重绘。
 - 二期 OCR/翻译涉及第三方服务：默认关闭、首次显式授权、密钥用 DPAPI 加密、不留存请求内容。
+- **禁止移除 `.cargo/config.toml` 的 `+crt-static`**（ADR 0021）：MSVC 默认动态链接 CRT（`/MD`），去掉后 exe 会导入 `VCRUNTIME140.dll` 与 `api-ms-win-crt-*.dll`，用户机器没装 VC++ 运行库就双击报「找不到 VCRUNTIME140.dll」（已有真实用户反馈）。`scripts/package.ps1` 会解析 PE 导入表拦下这类回归，但**不要靠它兜底**。
 - 自动更新私钥（`%USERPROFILE%\.airsnip\update.key`）**绝不入库、不进日志、不外传**；它同时决定「旧版本能否继续自动更新」，丢了只能让用户手动下载新版。
 - 发布前跑 `cargo deny check`（配置 `deny.toml`）；依赖变更后用 `scripts/gen-third-party.ps1` 重新生成 `THIRD-PARTY.md`。

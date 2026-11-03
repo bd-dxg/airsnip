@@ -4,6 +4,78 @@
 param([switch]$SkipBuild)
 
 $ErrorActionPreference = 'Stop'
+
+# 读取 PE 导入表（仅支持 PE32+ / x64），返回 exe 直接依赖的 DLL 名。
+# 用途：打包前守门，确认 exe 没有动态依赖 VC 运行时（ADR 0021）。
+function Get-PeImportedDlls([string]$Path) {
+    $fs = [IO.File]::OpenRead($Path)
+    $br = New-Object IO.BinaryReader($fs)
+    try {
+        if ($br.ReadUInt16() -ne 0x5A4D) { throw "不是 PE 文件：$Path" }
+        $fs.Position = 0x3C
+        $fs.Position = $br.ReadUInt32()
+        if ($br.ReadUInt32() -ne 0x00004550) { throw "PE 签名无效：$Path" }
+        $null = $br.ReadUInt16()                    # Machine
+        $sectionCount = $br.ReadUInt16()
+        $null = $br.ReadUInt32(); $null = $br.ReadUInt32(); $null = $br.ReadUInt32()
+        $optSize = $br.ReadUInt16()
+        $null = $br.ReadUInt16()                    # Characteristics
+
+        $optStart = $fs.Position
+        if ($br.ReadUInt16() -ne 0x20B) { throw "只支持 PE32+（x64）：$Path" }
+        $fs.Position = $optStart + 112 + 8          # DataDirectory[1] = Import Table
+        $importRva = $br.ReadUInt32()
+        $null = $br.ReadUInt32()                    # Import Table 字节数
+
+        $fs.Position = $optStart + $optSize         # 节表紧随 OptionalHeader
+        $sections = for ($i = 0; $i -lt $sectionCount; $i++) {
+            $null = $br.ReadBytes(8)                # Name
+            $vsize = $br.ReadUInt32(); $vaddr = $br.ReadUInt32()
+            $rawSize = $br.ReadUInt32(); $rawPtr = $br.ReadUInt32()
+            $null = $br.ReadBytes(16)
+            [pscustomobject]@{ VAddr = $vaddr; VSize = $vsize; RawPtr = $rawPtr; RawSize = $rawSize }
+        }
+
+        # RVA → 文件偏移（导入表按节映射）
+        $rvaToOffset = {
+            param($rva)
+            foreach ($s in $sections) {
+                $span = [Math]::Max([int64]$s.VSize, [int64]$s.RawSize)
+                if ($rva -ge $s.VAddr -and $rva -lt ($s.VAddr + $span)) {
+                    return [int64]$s.RawPtr + ($rva - $s.VAddr)
+                }
+            }
+            return [int64]-1
+        }
+
+        $names = @()
+        $offset = & $rvaToOffset $importRva
+        while ($offset -ge 0) {
+            $fs.Position = $offset
+            $desc = $br.ReadBytes(20)
+            if ($desc.Length -lt 20) { break }
+            $nameRva = [BitConverter]::ToUInt32($desc, 12)   # IMAGE_IMPORT_DESCRIPTOR.Name
+            if ($nameRva -eq 0) { break }
+            $nameOffset = & $rvaToOffset $nameRva
+            if ($nameOffset -lt 0) { break }
+            $fs.Position = $nameOffset
+            $bytes = New-Object System.Collections.Generic.List[byte]
+            while ($bytes.Count -lt 256) {
+                $b = $br.ReadByte()
+                if ($b -eq 0) { break }
+                $bytes.Add($b)
+            }
+            $names += [Text.Encoding]::ASCII.GetString($bytes.ToArray())
+            $offset += 20
+        }
+        return $names
+    }
+    finally {
+        $br.Dispose()
+        $fs.Dispose()
+    }
+}
+
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
@@ -32,6 +104,15 @@ Add-Type -AssemblyName System.Drawing
 $icon = [System.Drawing.Icon]::ExtractAssociatedIcon($exe)
 if (-not $icon) { throw "exe 未嵌入图标（app.rc 的 ICON 资源缺失？）" }
 Write-Host ("嵌入图标：{0}×{1}" -f $icon.Width, $icon.Height)
+
+# CRT 依赖守门（ADR 0021）：exe 必须静态链接 VC 运行时，否则干净机器上
+# 双击会报「找不到 VCRUNTIME140.dll」。.cargo/config.toml 漏配或失效时在这里拦下。
+$imports = @(Get-PeImportedDlls $exe)
+Write-Host ("导入的 DLL：{0}" -f ($imports -join ', '))
+$crtDeps = $imports | Where-Object { $_ -match '^(VCRUNTIME|MSVCP|CONCRT|api-ms-win-crt|ucrtbase|msvcrt)' }
+if ($crtDeps) {
+    throw "exe 仍动态依赖 VC 运行时（$($crtDeps -join ', ')）：检查 .cargo/config.toml 的 +crt-static 是否生效"
+}
 
 # 组装发布目录
 $dist = Join-Path $root "dist"
