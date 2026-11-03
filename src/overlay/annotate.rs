@@ -66,6 +66,7 @@ impl super::Overlay {
             italic,
             font_size,
             font_open: self.font_list.is_some(),
+            hover: self.tip.hover_button(),
         }
     }
 

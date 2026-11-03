@@ -4,6 +4,7 @@
 //! 外部引用 `crate::settings::HotkeyConfig` 等无需改动。
 
 use serde::{Deserialize, Serialize};
+use windows::Win32::UI::Input::KeyboardAndMouse::{MAPVK_VK_TO_CHAR, MapVirtualKeyW};
 
 /// 未绑定语义：虚拟键码为 0 表示「该项不绑定任何键」（SYS-2）。
 /// 旧配置里不存在 0 值，只在用户显式清空时出现，回退默认逻辑不受影响。
@@ -62,6 +63,78 @@ pub struct ToolKeys {
     pub blur: ToolKey,
     pub highlight: ToolKey,
     pub glow: ToolKey,
+}
+
+/// 修饰键位掩码（与 `HotkeyConfig` 的 `*_modifiers` 一致）。
+pub const MOD_ALT_BIT: u32 = 1 << 0;
+pub const MOD_CTRL_BIT: u32 = 1 << 1;
+pub const MOD_SHIFT_BIT: u32 = 1 << 2;
+pub const MOD_WIN_BIT: u32 = 1 << 3;
+
+/// 虚拟键 → 显示名（如 F1、Ctrl+C）。未绑定（0）显示为「未设置」。
+/// 定义放在配置模块与键码同源：设置面板键帽与截图控件悬浮提示（EDT-10）都要用，
+/// 不该让覆盖层反向依赖设置面板的内部布局模块。
+pub fn key_name(vk: u32, mods: u32) -> String {
+    if vk == UNBOUND {
+        return "未设置".into();
+    }
+    let mut s = String::new();
+    if mods & MOD_CTRL_BIT != 0 {
+        s += "Ctrl+";
+    }
+    if mods & MOD_ALT_BIT != 0 {
+        s += "Alt+";
+    }
+    if mods & MOD_SHIFT_BIT != 0 {
+        s += "Shift+";
+    }
+    if mods & MOD_WIN_BIT != 0 {
+        s += "Win+";
+    }
+    s += &vk_name(vk);
+    s
+}
+
+/// 虚拟键 → 键名。
+pub fn vk_name(vk: u32) -> String {
+    match vk {
+        0x70..=0x87 => format!("F{}", vk - 0x70 + 1),
+        0x1B => "Esc".into(),
+        0x20 => "Space".into(),
+        0x09 => "Tab".into(),
+        0x0D => "Enter".into(),
+        0x2E => "Del".into(),
+        0x08 => "Backspace".into(),
+        0x14 => "CapsLock".into(),
+        0x23 => "End".into(),
+        0x24 => "Home".into(),
+        0x21 => "PgUp".into(),
+        0x22 => "PgDn".into(),
+        0x2D => "Insert".into(),
+        0x90 => "NumLock".into(),
+        0x91 => "ScrollLock".into(),
+        // 少数紧凑键盘把 PrtScn 位置上报为 VK_PAUSE（#67）
+        0x13 => "Pause".into(),
+        // 鼠标键（ADR 0019）：沿用 winuser.h 的 VK_MBUTTON / VK_XBUTTON* 编号
+        0x04 => "鼠标中键".into(),
+        0x05 => "鼠标侧键1".into(),
+        0x06 => "鼠标侧键2".into(),
+        // PrintScreen：无对应字符，直接给键名（#67）
+        0x2C => "PrtScn".into(),
+        0x27 => "→".into(),
+        0x25 => "←".into(),
+        0x26 => "↑".into(),
+        0x28 => "↓".into(),
+        // 常规字符键：MapVirtualKeyW 取键名（组合键 Shift+ 时字符可能大写/符号）
+        _ => {
+            let ch = unsafe { MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) } & 0xFFFF;
+            if ch != 0 && (ch as u8).is_ascii_graphic() {
+                (ch as u8 as char).to_uppercase().to_string()
+            } else {
+                format!("键 {vk:#x}")
+            }
+        }
+    }
 }
 
 impl Default for ToolKeys {

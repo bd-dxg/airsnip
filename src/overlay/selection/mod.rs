@@ -9,6 +9,7 @@ use super::geometry::{SelRect, expand_rect, intersect_rect, same_rect, text_rect
 use super::objedit;
 use super::pick::draw_curve_handles;
 use super::surface::{blit_region, draw_info_text, restore_region};
+use super::toolbar::tip;
 use super::{textinput, toolbar};
 use crate::render;
 
@@ -34,6 +35,8 @@ impl super::Overlay {
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
         let old = self.selection;
         self.selection = new;
+        // 工具栏随选区重建：悬停目标与气泡作废（EDT-10）
+        let old_tip = self.reset_tip().map(|r| expand_rect(r, 2));
         // 选区变化后字体面板的位置失效（EDT-4）：收起并连旧区域一起重绘
         let old_chrome = self.chrome_rect();
         self.font_list = None;
@@ -50,6 +53,7 @@ impl super::Overlay {
             new.map(|n| text_rect(n, vw, vh, bar_h, self.ui)),
             old_chrome.map(|b| expand_rect(b, 2)),
             new_chrome.map(|b| expand_rect(b, 2)),
+            old_tip,
         ]
         .into_iter()
         .flatten()
@@ -172,6 +176,12 @@ impl super::Overlay {
             if intersect_rect(text_rect(sel, w, h, bar_h, self.ui), region).is_some() {
                 draw_info_text(&mut self.display, sel, w, h, bar_h, self.ui);
             }
+        }
+        // 7) 悬浮提示气泡（EDT-10）：屏幕显示层、画在最上层，不进导出烘焙
+        if let Some(bubble) = &self.tip.bubble
+            && intersect_rect(expand_rect(bubble.rect, 2), region).is_some()
+        {
+            tip::draw(&mut self.display, bubble, self.palette, self.ui);
         }
         self.present_region(region);
     }

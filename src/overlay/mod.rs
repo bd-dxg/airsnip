@@ -108,6 +108,8 @@ pub struct Overlay {
     text_edit: Option<TextEdit>,
     /// 当前工具栏布局（选区存在时才有）。
     bar: Option<toolbar::Toolbar>,
+    /// 悬浮提示状态（EDT-10）：悬停目标、延迟定时器与已弹气泡。
+    tip: toolbar::tip::Tip,
     pub hwnd: HWND,
     /// 禁用输入法前的 IME 上下文（截图期间禁用，文本输入时恢复，EDT-4）。
     ime_old: HIMC,

@@ -54,6 +54,10 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
     }
 
     for (r, action) in &bar.hits {
+        // 悬停底色（EDT-10）：气泡出现前先给反馈；激活态自己画 accent_soft，会盖住这层
+        if state.hover == Some(*action) {
+            rounded_rect(pixmap, *r, ui.f(5.0), p.row_hover, None);
+        }
         match *action {
             Action::Tool(tool) => {
                 let active = tool == state.tool;

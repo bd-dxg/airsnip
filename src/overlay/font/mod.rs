@@ -109,7 +109,9 @@ impl super::Overlay {
         self.bar = Some(toolbar::layout(sel, vw, vh, want, self.ui));
         // 第二行显隐会改变工具栏高度，面板位置随之失效
         self.font_list = None;
-        if let Some(dirty) = union_rect(old, self.chrome_rect()) {
+        // 工具栏高度变了：悬停底色与气泡随之作废（EDT-10）
+        let old_tip = self.reset_tip().map(|r| expand_rect(r, 2));
+        if let Some(dirty) = union_rect(union_rect(old, self.chrome_rect()), old_tip) {
             self.repaint(expand_rect(dirty, 2));
         }
     }
