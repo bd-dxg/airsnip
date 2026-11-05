@@ -36,6 +36,7 @@ pub(super) fn is_key_row(id: RowId) -> bool {
             | RowId::HotkeyPin
             | RowId::HotkeyBorder
             | RowId::HotkeyLongshot
+            | RowId::HotkeyOcr
             | RowId::ToolRect
             | RowId::ToolArrow
             | RowId::ToolText
@@ -105,6 +106,7 @@ fn row_key(panel: &Panel, id: RowId) -> u32 {
         RowId::HotkeyPin => hk.pin_key,
         RowId::HotkeyBorder => hk.border_key,
         RowId::HotkeyLongshot => hk.longshot_key,
+        RowId::HotkeyOcr => hk.ocr_key,
         RowId::ToolRect => tk.rect,
         RowId::ToolArrow => tk.arrow,
         RowId::ToolText => tk.text,
@@ -127,6 +129,7 @@ fn keycap_text(panel: &Panel, id: RowId) -> String {
         RowId::HotkeyPin => super::controls::key_name(hk.pin_key, hk.pin_modifiers),
         RowId::HotkeyBorder => super::controls::key_name(hk.border_key, hk.border_modifiers),
         RowId::HotkeyLongshot => super::controls::key_name(hk.longshot_key, 0),
+        RowId::HotkeyOcr => super::controls::key_name(hk.ocr_key, 0),
         RowId::ToolRect => super::controls::key_name(tk.rect, 0),
         RowId::ToolArrow => super::controls::key_name(tk.arrow, 0),
         RowId::ToolText => super::controls::key_name(tk.text, 0),
@@ -172,6 +175,7 @@ impl Panel {
                 hk.border_modifiers = 0;
             }
             RowId::HotkeyLongshot => hk.longshot_key = crate::settings::UNBOUND,
+            RowId::HotkeyOcr => hk.ocr_key = crate::settings::UNBOUND,
             RowId::ToolRect => tk.rect = crate::settings::UNBOUND,
             RowId::ToolArrow => tk.arrow = crate::settings::UNBOUND,
             RowId::ToolText => tk.text = crate::settings::UNBOUND,

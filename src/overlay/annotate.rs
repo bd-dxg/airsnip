@@ -43,6 +43,8 @@ impl super::Overlay {
             self.on_pin(); // PIN-1：贴选区
         } else if vk == self.longshot_key {
             self.on_longshot();
+        } else if vk == self.ocr_key && self.ocr_enabled {
+            self.on_ocr(); // OCR-3：取字（功能关闭时不吃这个键，留给工具切换）
         } else if let Some(t) = self.tool_by_key(vk) {
             self.switch_tool(t);
         }
@@ -93,6 +95,8 @@ impl super::Overlay {
             toolbar::Action::Pin => return self.on_pin(),
             // M4：长截图按钮 → 选区作为视口进入拼接（不复绘）
             toolbar::Action::Longshot => return self.on_longshot(),
+            // OCR-3：取字按钮 → 原图交给主线程识别（不复绘）
+            toolbar::Action::Ocr => return self.on_ocr(),
             // OUT-1：复制按钮 → 复制到剪贴板并关闭覆盖层（不复绘）
             toolbar::Action::Copy => return self.on_copy(),
             // OUT-2：保存按钮 → 按配置保存并关闭覆盖层（不复绘）
@@ -214,6 +218,53 @@ impl super::Overlay {
                 let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
             }
         }
+    }
+
+    /// OCR-3/OCR-4：取字——把选区**原图**（不含标注）交给主线程识别，并关闭覆盖层。
+    /// 载荷与贴图同格式：[u32 w][u32 h][i32 x][i32 y][RGBA]，主线程负责 OCR 与气泡窗口。
+    pub(super) fn on_ocr(&mut self) {
+        if !self.ocr_enabled {
+            return;
+        }
+        let Some(sel) = self.selection else {
+            return;
+        };
+        // OCR-4：只读原图——用户画的箭头/马赛克不该污染识别结果
+        let Some(cropped) = crop_pixmap(&self.original, sel) else {
+            return;
+        };
+        let (w, h) = (cropped.width(), cropped.height());
+        let px_total = w as usize * h as usize * 4;
+        unsafe {
+            let Ok(hg) = GlobalAlloc(GMEM_MOVEABLE, 16 + px_total) else {
+                crate::app::message_box(None, "取字内存分配失败。", MB_OK | MB_ICONERROR);
+                return;
+            };
+            let ptr = GlobalLock(hg);
+            if ptr.is_null() {
+                let _ = GlobalFree(Some(hg));
+                crate::app::message_box(None, "取字内存锁失败。", MB_OK | MB_ICONERROR);
+                return;
+            }
+            let hp = ptr as *mut u32;
+            *hp = w;
+            *hp.add(1) = h;
+            // 选区在屏幕上的位置：气泡按它定位（OCR-7）
+            let sp = hp.add(2) as *mut i32;
+            *sp = sel.x + self.capture.origin_x;
+            *sp.add(1) = sel.y + self.capture.origin_y;
+            std::ptr::copy_nonoverlapping(cropped.data().as_ptr(), (ptr as *mut u8).add(16), px_total);
+            let _ = GlobalUnlock(hg);
+            let _ = PostMessageW(
+                Some(self.main_hwnd),
+                crate::app::WM_OCR_REQUEST,
+                WPARAM(hg.0 as usize),
+                LPARAM(0),
+            );
+        }
+        // OCR-7：触发即结束截图会话（覆盖层立即关闭，气泡由主线程弹）
+        self.cancelled = false;
+        self.close();
     }
 
     /// Enter / Ctrl+C：复制到剪贴板并关闭（OUT-1）。

@@ -68,6 +68,8 @@ pub enum Action {
     Pin,
     /// M4：把当前选区作为滚动视口，进入长截图拼接（长截图键同效，默认 S）。
     Longshot,
+    /// OCR-3：把选区原图交给本地 OCR 取字（取字键同效，默认 T；功能关闭时按钮不出现）。
+    Ocr,
     /// OUT-1：复制选区到剪贴板（Enter / Ctrl+C 同效）。
     Copy,
     /// OUT-2：按配置的目录与格式保存（Ctrl+S 同效）。
@@ -132,8 +134,9 @@ impl Cursor {
 }
 
 /// 计算工具栏布局：优先放在选区下方，空间不足则放上方。
-/// `text_row` 为真时附上第二行（文本工具或选中文本对象，EDT-4）。
-pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ui: Ui) -> Toolbar {
+/// `text_row` 为真时附上第二行（文本工具或选中文本对象，EDT-4）；
+/// `ocr` 为假时不出「取字」按钮（OCR-1：关闭时界面与无此功能时完全一致）。
+pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ocr: bool, ui: Ui) -> Toolbar {
     let (row_h, h2) = (ui.px(H_BASE), ui.px(H2_BASE));
     let (btn, sw) = (ui.px(BTN_BASE), ui.px(SW_BASE));
     let (gap, sep, pad) = (ui.px(GAP_BASE), ui.px(SEP_BASE), ui.px(PAD_BASE));
@@ -163,6 +166,9 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ui: Ui
     c.sep();
     item(&mut c, btn, btn, Action::Pin);
     item(&mut c, btn, btn, Action::Longshot);
+    if ocr {
+        item(&mut c, btn, btn, Action::Ocr);
+    }
     c.sep();
     item(&mut c, btn, btn, Action::Copy);
     item(&mut c, btn, btn, Action::Save);
@@ -259,7 +265,7 @@ mod tests {
         let (vw, vh) = (2560, 1440);
         for text_row in [false, true] {
             for s in [sel(600, 500, 800, 400), sel(600, 60, 800, 400)] {
-                let bar = layout(s, vw, vh, text_row, base());
+                let bar = layout(s, vw, vh, text_row, false, base());
                 assert!(
                     bar.rect.y >= s.y + s.h,
                     "工具栏应在选区下方（text_row={text_row}, 选区 {s:?}）：{bar:?}"
@@ -281,7 +287,7 @@ mod tests {
         ];
         for ui in [base(), Ui::from_dpi(192)] {
             for s in cases {
-                let bar = layout(s, vw, vh, false, ui).rect;
+                let bar = layout(s, vw, vh, false, false, ui).rect;
                 let text = text_rect(s, vw, vh, bar.h, ui);
                 assert!(
                     intersect_rect(bar, text).is_none(),
@@ -306,7 +312,7 @@ mod tests {
         ];
         for ui in [base(), Ui::from_dpi(192)] {
             for s in cases {
-                let bar = layout(s, vw, vh, true, ui);
+                let bar = layout(s, vw, vh, true, false, ui);
                 let text = text_rect(s, vw, vh, bar.rect.h, ui);
                 assert!(
                     intersect_rect(bar.rect, text).is_none(),
@@ -335,7 +341,7 @@ mod tests {
 
     #[test]
     fn toolbar_hit_maps_each_element() {
-        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, true, base());
+        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, true, false, base());
         // 每个元素的中心点必须命中它自己
         for (r, action) in &bar.hits {
             let (cx, cy) = (r.x + r.w / 2, r.y + r.h / 2);
@@ -374,18 +380,50 @@ mod tests {
     /// 非文本场景第二行不应出现（避免占地与多余命中区）。
     #[test]
     fn second_row_only_when_text_row_requested() {
-        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false, base());
+        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false, false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
         assert_eq!(bar.hits.len(), 18);
+    }
+
+    /// 取字按钮（OCR-3）：功能开启时紧跟长截图出现，关闭时完全不出现（OCR-1）。
+    #[test]
+    fn ocr_button_only_when_enabled() {
+        let s = sel(100, 100, 400, 300);
+        let off = layout(s, 2560, 1440, false, false, base());
+        assert_eq!(off.hits.len(), 18, "关闭时不应有取字按钮");
+        assert!(!off.hits.iter().any(|(_, a)| *a == Action::Ocr));
+
+        let on = layout(s, 2560, 1440, false, true, base());
+        assert_eq!(on.hits.len(), 19);
+        let actions: Vec<Action> = on.hits.iter().map(|(_, a)| *a).collect();
+        assert_eq!(actions[15], Action::Longshot);
+        assert_eq!(actions[16], Action::Ocr, "取字按钮应紧跟长截图");
+        assert_eq!(actions[17], Action::Copy);
+        assert_eq!(actions[18], Action::Save);
+        // 多一个按钮后仍不能与信息文字重叠、不能越出屏幕
+        for ui in [base(), Ui::from_dpi(192)] {
+            let bar = layout(s, 2560, 1440, false, true, ui);
+            let text = text_rect(s, 2560, 1440, bar.rect.h, ui);
+            assert!(
+                intersect_rect(bar.rect, text).is_none(),
+                "工具栏 {:?} 与信息文字 {text:?} 重叠",
+                bar.rect
+            );
+            assert!(
+                bar.rect.x >= 0 && bar.rect.x + bar.rect.w <= 2560,
+                "工具栏越界：{:?}",
+                bar.rect
+            );
+        }
     }
 
     /// 高 DPI（200%）下工具栏整体尺寸翻倍：4K 屏上控件不再只有一半大（CAP-5）。
     #[test]
     fn toolbar_scales_with_dpi() {
         let s = sel(600, 500, 800, 400);
-        let base_bar = layout(s, 2560, 1440, true, base());
-        let hidpi = layout(s, 3840, 2160, true, Ui::from_dpi(192));
+        let base_bar = layout(s, 2560, 1440, true, false, base());
+        let hidpi = layout(s, 3840, 2160, true, false, Ui::from_dpi(192));
         assert_eq!(hidpi.first.h, base_bar.first.h * 2, "第一行高度应翻倍");
         assert_eq!(hidpi.rect.h, base_bar.rect.h * 2, "整体高度应翻倍");
         assert_eq!(hidpi.rect.w, base_bar.rect.w * 2, "整体宽度应翻倍");

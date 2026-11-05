@@ -19,7 +19,17 @@
   - **替换流程**：下载到 `%TEMP%` → 校验和比对 → 写 `.cmd` → 主进程退出 → 脚本等进程消失后 `copy /y` 覆盖并重启 → 自删；`copy` 失败仍启旧版（避免「更新完打不开」）。
   - **触发**：启动后 3s 一次性 `SetTimer`（回调里立刻 `KillTimer`，不引入常驻轮询），失败静默，发现新版本弹托盘气泡；设置面板「关于」页显示状态并可手动检查 / 一键更新，另有「启动时自动检查」开关。
   - **密钥管理**：私钥在 `%USERPROFILE%\.airsnip\update.key`（**不在仓库**），公钥写死在 `src/update/manifest.rs` 的 `UPDATE_PUBKEY_HEX`；生成用 `cargo run --example update-keygen`，签名用 `cargo run --example update-sign -- --version <ver> --sha256 <摘要>`。**换密钥等于切断旧版本的自动更新能力**。
-- 界面图标统一（ADR 0009）：覆盖层工具栏与长截图状态条的图标改为 `assets/icons/ui/` 下的 SVG 资源（`render/icon/` 解析 + 按包围盒归一化绘制），删掉 17 个手绘几何图标与重复实现；`overlay/shape.rs` 承接共用绘制小工具。规格与素材来源见 `assets/icons/ui/README.md`，视觉重量由 `render::icon` 的 4 项单测守门。**v0.6.0 换源（ADR 0015）**：原先 11 个图标来自 iconfont 多作者素材、来源与授权无法确认；现全组 19 个图标统一换成 **Material Symbols（outlined，Apache-2.0）**，风格从「粗细不一的混搭」变为统一的线框风，许可证链也干净了（已在 `THIRD-PARTY.md` 登记）。
+- 取字（OCR 一期，看板 #61，ADR 0022）：框选后按 `T` / 点工具栏「取字」→ 覆盖层立即关闭 → 主线程弹文字气泡（先「识别中…」后结果）→ 文本区可直接改错字、拖选、右键菜单 → `Esc` 或关闭按钮收起。
+  - **本地识别**：`Windows.Media.Ocr`，图片不出本机；`src/ocr/` 下 `local/`（COM 初始化、SoftwareBitmap 转换、引擎创建与等待）+ `lines`（CJK 空格规则）；真实识别有 2 项 `--ignored` 集成测试（中英文各一）。
+  - **气泡**：`src/app/bubble/` 跑在**主线程**，所以覆盖层关掉后仍存活（这是选「独立窗口」而非覆盖层内自绘的理由）。形态是**划词卡片**（参照 Bob）：顶部淡图标行（图钉=置顶开关 / 关闭）+ **带 1px 边框的文本区**（聚焦时边框变强调色）+ 底部行（左「复制」/ 右「自动复制」开关，默认关），420px 宽 16px 字，无阴影无标题栏；卡片**不自动关闭**（用户 `Esc` / ✕ 决定）；自动复制开关回写 `[ocr] auto_copy`，与设置面板同一项。除文本区外任意空白处可直接拖窗口。不显示语言标签（语言信息只在「未识别到文字」的提示里出现）。图标按墨水率单独配尺寸（`draw::icon_scale`），否则图钉会看着比关闭小一号。
+  - **文本区是原生 `EDIT` 子控件**（ADR 0022 §10，v0.8.0 开发期换掉自绘方案）：输入法候选框跟随光标、双击选词、`Ctrl+A/C/V/X/Z`、右键菜单、长文本滚动跟随全部由系统处理。所以卡片**不能是分层窗口**：`WS_POPUP | WS_CLIPCHILDREN` + `WS_EX_TOOLWINDOW`，圆角靠 `CreateRoundRectRgn` + `SetWindowRgn`（边缘无抗锯齿，可接受），上屏改 `GetDC` + `BitBlt`，底色 alpha 必须拉满（`BitBlt` 不认 alpha）。高度自适应：先定宽度，再 `EM_GETLINECOUNT` × `GetTextMetricsW` 行高（**软换行计入行数**，有 `--ignored` 测试守门）。细节坑：只读态收 `WM_CTLCOLORSTATIC` 不是 `WM_CTLCOLOREDIT`；`Esc` 要子类化 `EDIT` 转投父窗口；`\n` 要转 CRLF 再喂；程序自己 `SetWindowTextW` 也触发 `EN_CHANGE`，用 `syncing` 标记防重入。**行高必须先 `SelectObject` 选入 `WM_SETFONT` 那个字体再 `GetTextMetricsW`**：`GetDC` 返回的 DC 里是类默认字体，不选就报 16px，而 YaHei UI 16px 的真实行距是 21px，乘上行数会把卡片算矮两行（表现为「识别文本完整但卡片显示不全」，有 `line_height_matches_real_layout` 守门）。**卡片高度上限按选区所在显示器的工作区算**（`layout_capped`），否则选区靠屏幕下方时弹窗溢出屏幕。`AIRSNIP_DEBUG=1` 会把送给引擎的原图与识别结果落盘到 `%TEMP%\airsnip-ocr-input.png` / `airsnip-ocr-text.txt`，用于分辨「图裁错了」还是「引擎漏了」。
+  - **开关**：`[ocr] enabled`（默认 **false**）+ `language`（`auto` 跟随系统首选，设置面板「取字翻译」页点一行循环切换）。关闭时覆盖层不出现取字按钮、取字键不生效、**不初始化 WinRT**。
+  - **输入是选区原图**（不含标注）：用户画的箭头/马赛克不该污染识别结果。
+  - **两个实测坑**（写进了 ADR 0022 §8）：位图字节要走 `IBufferByteAccess`（不是 `IMemoryBufferByteAccess`），且 `Buffer::Create` 后必须 `SetLength`；**不调用 `RoUninitialize`**（windows-rs 的激活工厂缓存会悬空，再次 `RoInitialize` 后直接 `0xC0000005`）。
+  - **识别率**：**统一 2 倍最近邻放大**（小字号下容易按偏旁拆字）；拼接后把「两侧都是 CJK」的空格全部剥掉。
+    早期写的是「长边 ≤1200 才放大」，实测是错的：2003×160 的宽截图 1x 拆 4 处偏旁（`亻旦`/`氵益出`/`氵则量`），2x 全对，**3x 反而变差**。现在固定封顶 2 倍，仅受引擎 `MaxImageDimension` 与像素预算（放大后 ≤16M 像素 ≈ 64MB，4K 全屏选区因此不放大）限制。
+  - **行序必须自己排**（v0.8.0 开发期修，ADR 0022 §5/§8）：`OcrResult::Lines()` 的返回顺序**不是阅读顺序**（实测「第1行左段、第2行左段、第1行中段……」交错），而且同一视觉行会被字重变化切成多段。现在每个 `OcrLine` 取 `Word.BoundingRect` 的并集当包围盒，先按**垂直中心**归并成视觉行（阈值半个行高），再行内按**左边界**排序、多段合回一行。
+- 界面图标统一（ADR 0009）：覆盖层工具栏与长截图状态条的图标改为 `assets/icons/ui/` 下的 SVG 资源（`render/icon/` 解析 + 按包围盒归一化绘制），删掉 17 个手绘几何图标与重复实现；`overlay/shape.rs` 承接共用绘制小工具。规格与素材来源见 `assets/icons/ui/README.md`，视觉重量由 `render::icon` 的 4 项单测守门。**v0.6.0 换源（ADR 0015）**：原先 11 个图标来自 iconfont 多作者素材、来源与授权无法确认；现全组 20 个图标统一换成 **Material Symbols（outlined，Apache-2.0）**，风格从「粗细不一的混搭」变为统一的线框风，许可证链也干净了（已在 `THIRD-PARTY.md` 登记）。
 - 圆角改为对象上的内部控制柄（ADR 0010）：删掉工具栏二值「圆角」开关（`Action::ToggleRound` / `State.round` / `round.svg`），选中对象时在包围框内侧右上角显示一个白色小圆，朝中心拖增大、朝角拖减小，上限短边一半；新增自绘圆角光标（`overlay/cursor`）。圆角读写集中在 `editor/corner.rs`。**已扩展到四类**（`feat/corner-all-kinds`）：矩形 / 高亮 / 高斯模糊 / 聚光灯共用同一 `corner` 字段与手柄，三处渲染（高亮逐像素插值、模糊备份后按遮罩恢复、聚光恢复亮度）统一走 `render/mask.rs`；`corner == 0` 仍走原快速路径。
 - 长截图与输入法打磨（待验证）：自动滚动模式已移除（靠「连续静帧」判定到底会误判，拼接提前结束），改为纯手动滚动 + `Enter` 收尾；长截图键从硬编码 `S` 改为配置项 `hotkey.longshot_key`（默认 `S`，设置面板「快捷键」页可改并参与冲突检测）；截图覆盖层打开后禁用 IME，仅在文本输入时恢复，避免 `S`/回车等按键被输入法截走。
 - 长截图结果预览：`longshot/preview.rs` 在视口左/右剩余空间开一个分层预览窗（底边与视口底边对齐、背景透明，只绘缩略图），显示拼接结果的等比缩略图（`Canvas::thumbnail` 按目标像素抽样，成本与图高无关）；状态条不再显示像素计数，只留操作提示。
@@ -50,9 +60,9 @@
 ## 常用命令
 
 - 编译检查：`cargo check`
-- 运行：`cargo run`（GUI 桌面程序，需 Windows 桌面会话；启动后托盘常驻，F1 截图 / F3 贴图）
+- 运行：`cargo run`（GUI 桌面程序，需 Windows 桌面会话；启动后托盘常驻，F1 截图 / F3 贴图 / 覆盖层内 T 取字）
 - 构建发布版：`cargo build --release`（已配 `lto="fat"`、`opt-level="z"`、`panic="abort"`、`strip=true`）
-- 测试：`cargo test`（当前 186 个：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量与字体（粗斜体渲染、族间测量、未知族名回退）/系统字体枚举/长截图拼接/WebP/变换与手柄/光标映射/布局/字体面板/设置面板布局与 DPI 缩放/设置变更消息内存校验/图标 SVG 解析与视觉重量/圆角读写与手柄/圆角遮罩覆盖率与回贴）
+- 测试：`cargo test`（当前 258 个 + 12 个 `--ignored`：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量与字体（粗斜体渲染、族间测量、未知族名回退）/系统字体枚举/长截图拼接/WebP/变换与手柄/光标映射/布局/字体面板/设置面板布局与 DPI 缩放/设置变更消息内存校验/图标 SVG 解析与视觉重量/圆角读写与手柄/圆角遮罩覆盖率与回贴/取字包围盒重排与密集文本不漏行/宽图放大与像素预算/气泡定位不溢出屏幕/EDIT 行高与行数与长文本不截断）
 - 格式化检查：`cargo fmt --check`（提交前必须通过）
 - 性能采集：`scripts/perf-capture.ps1`（热键延迟 + 帧耗时，需管理员）与 `scripts/perf.ps1`（待机 CPU/内存）；报告见 `docs/perf-m5.md`
 - 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标/PE 导入表 → 输出 `dist\airsnip-v{版本}-win-x64.zip` 与自动更新用的 `.exe`）

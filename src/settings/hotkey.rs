@@ -31,6 +31,9 @@ pub struct HotkeyConfig {
     /// 长截图键虚拟键码（截图覆盖层内按下，默认 S = 0x53；无修饰键，与工具切换键同组；
     /// `UNBOUND` = 未启用）
     pub longshot_key: u32,
+    /// 取字键虚拟键码（截图覆盖层内按下，默认 T = 0x54；无修饰键，与长截图键同组；
+    /// `UNBOUND` = 未启用，OCR-3）
+    pub ocr_key: u32,
     /// 遗留字段（旧版本两键共享修饰键，TOML 键名仍为 `modifiers`）：仅加载迁移用，不再写入。
     #[serde(default, skip_serializing, rename = "modifiers")]
     pub legacy_modifiers: u32,
@@ -46,6 +49,7 @@ impl Default for HotkeyConfig {
             border_key: 0x72,    // Ctrl+F3
             border_modifiers: 2, // MOD_CONTROL
             longshot_key: 0x53,  // S
+            ocr_key: 0x54,       // T
             legacy_modifiers: 0,
         }
     }

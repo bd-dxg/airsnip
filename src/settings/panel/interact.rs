@@ -171,6 +171,26 @@ impl Panel {
                 self.config.auto_check_update = !self.config.auto_check_update;
                 self.config_dirty = true;
             }
+            // 取字总开关（OCR-1）：默认关，关时覆盖层不出现取字入口
+            RowId::OcrToggle => {
+                self.end_capture();
+                self.config.ocr.enabled = !self.config.ocr.enabled;
+                self.config_dirty = true;
+            }
+            // 识别后自动复制（OCR-10）：与取字卡片里的开关是同一个配置项
+            RowId::OcrAutoCopy => {
+                self.end_capture();
+                self.config.ocr.auto_copy = !self.config.ocr.auto_copy;
+                self.config_dirty = true;
+            }
+            // 识别语言（OCR-6）：点一下切下一个（跟随系统 → 已装语言 → 回到跟随系统）
+            RowId::OcrLang => {
+                self.end_capture();
+                if let Err(msg) = super::ocr::cycle(self) {
+                    message_box(None, &msg, MB_OK | MB_ICONWARNING);
+                }
+                self.config_dirty = true;
+            }
             _ => self.end_capture(),
         }
     }
@@ -228,6 +248,8 @@ impl Panel {
                     }
                     // 长截图键：覆盖层内按下即触发，不区分修饰键（与工具切换键同组）
                     RowId::HotkeyLongshot => self.config.hotkey.longshot_key = vk,
+                    // 取字键（OCR-3）：同上，覆盖层内无修饰键
+                    RowId::HotkeyOcr => self.config.hotkey.ocr_key = vk,
                     // 工具切换键：仅绑定虚拟键（覆盖层内按下即切工具，无需修饰键）
                     RowId::ToolRect => self.config.tool_keys.rect = vk,
                     RowId::ToolArrow => self.config.tool_keys.arrow = vk,

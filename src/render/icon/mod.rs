@@ -31,6 +31,8 @@ fn optical_scale(icon: Icon) -> f32 {
         Icon::Save => 0.92,
         // 垃圾桶结构密集（盖 + 桶身 + 两条竖线），不缩小会比邻居重得多
         Icon::Delete => 0.85,
+        // 扫描框 + 三行文字，结构比相邻的 pin / longshot 密得多，略缩以对齐视觉重量
+        Icon::Ocr => 0.9,
         _ => 1.0,
     }
 }

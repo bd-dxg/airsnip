@@ -40,7 +40,7 @@ impl super::Overlay {
         // 选区变化后字体面板的位置失效（EDT-4）：收起并连旧区域一起重绘
         let old_chrome = self.chrome_rect();
         self.font_list = None;
-        self.bar = new.map(|s| toolbar::layout(s, vw, vh, self.text_row_visible(), self.ui));
+        self.bar = new.map(|s| toolbar::layout(s, vw, vh, self.text_row_visible(), self.ocr_enabled, self.ui));
         let new_chrome = self.chrome_rect();
 
         let mut dirty: Option<SelRect> = None;

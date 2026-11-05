@@ -147,6 +147,8 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let on = match row.id {
         RowId::Autostart => panel.autostart_on,
         RowId::AutoCheckUpdate => panel.config.auto_check_update,
+        RowId::OcrToggle => panel.config.ocr.enabled,
+        RowId::OcrAutoCopy => panel.config.ocr.auto_copy,
         _ => false,
     };
     let c = &row.control;
@@ -225,6 +227,7 @@ fn draw_readonly(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row)
     let text = match row.id {
         RowId::Lang => "简体中文",
         RowId::Widenote => "无修饰键会覆盖其他程序按键，建议 Ctrl/Alt",
+        RowId::OcrNote => "本地识别，图片不出本机",
         _ => "",
     };
     draw_right_text(pixmap, panel, row, text);

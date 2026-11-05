@@ -39,15 +39,17 @@ pub enum Section {
     Hotkeys,
     Save,
     Appearance,
+    Ocr,
     About,
 }
 
 impl Section {
-    pub const ALL: [Section; 5] = [
+    pub const ALL: [Section; 6] = [
         Section::General,
         Section::Hotkeys,
         Section::Save,
         Section::Appearance,
+        Section::Ocr,
         Section::About,
     ];
 
@@ -57,6 +59,7 @@ impl Section {
             Section::Hotkeys => "快捷键",
             Section::Save => "保存",
             Section::Appearance => "外观",
+            Section::Ocr => "取字翻译",
             Section::About => "关于",
         }
     }
@@ -77,6 +80,8 @@ pub enum RowId {
     HotkeyBorder,
     /// 长截图键（覆盖层内按下，默认 S）。
     HotkeyLongshot,
+    /// 取字键（覆盖层内按下，默认 T，OCR-3）。
+    HotkeyOcr,
     /// 工具切换键（M3）：矩形 / 箭头 / 文本 / 模糊 / 荧光笔 / 高亮。
     ToolRect,
     ToolArrow,
@@ -128,6 +133,14 @@ pub enum RowId {
     AutoCheckUpdate,
     /// 支持项目（关于页：文案 + 微信赞赏码）。
     Reward,
+    /// 取字总开关（OCR-1，默认关）。
+    OcrToggle,
+    /// 识别语言（点击循环切换，OCR-6）。
+    OcrLang,
+    /// 识别后自动复制到剪贴板（OCR-10，默认关）。
+    OcrAutoCopy,
+    /// 取字说明（只读：本地识别、图片不出本机）。
+    OcrNote,
 }
 
 /// 行控件类型。
@@ -235,6 +248,7 @@ mod tests {
                     RowId::HotkeyPin,
                     RowId::HotkeyBorder,
                     RowId::HotkeyLongshot,
+                    RowId::HotkeyOcr,
                     RowId::ToolRect,
                     RowId::ToolArrow,
                     RowId::ToolText,
@@ -264,6 +278,7 @@ mod tests {
                     RowId::AutoCheckUpdate,
                     RowId::Reward,
                 ],
+                Section::Ocr => vec![RowId::OcrToggle, RowId::OcrAutoCopy, RowId::OcrLang, RowId::OcrNote],
             };
             assert_eq!(rows, expected, "节 {sec:?} 行集合错误");
         }
@@ -289,7 +304,7 @@ mod tests {
                 assert_eq!(r.clear.w, 0, "{:?} 非键帽行不应有清除按钮", r.id);
             }
         }
-        assert_eq!(caps, 10, "快捷键页应有 10 个键帽行");
+        assert_eq!(caps, 11, "快捷键页应有 11 个键帽行");
     }
 
     /// 任意缩放下键帽仍有足够宽度显示组合键文本。

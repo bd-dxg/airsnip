@@ -37,6 +37,7 @@ icon_table! {
     Redo => "toolbar/redo.svg",
     Pin => "toolbar/pin.svg",
     Longshot => "toolbar/longshot.svg",
+    Ocr => "toolbar/ocr.svg",
     Copy => "toolbar/copy.svg",
     Save => "toolbar/save.svg",
     Bold => "toolbar/bold.svg",
