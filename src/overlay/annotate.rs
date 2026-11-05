@@ -44,7 +44,7 @@ impl super::Overlay {
         } else if vk == self.longshot_key {
             self.on_longshot();
         } else if vk == self.ocr_key && self.ocr_enabled {
-            self.on_ocr(); // OCR-3：取字（功能关闭时不吃这个键，留给工具切换）
+            self.on_ocr(); // OCR-3：OCR（功能关闭时不吃这个键，留给工具切换）
         } else if let Some(t) = self.tool_by_key(vk) {
             self.switch_tool(t);
         }
@@ -95,7 +95,7 @@ impl super::Overlay {
             toolbar::Action::Pin => return self.on_pin(),
             // M4：长截图按钮 → 选区作为视口进入拼接（不复绘）
             toolbar::Action::Longshot => return self.on_longshot(),
-            // OCR-3：取字按钮 → 原图交给主线程识别（不复绘）
+            // OCR-3：OCR 按钮 → 原图交给主线程识别（不复绘）
             toolbar::Action::Ocr => return self.on_ocr(),
             // OUT-1：复制按钮 → 复制到剪贴板并关闭覆盖层（不复绘）
             toolbar::Action::Copy => return self.on_copy(),
@@ -220,7 +220,7 @@ impl super::Overlay {
         }
     }
 
-    /// OCR-3/OCR-4：取字——把选区**原图**（不含标注）交给主线程识别，并关闭覆盖层。
+    /// OCR-3/OCR-4：OCR——把选区**原图**（不含标注）交给主线程识别，并关闭覆盖层。
     /// 载荷与贴图同格式：[u32 w][u32 h][i32 x][i32 y][RGBA]，主线程负责 OCR 与气泡窗口。
     pub(super) fn on_ocr(&mut self) {
         if !self.ocr_enabled {
@@ -237,13 +237,13 @@ impl super::Overlay {
         let px_total = w as usize * h as usize * 4;
         unsafe {
             let Ok(hg) = GlobalAlloc(GMEM_MOVEABLE, 16 + px_total) else {
-                crate::app::message_box(None, "取字内存分配失败。", MB_OK | MB_ICONERROR);
+                crate::app::message_box(None, "OCR 内存分配失败。", MB_OK | MB_ICONERROR);
                 return;
             };
             let ptr = GlobalLock(hg);
             if ptr.is_null() {
                 let _ = GlobalFree(Some(hg));
-                crate::app::message_box(None, "取字内存锁失败。", MB_OK | MB_ICONERROR);
+                crate::app::message_box(None, "OCR 内存锁失败。", MB_OK | MB_ICONERROR);
                 return;
             }
             let hp = ptr as *mut u32;

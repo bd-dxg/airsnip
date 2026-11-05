@@ -59,7 +59,7 @@ impl Section {
             Section::Hotkeys => "快捷键",
             Section::Save => "保存",
             Section::Appearance => "外观",
-            Section::Ocr => "取字翻译",
+            Section::Ocr => "OCR 翻译",
             Section::About => "关于",
         }
     }
@@ -80,7 +80,7 @@ pub enum RowId {
     HotkeyBorder,
     /// 长截图键（覆盖层内按下，默认 S）。
     HotkeyLongshot,
-    /// 取字键（覆盖层内按下，默认 T，OCR-3）。
+    /// OCR 键（覆盖层内按下，默认 T，OCR-3）。
     HotkeyOcr,
     /// 工具切换键（M3）：矩形 / 箭头 / 文本 / 模糊 / 荧光笔 / 高亮。
     ToolRect,
@@ -133,13 +133,13 @@ pub enum RowId {
     AutoCheckUpdate,
     /// 支持项目（关于页：文案 + 微信赞赏码）。
     Reward,
-    /// 取字总开关（OCR-1，默认关）。
+    /// OCR 总开关（OCR-1，默认关）。
     OcrToggle,
     /// 识别语言（点击循环切换，OCR-6）。
     OcrLang,
     /// 识别后自动复制到剪贴板（OCR-10，默认关）。
     OcrAutoCopy,
-    /// 取字说明（只读：本地识别、图片不出本机）。
+    /// OCR 说明（只读：本地识别、图片不出本机）。
     OcrNote,
 }
 

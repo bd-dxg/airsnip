@@ -10,7 +10,7 @@
 
 ## 项目状态
 
-- 当前版本 **v0.8.0-beta.1**（预发布）：取字（#61，ADR 0022）首个公开测试版，`main` 已合并 PR #83。发布说明见 `docs/release-notes/v0.8.0-beta.1.md`。上一版 v0.7.0：M0–M4 与 M5a/M5b 全部交付并合并，`main` 已合并 PR #32–#66（release 版黑窗修复、设置窗口比例与图标、v0.3.1–v0.6.0 发布、开机自启托盘图标消失修复 + `WM_SETTINGCHANGE` 指针加固、`app/mod.rs` 拆分、长截图改纯手动滚动 + 拼接预览 + 输入法屏蔽、保存对话框记住上次目录、界面图标统一、圆角内部控制柄 + 扩展到四类、README 重写 + 头图、提权进程托盘图标自愈、改名 AirSnip + 新应用图标、选区尺寸提示收尾、快捷键清空为「未设置」+ 恢复默认 + 托盘入口、长截图另存为、自动更新），工作区干净。M5a 交付要点：另存为对话框（PNG / JPEG / WebP 无损 + 文件名模板）、选中对象包围框与八向手柄 + `Shift` 约束（`overlay/objedit/`、`editor/transform.rs`）、方向键微调（1px / `Shift` 5px）、系统字体枚举 + 工具栏第二行字体面板（`render::fonts`、`overlay::font`、`overlay::toolbar::fontlist`）；决策见 `docs/adr/0007-drop-delete-and-layering.md`、`0008-font-picker.md`、`0010-radius-handle.md`、`0011-corner-all-kinds.md`；`cargo test` 220 项绿（另 3 项需手动触发的集成测试：真实网络请求、发布清单验签闭环、线上 Release 端到端，`--ignored`）。
+- 当前版本 **v0.8.0-beta.1**（预发布）：OCR（#61，ADR 0022）首个公开测试版，`main` 已合并 PR #83。发布说明见 `docs/release-notes/v0.8.0-beta.1.md`。上一版 v0.7.0：M0–M4 与 M5a/M5b 全部交付并合并，`main` 已合并 PR #32–#66（release 版黑窗修复、设置窗口比例与图标、v0.3.1–v0.6.0 发布、开机自启托盘图标消失修复 + `WM_SETTINGCHANGE` 指针加固、`app/mod.rs` 拆分、长截图改纯手动滚动 + 拼接预览 + 输入法屏蔽、保存对话框记住上次目录、界面图标统一、圆角内部控制柄 + 扩展到四类、README 重写 + 头图、提权进程托盘图标自愈、改名 AirSnip + 新应用图标、选区尺寸提示收尾、快捷键清空为「未设置」+ 恢复默认 + 托盘入口、长截图另存为、自动更新），工作区干净。M5a 交付要点：另存为对话框（PNG / JPEG / WebP 无损 + 文件名模板）、选中对象包围框与八向手柄 + `Shift` 约束（`overlay/objedit/`、`editor/transform.rs`）、方向键微调（1px / `Shift` 5px）、系统字体枚举 + 工具栏第二行字体面板（`render::fonts`、`overlay::font`、`overlay::toolbar::fontlist`）；决策见 `docs/adr/0007-drop-delete-and-layering.md`、`0008-font-picker.md`、`0010-radius-handle.md`、`0011-corner-all-kinds.md`；`cargo test` 220 项绿（另 3 项需手动触发的集成测试：真实网络请求、发布清单验签闭环、线上 Release 端到端，`--ignored`）。
 - **预发布发布方式（v0.8.0-beta.1）**：GitHub Release 勾 **pre-release**，**不要**上传 `latest.json`。清单地址是 `releases/latest/download/latest.json`，而 GitHub 的 `latest` 只指向非 pre-release 的最新 Release，所以正式版用户不会被自动更新到 beta（`version::is_newer_than` 本身认为 `0.8.0-beta > 0.7.0`，保护完全靠 pre-release 标记）。发 v0.8.0 正式版时再上传清单。
 - M5 打磨进度：✅ 许可证合规（`deny.toml` + `cargo deny check` 四类全绿；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 生成；设置面板「关于」页含项目地址、微信赞赏码（`assets/reward-code.png` 编译期嵌入）与第三方声明入口）；✅ 性能剖析（`docs/perf-m5.md`：热键→可见 124ms、交互 4.6ms/帧、待机 0% CPU / 1.2MB，全部红线达标；埋点 `src/perf.rs`，采集 `scripts/perf-capture.ps1` + `scripts/perf.ps1`）；✅ 打包分发（`scripts/package.ps1` → `dist\airsnip-v{版本}-win-x64.zip` + 自动更新用 `.exe`，图标 16–256 八尺寸）；⬜ 多屏混合 DPI 测试（**当前无多屏环境，暂跳**）。
 - 自动更新（v0.7.0 交付，看板 #59，ADR 0018）：`src/update/` 九个子模块 —— `manifest`（清单 + ed25519 验签）、`version`（三段式版本比较，预发布不推正式版）、`endpoints`（三个 gh-proxy 镜像 + GitHub 直连兜底）、`http`（WinHTTP，不引 reqwest）、`install`（边下边算 SHA-256 + cmd 脚本替换 exe）、`check`（按镜像顺序取清单）、`state`（跨线程进度）、`notify`（后台线程唤醒界面）。
@@ -20,11 +20,11 @@
   - **替换流程**：下载到 `%TEMP%` → 校验和比对 → 写 `.cmd` → 主进程退出 → 脚本等进程消失后 `copy /y` 覆盖并重启 → 自删；`copy` 失败仍启旧版（避免「更新完打不开」）。
   - **触发**：启动后 3s 一次性 `SetTimer`（回调里立刻 `KillTimer`，不引入常驻轮询），失败静默，发现新版本弹托盘气泡；设置面板「关于」页显示状态并可手动检查 / 一键更新，另有「启动时自动检查」开关。
   - **密钥管理**：私钥在 `%USERPROFILE%\.airsnip\update.key`（**不在仓库**），公钥写死在 `src/update/manifest.rs` 的 `UPDATE_PUBKEY_HEX`；生成用 `cargo run --example update-keygen`，签名用 `cargo run --example update-sign -- --version <ver> --sha256 <摘要>`。**换密钥等于切断旧版本的自动更新能力**。
-- 取字（OCR 一期，看板 #61，ADR 0022）：框选后按 `T` / 点工具栏「取字」→ 覆盖层立即关闭 → 主线程弹文字气泡（先「识别中…」后结果）→ 文本区可直接改错字、拖选、右键菜单 → `Esc` 或关闭按钮收起。
+- OCR（一期，看板 #61，ADR 0022）：框选后按 `T` / 点工具栏「OCR」→ 覆盖层立即关闭 → 主线程弹文字气泡（先「识别中…」后结果）→ 文本区可直接改错字、拖选、右键菜单 → `Esc` 或关闭按钮收起。
   - **本地识别**：`Windows.Media.Ocr`，图片不出本机；`src/ocr/` 下 `local/`（COM 初始化、SoftwareBitmap 转换、引擎创建与等待）+ `lines`（CJK 空格规则）；真实识别有 2 项 `--ignored` 集成测试（中英文各一）。
   - **气泡**：`src/app/bubble/` 跑在**主线程**，所以覆盖层关掉后仍存活（这是选「独立窗口」而非覆盖层内自绘的理由）。形态是**划词卡片**（参照 Bob）：顶部淡图标行（图钉=置顶开关 / 关闭）+ **带 1px 边框的文本区**（聚焦时边框变强调色）+ 底部行（左「复制」/ 右「自动复制」开关，默认关），420px 宽 16px 字，无阴影无标题栏；卡片**不自动关闭**（用户 `Esc` / ✕ 决定）；自动复制开关回写 `[ocr] auto_copy`，与设置面板同一项。除文本区外任意空白处可直接拖窗口。不显示语言标签（语言信息只在「未识别到文字」的提示里出现）。图标按墨水率单独配尺寸（`draw::icon_scale`），否则图钉会看着比关闭小一号。
   - **文本区是原生 `EDIT` 子控件**（ADR 0022 §10，v0.8.0 开发期换掉自绘方案）：输入法候选框跟随光标、双击选词、`Ctrl+A/C/V/X/Z`、右键菜单、长文本滚动跟随全部由系统处理。所以卡片**不能是分层窗口**：`WS_POPUP | WS_CLIPCHILDREN` + `WS_EX_TOOLWINDOW`，圆角靠 `CreateRoundRectRgn` + `SetWindowRgn`（边缘无抗锯齿，可接受），上屏改 `GetDC` + `BitBlt`，底色 alpha 必须拉满（`BitBlt` 不认 alpha）。高度自适应：先定宽度，再 `EM_GETLINECOUNT` × `GetTextMetricsW` 行高（**软换行计入行数**，有 `--ignored` 测试守门）。细节坑：只读态收 `WM_CTLCOLORSTATIC` 不是 `WM_CTLCOLOREDIT`；`Esc` 要子类化 `EDIT` 转投父窗口；`\n` 要转 CRLF 再喂；程序自己 `SetWindowTextW` 也触发 `EN_CHANGE`，用 `syncing` 标记防重入。**行高必须先 `SelectObject` 选入 `WM_SETFONT` 那个字体再 `GetTextMetricsW`**：`GetDC` 返回的 DC 里是类默认字体，不选就报 16px，而 YaHei UI 16px 的真实行距是 21px，乘上行数会把卡片算矮两行（表现为「识别文本完整但卡片显示不全」，有 `line_height_matches_real_layout` 守门）。**卡片高度上限按选区所在显示器的工作区算**（`layout_capped`），否则选区靠屏幕下方时弹窗溢出屏幕。`AIRSNIP_DEBUG=1` 会把送给引擎的原图与识别结果落盘到 `%TEMP%\airsnip-ocr-input.png` / `airsnip-ocr-text.txt`，用于分辨「图裁错了」还是「引擎漏了」。
-  - **开关**：`[ocr] enabled`（默认 **false**）+ `language`（`auto` 跟随系统首选，设置面板「取字翻译」页点一行循环切换）。关闭时覆盖层不出现取字按钮、取字键不生效、**不初始化 WinRT**。
+  - **开关**：`[ocr] enabled`（默认 **false**）+ `language`（`auto` 跟随系统首选，设置面板「OCR 翻译」页点一行循环切换）。关闭时覆盖层不出现 OCR 按钮、OCR 键不生效、**不初始化 WinRT**。
   - **输入是选区原图**（不含标注）：用户画的箭头/马赛克不该污染识别结果。
   - **两个实测坑**（写进了 ADR 0022 §8）：位图字节要走 `IBufferByteAccess`（不是 `IMemoryBufferByteAccess`），且 `Buffer::Create` 后必须 `SetLength`；**不调用 `RoUninitialize`**（windows-rs 的激活工厂缓存会悬空，再次 `RoInitialize` 后直接 `0xC0000005`）。
   - **识别率**：**统一 2 倍最近邻放大**（小字号下容易按偏旁拆字）；拼接后把「两侧都是 CJK」的空格全部剥掉。
@@ -61,9 +61,9 @@
 ## 常用命令
 
 - 编译检查：`cargo check`
-- 运行：`cargo run`（GUI 桌面程序，需 Windows 桌面会话；启动后托盘常驻，F1 截图 / F3 贴图 / 覆盖层内 T 取字）
+- 运行：`cargo run`（GUI 桌面程序，需 Windows 桌面会话；启动后托盘常驻，F1 截图 / F3 贴图 / 覆盖层内 T 触发 OCR）
 - 构建发布版：`cargo build --release`（已配 `lto="fat"`、`opt-level="z"`、`panic="abort"`、`strip=true`）
-- 测试：`cargo test`（当前 258 个 + 12 个 `--ignored`：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量与字体（粗斜体渲染、族间测量、未知族名回退）/系统字体枚举/长截图拼接/WebP/变换与手柄/光标映射/布局/字体面板/设置面板布局与 DPI 缩放/设置变更消息内存校验/图标 SVG 解析与视觉重量/圆角读写与手柄/圆角遮罩覆盖率与回贴/取字包围盒重排与密集文本不漏行/宽图放大与像素预算/气泡定位不溢出屏幕/EDIT 行高与行数与长文本不截断）
+- 测试：`cargo test`（当前 258 个 + 12 个 `--ignored`：抓屏/剪贴板/对象模型与撤销栈/矢量栅格化/曲线与命中/文本测量与字体（粗斜体渲染、族间测量、未知族名回退）/系统字体枚举/长截图拼接/WebP/变换与手柄/光标映射/布局/字体面板/设置面板布局与 DPI 缩放/设置变更消息内存校验/图标 SVG 解析与视觉重量/圆角读写与手柄/圆角遮罩覆盖率与回贴/OCR 包围盒重排与密集文本不漏行/宽图放大与像素预算/气泡定位不溢出屏幕/EDIT 行高与行数与长文本不截断）
 - 格式化检查：`cargo fmt --check`（提交前必须通过）
 - 性能采集：`scripts/perf-capture.ps1`（热键延迟 + 帧耗时，需管理员）与 `scripts/perf.ps1`（待机 CPU/内存）；报告见 `docs/perf-m5.md`
 - 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标/PE 导入表 → 输出 `dist\airsnip-v{版本}-win-x64.zip` 与自动更新用的 `.exe`）

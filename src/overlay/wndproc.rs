@@ -174,7 +174,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 k if k == overlay.pin_key => overlay.on_pin(), // PIN-1：贴选区（键可配，默认 F3）
                 // 长截图键（默认 S，设置面板可改）：当前选区作为滚动视口（M4）
                 k if k == overlay.longshot_key => overlay.on_longshot(),
-                // 取字键（默认 T，设置面板可改，OCR-3）：功能关闭时不占用该键
+                // OCR 键（默认 T，设置面板可改，OCR-3）：功能关闭时不占用该键
                 k if k == overlay.ocr_key && overlay.ocr_enabled => overlay.on_ocr(),
                 0x5A if ctrl_down() => {
                     // Ctrl+Z 撤销 / Ctrl+Shift+Z 重做（EDT-7）

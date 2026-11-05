@@ -68,7 +68,7 @@ pub enum Action {
     Pin,
     /// M4：把当前选区作为滚动视口，进入长截图拼接（长截图键同效，默认 S）。
     Longshot,
-    /// OCR-3：把选区原图交给本地 OCR 取字（取字键同效，默认 T；功能关闭时按钮不出现）。
+    /// OCR-3：把选区原图交给本地 OCR 识别（OCR 键同效，默认 T；功能关闭时按钮不出现）。
     Ocr,
     /// OUT-1：复制选区到剪贴板（Enter / Ctrl+C 同效）。
     Copy,
@@ -135,7 +135,7 @@ impl Cursor {
 
 /// 计算工具栏布局：优先放在选区下方，空间不足则放上方。
 /// `text_row` 为真时附上第二行（文本工具或选中文本对象，EDT-4）；
-/// `ocr` 为假时不出「取字」按钮（OCR-1：关闭时界面与无此功能时完全一致）。
+/// `ocr` 为假时不出「OCR」按钮（OCR-1：关闭时界面与无此功能时完全一致）。
 pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ocr: bool, ui: Ui) -> Toolbar {
     let (row_h, h2) = (ui.px(H_BASE), ui.px(H2_BASE));
     let (btn, sw) = (ui.px(BTN_BASE), ui.px(SW_BASE));
@@ -386,19 +386,19 @@ mod tests {
         assert_eq!(bar.hits.len(), 18);
     }
 
-    /// 取字按钮（OCR-3）：功能开启时紧跟长截图出现，关闭时完全不出现（OCR-1）。
+    /// OCR 按钮（OCR-3）：功能开启时紧跟长截图出现，关闭时完全不出现（OCR-1）。
     #[test]
     fn ocr_button_only_when_enabled() {
         let s = sel(100, 100, 400, 300);
         let off = layout(s, 2560, 1440, false, false, base());
-        assert_eq!(off.hits.len(), 18, "关闭时不应有取字按钮");
+        assert_eq!(off.hits.len(), 18, "关闭时不应有 OCR 按钮");
         assert!(!off.hits.iter().any(|(_, a)| *a == Action::Ocr));
 
         let on = layout(s, 2560, 1440, false, true, base());
         assert_eq!(on.hits.len(), 19);
         let actions: Vec<Action> = on.hits.iter().map(|(_, a)| *a).collect();
         assert_eq!(actions[15], Action::Longshot);
-        assert_eq!(actions[16], Action::Ocr, "取字按钮应紧跟长截图");
+        assert_eq!(actions[16], Action::Ocr, "OCR 按钮应紧跟长截图");
         assert_eq!(actions[17], Action::Copy);
         assert_eq!(actions[18], Action::Save);
         // 多一个按钮后仍不能与信息文字重叠、不能越出屏幕

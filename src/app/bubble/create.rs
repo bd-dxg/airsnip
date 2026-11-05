@@ -37,7 +37,7 @@ pub(super) fn ensure_window(palette: &'static Palette, ui: Ui) -> Option<HWND> {
             // 圆角改 SetWindowRgn，见 `view::apply_size`
             WS_EX_TOOLWINDOW,
             CLASS,
-            w!("AirSnip 取字"),
+            w!("AirSnip OCR"),
             // WS_CLIPCHILDREN：上屏是整幅 BitBlt，不能让父窗口盖到 EDIT 上
             WS_POPUP | WS_CLIPCHILDREN,
             0,
@@ -101,7 +101,7 @@ fn register_class() -> Option<()> {
         lpszClassName: CLASS,
         ..Default::default()
     };
-    // 注册成功后才置位：失败（极罕见）时下次取字还能重试
+    // 注册成功后才置位：失败（极罕见）时下次 OCR 还能重试
     if unsafe { RegisterClassW(&wc) } == 0 {
         return None;
     }

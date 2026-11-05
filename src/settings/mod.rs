@@ -130,8 +130,8 @@ impl UiScale {
     }
 }
 
-/// 取字与翻译（OCR-1，ADR 0022）：可选能力，总开关默认关闭。
-/// 关闭时不初始化 WinRT、不注册取字键、覆盖层不出现取字入口——不是灰掉，是不出现。
+/// OCR 与翻译（OCR-1，ADR 0022）：可选能力，总开关默认关闭。
+/// 关闭时不初始化 WinRT、不注册 OCR 键、覆盖层不出现 OCR 入口——不是灰掉，是不出现。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OcrConfig {
@@ -208,7 +208,7 @@ pub struct Config {
     pub auto_check_update: bool,
     /// 用户选择「跳过此版本」的版本号（SYS-7）。
     pub skipped_version: Option<String>,
-    /// 取字与翻译（OCR-1，默认关闭）。
+    /// OCR 与翻译（OCR-1，默认关闭）。
     pub ocr: OcrConfig,
 }
 
@@ -345,12 +345,12 @@ mod tests {
         assert_eq!(back.hotkey.longshot_key, 0x4C);
     }
 
-    /// 取字键（OCR-3）：默认 T；旧配置缺字段时回退默认值，新值能往返。
+    /// OCR 键（OCR-3）：默认 T；旧配置缺字段时回退默认值，新值能往返。
     #[test]
     fn ocr_key_defaults_and_roundtrip() {
-        assert_eq!(HotkeyConfig::default().ocr_key, 0x54, "默认取字键应为 T");
+        assert_eq!(HotkeyConfig::default().ocr_key, 0x54, "默认 OCR 键应为 T");
         let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
-        assert_eq!(old.hotkey.ocr_key, 0x54, "旧配置应回退默认取字键");
+        assert_eq!(old.hotkey.ocr_key, 0x54, "旧配置应回退默认 OCR 键");
 
         let cfg = Config {
             hotkey: HotkeyConfig {
@@ -363,11 +363,11 @@ mod tests {
         assert_eq!(back.hotkey.ocr_key, 0x4F);
     }
 
-    /// 取字总开关（OCR-1）：旧配置回退关闭，新值能往返。
+    /// OCR 总开关（OCR-1）：旧配置回退关闭，新值能往返。
     #[test]
     fn ocr_config_defaults_and_roundtrip() {
         let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
-        assert!(!old.ocr.enabled, "取字默认关闭");
+        assert!(!old.ocr.enabled, "OCR 默认关闭");
         assert!(!old.ocr.auto_copy, "自动复制默认关闭");
         assert_eq!(old.ocr.language, OCR_LANG_AUTO, "默认跟随系统语言");
 

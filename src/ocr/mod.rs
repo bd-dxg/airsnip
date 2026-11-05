@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 取字（OCR-1～OCR-13）：本地 `Windows.Media.Ocr` 识别，图片不出本机（ADR 0022）。
+//! OCR（需求 OCR-1～OCR-13）：本地 `Windows.Media.Ocr` 识别，图片不出本机（ADR 0022）。
 //!
 //! 分工：`local` 是 WinRT 实现（COM 初始化、SoftwareBitmap 转换、引擎创建与等待），
 //! `lines` 把引擎返回的行/词结构拼成文本（CJK 空格规则）。
@@ -24,7 +24,7 @@ pub struct Recognized {
     pub language: String,
 }
 
-/// 取字失败原因（OCR-8：由气泡就地展示，不弹系统对话框）。
+/// OCR 失败原因（OCR-8：由气泡就地展示，不弹系统对话框）。
 #[derive(Debug, Clone, PartialEq)]
 pub enum Error {
     /// 系统没有安装任何 OCR 语言包。

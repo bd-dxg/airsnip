@@ -132,7 +132,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         WM_OCR_DONE => {
             if lparam.0 == 2 {
                 // 载荷分配失败（内存不足）：不读 hg
-                bubble.set_error("取字结果无法显示（内存不足）。");
+                bubble.set_error("OCR 结果无法显示（内存不足）。");
             } else {
                 let (text, lang) = take_text(HGLOBAL(wparam.0 as *mut _));
                 if lparam.0 == 0 {

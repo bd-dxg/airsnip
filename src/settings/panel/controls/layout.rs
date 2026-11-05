@@ -75,7 +75,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             push(RowId::HotkeyPin, RowKind::KeyCap, "贴图", &mut y, items);
             push(RowId::HotkeyBorder, RowKind::KeyCap, "贴图边框·窗口内", &mut y, items);
             push(RowId::HotkeyLongshot, RowKind::KeyCap, "长截图·截图内", &mut y, items);
-            push(RowId::HotkeyOcr, RowKind::KeyCap, "取字·截图内", &mut y, items);
+            push(RowId::HotkeyOcr, RowKind::KeyCap, "OCR·截图内", &mut y, items);
             push(RowId::ToolRect, RowKind::KeyCap, "工具·矩形", &mut y, items);
             push(RowId::ToolArrow, RowKind::KeyCap, "工具·箭头", &mut y, items);
             push(RowId::ToolText, RowKind::KeyCap, "工具·文本", &mut y, items);
@@ -105,7 +105,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             }
         }
         Section::Ocr => {
-            push(RowId::OcrToggle, RowKind::Toggle, "取字", &mut y, items);
+            push(RowId::OcrToggle, RowKind::Toggle, "OCR", &mut y, items);
             push(RowId::OcrAutoCopy, RowKind::Toggle, "识别后自动复制", &mut y, items);
             push(RowId::OcrLang, RowKind::Action, "识别语言", &mut y, items);
             push(RowId::OcrNote, RowKind::Readonly, "说明", &mut y, items);
