@@ -228,12 +228,6 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             }
             LRESULT(0)
         }
-        WM_SETTINGCHANGE => {
-            if let Some(app) = app_from(hwnd) {
-                app.handle_setting_change(lparam);
-            }
-            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
-        }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }

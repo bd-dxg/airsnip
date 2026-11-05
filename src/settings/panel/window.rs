@@ -10,6 +10,8 @@ use windows::core::{PCWSTR, w};
 use crate::app::icon_resource;
 use crate::overlay::surface::create_dib_surface;
 use crate::overlay::ui::Ui;
+use crate::settings::ThemeSetting;
+use crate::theme::{self, Theme};
 
 use super::controls::{self, Section, W};
 use super::{Panel, WINDOW_CLASS};
@@ -109,6 +111,22 @@ impl Panel {
     /// 导航栏右缘 x 坐标（含 DPI 缩放）。
     pub(super) fn nav_w(&self) -> i32 {
         (super::controls::NAV_W as f32 * self.scale) as i32
+    }
+
+    /// 系统主题变化后重新解析调色板（仅「跟随系统」生效）：返回是否需要重绘。
+    pub(super) fn refresh_system_theme(&mut self) -> bool {
+        if self.config.theme != ThemeSetting::Follow {
+            return false;
+        }
+        let resolved = theme::resolve(ThemeSetting::Follow);
+        let next = theme::palette(resolved);
+        // 调色板是常量引用：同一主题必为同一地址
+        if std::ptr::eq(self.palette, next) {
+            return false;
+        }
+        self.palette = next;
+        apply_dark_titlebar(self.hwnd, resolved == Theme::Dark);
+        true
     }
 
     /// 按当前节重建上屏 DIB，并把窗口外框调到「客户区 = 绘制位图」尺寸。

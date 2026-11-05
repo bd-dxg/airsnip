@@ -12,6 +12,7 @@ mod keycap;
 mod link;
 mod ocr;
 mod reward;
+mod theme_watch;
 mod update;
 mod window;
 
@@ -114,6 +115,8 @@ pub fn run(app: &mut App) {
     panel.hwnd = hwnd;
     // 后台线程（更新检查/下载）通过这个句柄通知面板刷新关于页（SYS-7）
     crate::update::notify::register(hwnd);
+    // 系统深/浅色切换时刷新面板配色（SYS-6）：注册表通知线程，drop 即停
+    let _theme_watch = theme_watch::ThemeWatch::spawn(hwnd);
     // 标题栏由 DWM 绘制：创建后先按当前主题着色（切换主题时在 `set_theme` 里更新）
     window::apply_dark_titlebar(hwnd, theme::resolve(panel.config.theme) == theme::Theme::Dark);
     let raw = Box::into_raw(Box::new(panel));
@@ -237,6 +240,20 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 // 非捕获态交给默认处理（Alt+F4 关闭、Tab 切换焦点等不能吞掉）
                 unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
+        }
+        // 系统深/浅色切换（SYS-6）：「跟随系统」时重解析调色板并重绘。
+        // 管理员进程可能收不到用户级进程的广播（UIPI），故另有注册表监听保底。
+        WM_SETTINGCHANGE => {
+            if crate::theme::is_theme_change(lparam.0 as usize) && panel.refresh_system_theme() {
+                repaint_full(hwnd, panel);
+            }
+            unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+        }
+        theme_watch::WM_THEME_CHANGED => {
+            if panel.refresh_system_theme() {
+                repaint_full(hwnd, panel);
+            }
+            LRESULT(0)
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
