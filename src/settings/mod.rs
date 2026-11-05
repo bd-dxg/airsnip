@@ -130,6 +130,40 @@ impl UiScale {
     }
 }
 
+/// 取字与翻译（OCR-1，ADR 0022）：可选能力，总开关默认关闭。
+/// 关闭时不初始化 WinRT、不注册取字键、覆盖层不出现取字入口——不是灰掉，是不出现。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct OcrConfig {
+    /// 总开关（默认关）。
+    pub enabled: bool,
+    /// 识别成功后自动写剪贴板（默认关，OCR-10）。
+    pub auto_copy: bool,
+    /// 识别语言：`auto` 跟随系统首选，否则为 BCP-47 标签（如 `zh-Hans-CN`）。
+    pub language: String,
+}
+
+/// 识别语言「跟随系统」的配置值。
+pub const OCR_LANG_AUTO: &str = "auto";
+
+impl Default for OcrConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            auto_copy: false,
+            language: OCR_LANG_AUTO.to_string(),
+        }
+    }
+}
+
+impl OcrConfig {
+    /// 识别语言标签：`None` 表示跟随系统首选语言（`auto`）。
+    pub fn language_tag(&self) -> Option<&str> {
+        let t = self.language.trim();
+        (!t.is_empty() && !t.eq_ignore_ascii_case(OCR_LANG_AUTO)).then_some(t)
+    }
+}
+
 /// 保存相关运行时偏好（OUT-2）：文件名模板 + 上次格式 + 上次目录。
 /// 截图开始时从配置快照后传入覆盖层线程（`HWND` 不可跨线程，值可以）。
 #[derive(Debug, Clone, Default)]
@@ -174,6 +208,8 @@ pub struct Config {
     pub auto_check_update: bool,
     /// 用户选择「跳过此版本」的版本号（SYS-7）。
     pub skipped_version: Option<String>,
+    /// 取字与翻译（OCR-1，默认关闭）。
+    pub ocr: OcrConfig,
 }
 
 impl Default for Config {
@@ -194,6 +230,7 @@ impl Default for Config {
             longshot_max_height: 30000,
             auto_check_update: true,
             skipped_version: None,
+            ocr: OcrConfig::default(),
         }
     }
 }
@@ -306,6 +343,48 @@ mod tests {
         };
         let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
         assert_eq!(back.hotkey.longshot_key, 0x4C);
+    }
+
+    /// 取字键（OCR-3）：默认 T；旧配置缺字段时回退默认值，新值能往返。
+    #[test]
+    fn ocr_key_defaults_and_roundtrip() {
+        assert_eq!(HotkeyConfig::default().ocr_key, 0x54, "默认取字键应为 T");
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.hotkey.ocr_key, 0x54, "旧配置应回退默认取字键");
+
+        let cfg = Config {
+            hotkey: HotkeyConfig {
+                ocr_key: 0x4F, // O
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.hotkey.ocr_key, 0x4F);
+    }
+
+    /// 取字总开关（OCR-1）：旧配置回退关闭，新值能往返。
+    #[test]
+    fn ocr_config_defaults_and_roundtrip() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert!(!old.ocr.enabled, "取字默认关闭");
+        assert!(!old.ocr.auto_copy, "自动复制默认关闭");
+        assert_eq!(old.ocr.language, OCR_LANG_AUTO, "默认跟随系统语言");
+
+        let cfg = Config {
+            ocr: OcrConfig {
+                enabled: true,
+                auto_copy: true,
+                language: "zh-Hans-CN".to_string(),
+            },
+            ..Default::default()
+        };
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        assert!(text.contains("[ocr]"), "应写成独立的 [ocr] 段：{text}");
+        let back: Config = toml::from_str(&text).unwrap();
+        assert!(back.ocr.enabled);
+        assert!(back.ocr.auto_copy, "自动复制开关应能往返");
+        assert_eq!(back.ocr.language, "zh-Hans-CN");
     }
 
     /// 上次保存目录（OUT-2）：旧配置缺字段回退 None，新值能往返。

@@ -7,7 +7,7 @@
 
 ```
 ui/
-  toolbar/   # 覆盖层工具栏 17 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
+  toolbar/   # 覆盖层工具栏 18 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
   status/    # 长截图状态条
   panel/     # 设置面板行内按钮（快捷键行的清除按钮）
 ```
@@ -54,6 +54,7 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | `toolbar/undo.svg` / `redo.svg` | `undo` / `redo` |
 | `toolbar/pin.svg` | `push_pin` |
 | `toolbar/longshot.svg` | `unfold_more` |
+| `toolbar/ocr.svg` | `document_scanner` |
 | `toolbar/copy.svg` | `content_copy` |
 | `toolbar/save.svg` | `save` |
 | `toolbar/bold.svg` / `italic.svg` | `format_bold` / `format_italic` |
@@ -81,11 +82,12 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | fill | 27.2 | check | 14.2 |
 | cross | 25.4 | pin | 14.8 |
 | undo / redo | 27.2 | longshot | 12.4 |
-| delete | 29.0 | | |
+| delete | 29.0 | ocr | 30.2 | |
 
 全组落在 11.8%～37.6%，均在测试区间（5%～48%）内。个别图标用
 `render::icon::optical_scale` 微调：`save` 0.92（软盘 bbox 偏大）、
-`delete` 0.85（垃圾桶盖 + 桶身 + 两条竖线结构密集，不缩会明显重于邻居）。
+`delete` 0.85（垃圾桶盖 + 桶身 + 两条竖线结构密集，不缩会明显重于邻居）、
+`ocr` 0.9（扫描框 + 三行文字，未缩时 36.4%，比相邻的 pin / longshot 重得多）。
 
 **验收要同时看深色与浅色主题**：线框图标在浅底上会显得更淡（实测 `highlight` 的
 outlined 版就是因此换成 fill1）。新增/替换图标后请在两种底色下各看一眼 26px 渲染。

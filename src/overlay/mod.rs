@@ -75,6 +75,10 @@ pub struct Overlay {
     tool_keys: crate::settings::ToolKeys,
     /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
     longshot_key: u32,
+    /// 取字键（覆盖层内按下，默认 T；设置面板可改，OCR-3）。
+    ocr_key: u32,
+    /// 取字功能是否开启（OCR-1）：关闭时工具栏不出现取字按钮、取字键不生效。
+    ocr_enabled: bool,
     /// 贴图键（覆盖层内按下贴选区，默认 F3；设置面板可改，ADR 0019）。
     pin_key: u32,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
@@ -133,6 +137,10 @@ pub struct OverlayOpts {
     pub tool_keys: crate::settings::ToolKeys,
     /// 长截图键（默认 S，设置面板可改）。
     pub longshot_key: u32,
+    /// 取字键（默认 T，设置面板可改，OCR-3）。
+    pub ocr_key: u32,
+    /// 取字是否开启（OCR-1）：关闭时工具栏不出现取字按钮、取字键不生效。
+    pub ocr_enabled: bool,
     /// 贴图键（默认 F3，设置面板可改；ADR 0019：可为鼠标键）。
     pub pin_key: u32,
     /// 本次会话的默认工具（记住上次使用，M3）。

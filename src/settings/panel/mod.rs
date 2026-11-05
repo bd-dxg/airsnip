@@ -10,6 +10,7 @@ mod draw;
 mod interact;
 mod keycap;
 mod link;
+mod ocr;
 mod reward;
 mod update;
 mod window;
@@ -57,6 +58,8 @@ pub struct Panel {
     pub(super) ime_old: HIMC,
     /// 开机自启真实状态（任务计划是否存在，SYS-4）。
     pub autostart_on: bool,
+    /// 已安装的 OCR 语言（首次切换识别语言时才枚举并缓存，OCR-6/OCR-13）。
+    pub ocr_langs: Option<Vec<String>>,
     /// 配置有改动、待立即应用（热键/主题即时生效，不等面板关闭）。
     pub(super) config_dirty: bool,
     /// 上屏缓冲（DIB section）。
@@ -94,6 +97,7 @@ pub fn run(app: &mut App) {
         ime_old: HIMC(std::ptr::null_mut()),
         // 自启开关显示任务计划真实状态，而非配置猜测（SYS-4）
         autostart_on: crate::app::autostart::autostart_enabled(),
+        ocr_langs: None,
         config_dirty: false,
         dib_bmp: Default::default(),
         mem_dc: Default::default(),

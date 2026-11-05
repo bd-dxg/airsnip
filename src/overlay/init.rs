@@ -21,6 +21,8 @@ impl Overlay {
             palette,
             tool_keys,
             longshot_key,
+            ocr_key,
+            ocr_enabled,
             pin_key,
             default_tool,
             save,
@@ -69,6 +71,8 @@ impl Overlay {
             tool: default_tool, // 记住上次工具（M3），首次为矩形
             tool_keys,
             longshot_key,
+            ocr_key,
+            ocr_enabled,
             pin_key,
             save,
             color_index: 1, // 默认红色

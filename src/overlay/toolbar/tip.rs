@@ -324,7 +324,7 @@ mod tests {
     }
 
     fn bar_at(sel: SelRect, vw: i32, vh: i32) -> Toolbar {
-        super::super::layout(sel, vw, vh, false, base())
+        super::super::layout(sel, vw, vh, false, false, base())
     }
 
     fn sel(x: i32, y: i32, w: i32, h: i32) -> SelRect {

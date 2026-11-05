@@ -4,6 +4,7 @@
 //! 自启在 `autostart`。
 
 pub mod autostart;
+mod bubble;
 pub mod filedlg;
 pub(crate) mod hotkey;
 pub(crate) mod mouse;
@@ -36,6 +37,10 @@ pub const WM_PIN_FROM_EDITOR: u32 = WM_APP + 3;
 pub const WM_OVERLAY_DONE: u32 = WM_APP + 4;
 /// 贴图窗口 → 主窗口：贴图内边框快捷键已切换（更新默认配置，M2b）。
 pub const WM_PIN_BORDER_CHANGED: u32 = WM_APP + 5;
+/// 覆盖层线程 → 主窗口：取字请求（GlobalAlloc: u32 w + u32 h + i32 x + i32 y + RGBA，OCR-7）。
+pub const WM_OCR_REQUEST: u32 = WM_APP + 6;
+/// 取字卡片 → 主窗口：用户切了「自动复制」开关（wparam = 0 关 / 1 开）。
+pub const WM_OCR_AUTOCOPY_CHANGED: u32 = WM_APP + 7;
 
 /// 截图覆盖层是否在运行（跨线程；截图期间撤销全局贴图热键）。
 /// 鼠标热键（`mouse`）共用：截图期间同样不响应鼠标贴图键。
@@ -174,6 +179,9 @@ impl App {
             palette: crate::theme::palette(crate::theme::resolve(self.config.theme)),
             tool_keys: self.config.tool_keys.clone(),
             longshot_key: self.config.hotkey.longshot_key,
+            // 取字键与开关（OCR-1/OCR-3）：关闭时覆盖层不出现取字入口
+            ocr_key: self.config.hotkey.ocr_key,
+            ocr_enabled: self.config.ocr.enabled,
             // 贴图键（覆盖层内贴选区，默认 F3；ADR 0019：可改为鼠标键）
             pin_key: self.config.hotkey.pin_key,
             default_tool: crate::settings::last_tool(),
@@ -207,6 +215,21 @@ impl App {
             // 通知主线程重注册贴图热键（截图已结束）
             let _ = unsafe { PostMessageW(Some(main_hwnd), WM_OVERLAY_DONE, WPARAM(0), LPARAM(0)) };
         });
+    }
+
+    /// 覆盖层送来的取字请求（OCR-7）：弹气泡并在后台识别。
+    pub fn open_ocr_bubble(&self, hg: windows::Win32::Foundation::HGLOBAL) {
+        let language = self.config.ocr.language_tag().map(|t| t.to_string());
+        bubble::on_request(
+            hg,
+            bubble::Opts {
+                language,
+                auto_copy: self.config.ocr.auto_copy,
+                main_hwnd: self.hwnd,
+                palette: crate::theme::palette(crate::theme::resolve(self.config.theme)),
+                ui: crate::overlay::ui::Ui::resolve(self.config.ui_scale),
+            },
+        );
     }
 
     pub fn not_yet(&self, feature: &str, milestone: &str) {

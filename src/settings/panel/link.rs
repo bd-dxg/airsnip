@@ -23,13 +23,17 @@ pub(super) fn draw_link(pixmap: &mut Pixmap, panel: &Panel, row: &super::control
     draw_trailing(pixmap, panel, row, text, panel.palette.accent);
 }
 
-/// 操作按钮行：左侧标签已由 `draw_row` 用强调色画出，右侧只补一个「›」指示可点。
+/// 操作按钮行：左侧标签已由 `draw_row` 用强调色画出，右侧补当前值与「›」指示可点。
 pub(super) fn draw_action(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
-    let text = match row.id {
-        RowId::ResetKeys => "›",
-        _ => "",
-    };
-    draw_trailing(pixmap, panel, row, text, panel.palette.accent);
+    match row.id {
+        // 识别语言（OCR-6）：右侧直接显示当前选择，点一下切下一个
+        RowId::OcrLang => {
+            let text = format!("{} ›", super::ocr::language_text(&panel.config.ocr));
+            draw_trailing(pixmap, panel, row, &text, panel.palette.accent);
+        }
+        RowId::ResetKeys => draw_trailing(pixmap, panel, row, "›", panel.palette.accent),
+        _ => {}
+    }
 }
 
 /// 版本更新按钮（SYS-7）：真正的按钮外观（圆角底 + 边框 + 居中文字）。
