@@ -85,6 +85,8 @@ fn action_label(action: Action) -> Option<&'static str> {
         Action::Redo => Some("重做"),
         Action::Pin => Some("贴图"),
         Action::Longshot => Some("长截图"),
+        // OCR-3：功能关闭时按钮根本不出现，所以不必再判 `ocr_enabled`
+        Action::Ocr => Some("OCR"),
         Action::Copy => Some("复制"),
         Action::Save => Some("保存"),
         _ => None,
@@ -254,6 +256,7 @@ impl Overlay {
             Action::Tool(Tool::Highlight) => self.tool_keys.highlight,
             Action::Tool(Tool::Glow) => self.tool_keys.glow,
             Action::Longshot => self.longshot_key,
+            Action::Ocr => self.ocr_key,
             Action::Pin => self.pin_key,
             // 硬编码快捷键：与 `wndproc` 的按键分支保持一致
             Action::Undo => return Some("Ctrl+Z".into()),

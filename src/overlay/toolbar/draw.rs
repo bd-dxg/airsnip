@@ -24,7 +24,7 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
     rounded_rect(pixmap, bar.rect, ui.f(7.0), p.bg, Some(p.border));
 
     // 组分隔线：画在每个组首个元素左侧的空白处
-    // 组划分：工具 / 颜色 / 填充 / 撤销 / 贴图·长截图·取字 / 复制·保存。
+    // 组划分：工具 / 颜色 / 填充 / 撤销 / 贴图·长截图·OCR / 复制·保存。
     // 按动作查位置（而不是写死下标）：新增按钮时不会错位
     for anchor in [
         Action::Color(0),

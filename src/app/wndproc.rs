@@ -168,7 +168,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_OCR_REQUEST => {
-            // 覆盖层线程送来的取字请求（OCR-7）：主线程弹气泡并在后台识别
+            // 覆盖层线程送来的 OCR 请求（OCR-7）：主线程弹气泡并在后台识别
             let hg = HGLOBAL(wparam.0 as *mut core::ffi::c_void);
             if let Some(app) = app_from(hwnd) {
                 app.open_ocr_bubble(hg);
@@ -180,7 +180,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(0)
         }
         WM_OCR_AUTOCOPY_CHANGED => {
-            // 取字卡片里切了「自动复制」：写回配置并持久化
+            // OCR 卡片里切了「自动复制」：写回配置并持久化
             if let Some(app) = app_from(hwnd) {
                 let on = wparam.0 != 0;
                 if app.config.ocr.auto_copy != on {

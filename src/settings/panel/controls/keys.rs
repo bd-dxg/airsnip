@@ -38,7 +38,7 @@ pub fn conflict_for(
         ("贴图边框", hk.border_key, hk.border_modifiers, true),
         // 长截图键在覆盖层内无修饰键，与工具键同组
         ("长截图", hk.longshot_key, 0, false),
-        ("取字", hk.ocr_key, 0, false),
+        ("OCR", hk.ocr_key, 0, false),
         ("工具·矩形", tk.rect, 0, false),
         ("工具·箭头", tk.arrow, 0, false),
         ("工具·文本", tk.text, 0, false),
@@ -118,7 +118,7 @@ mod tests {
         assert_eq!(conflict_for(&hk, &tk, RowId::ToolRect, 0x53, 0), Some("长截图"));
     }
 
-    /// 取字键（OCR-3）：默认 T 不冲突；与长截图 / 工具键同键位应报冲突。
+    /// OCR 键（OCR-3）：默认 T 不冲突；与长截图 / 工具键同键位应报冲突。
     #[test]
     fn ocr_key_conflicts() {
         let hk = crate::settings::HotkeyConfig::default();
@@ -126,7 +126,7 @@ mod tests {
         assert_eq!(conflict_for(&hk, &tk, RowId::HotkeyOcr, 0x54, 0), None);
         assert_eq!(conflict_for(&hk, &tk, RowId::HotkeyOcr, 0x53, 0), Some("长截图"));
         assert_eq!(conflict_for(&hk, &tk, RowId::HotkeyOcr, 0x31, 0), Some("工具·矩形"));
-        // 反向：把长截图键改为 T 时也应被取字键拦下
-        assert_eq!(conflict_for(&hk, &tk, RowId::HotkeyLongshot, 0x54, 0), Some("取字"));
+        // 反向：把长截图键改为 T 时也应被 OCR 键拦下
+        assert_eq!(conflict_for(&hk, &tk, RowId::HotkeyLongshot, 0x54, 0), Some("OCR"));
     }
 }

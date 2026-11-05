@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 文字气泡（OCR-7～OCR-10）：取字结果的独立小窗口。
+//! 文字气泡（OCR-7～OCR-10）：OCR 结果的独立小窗口。
 //!
 //! 与截图覆盖层的线程模型不同：气泡跑在**主线程**的消息循环里，所以覆盖层关闭后它仍然存在
-//! （OCR-10），用户可以继续校对、改错字、复制。全局单实例——再次取字时复用同一个窗口。
+//! （OCR-10），用户可以继续校对、改错字、复制。全局单实例——再次 OCR 时复用同一个窗口。
 //!
 //! 分工：`layout` 几何、`ctl` 原生 `EDIT` 文本区、`view` 状态切换与绘制上屏、
 //! `draw` 纯绘制、`interact` 键鼠交互、`wnd` 窗口与消息。
@@ -105,7 +105,7 @@ impl Drop for Bubble {
     }
 }
 
-/// 收到覆盖层的取字请求（OCR-7）：解析载荷、弹气泡、后台识别。
+/// 收到覆盖层的 OCR 请求（OCR-7）：解析载荷、弹气泡、后台识别。
 pub fn on_request(hg: HGLOBAL, opts: Opts) {
     let Some((pixmap, pos)) = take_payload(hg) else {
         return;
@@ -158,7 +158,7 @@ pub fn on_request(hg: HGLOBAL, opts: Opts) {
     });
 }
 
-/// 解析取字载荷：`[u32 w][u32 h][i32 x][i32 y][RGBA]`，返回像素图与选区屏幕坐标。
+/// 解析 OCR 载荷：`[u32 w][u32 h][i32 x][i32 y][RGBA]`，返回像素图与选区屏幕坐标。
 fn take_payload(hg: HGLOBAL) -> Option<(Pixmap, (i32, i32, i32, i32))> {
     unsafe {
         let ptr = GlobalLock(hg);

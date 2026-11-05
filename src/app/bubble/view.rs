@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 气泡视图（OCR-8/OCR-9/OCR-10）：内容状态切换、高度自适应、绘制上屏、命中测试与复制。
 //!
-//! 从 `mod` 拆出：那里只留状态定义、取字请求入口与跨线程载荷，保证单文件不超 300 行。
+//! 从 `mod` 拆出：那里只留状态定义、OCR 请求入口与跨线程载荷，保证单文件不超 300 行。
 //!
 //! 上屏走 `GetDC` + `BitBlt`（普通窗口，内容全不透明）。圆角由 `SetWindowRgn` 裁掉，
 //! 因为文本区是原生 `EDIT` 子控件，分层窗口（`UpdateLayeredWindow`）渲染不了子控件。
@@ -24,7 +24,7 @@ use crate::overlay::surface::create_dib_surface;
 impl Bubble {
     /// 切到「识别中」。
     ///
-    /// **置顶与自动复制开关是跨取字保留的用户偏好**，不在这里重置。
+    /// **置顶与自动复制开关是跨 OCR 保留的用户偏好**，不在这里重置。
     pub fn set_loading(&mut self) {
         self.state = State::Loading;
         self.copied = false;
