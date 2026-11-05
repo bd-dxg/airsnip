@@ -24,7 +24,7 @@ use std::sync::atomic::{AtomicIsize, Ordering};
 use tiny_skia::Pixmap;
 use windows::Win32::Foundation::{GlobalFree, HGLOBAL, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Gdi::{HBITMAP, HDC};
-use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
+use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalSize, GlobalUnlock};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_APP};
 
 use crate::overlay::ui::Ui;
@@ -170,7 +170,18 @@ fn take_payload(hg: HGLOBAL) -> Option<(Pixmap, (i32, i32, i32, i32))> {
         let (w, h) = (*hp, *hp.add(1));
         let sp = hp.add(2) as *const i32;
         let (x, y) = (*sp, *sp.add(1));
-        let len = w as usize * h as usize * 4;
+        // 长度必须校验：`w * h * 4` 在极端值下会溢出（w/h 是 u32），
+        // 且越界读是 UB。载荷虽然来自同进程，但没有理由不校验。
+        let Some(len) = (w as usize).checked_mul(h as usize).and_then(|n| n.checked_mul(4)) else {
+            let _ = GlobalUnlock(hg);
+            let _ = GlobalFree(Some(hg));
+            return None;
+        };
+        if GlobalSize(hg) < 16 + len {
+            let _ = GlobalUnlock(hg);
+            let _ = GlobalFree(Some(hg));
+            return None;
+        }
         let rgba = std::slice::from_raw_parts((ptr as *const u8).add(16), len).to_vec();
         let _ = GlobalUnlock(hg);
         let _ = GlobalFree(Some(hg));

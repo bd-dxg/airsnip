@@ -142,7 +142,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 }
             }
             bubble.paint();
-            focus(bubble);
+            // 只在卡片仍在前台时把焦点还给文本区：识别很快，但用户可能已经切走，
+            // 无条件 `SetForegroundWindow` 会把人家刚切的窗口抢回来
+            if unsafe { GetForegroundWindow() } == hwnd {
+                focus(bubble);
+            }
             LRESULT(0)
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },

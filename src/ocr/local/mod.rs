@@ -248,7 +248,6 @@ mod tests {
     /// **宽图也要放大**：早期只对长边 ≤1200 的图放大，宽截图上的小字照样被拆偏旁
     /// （实测 2003×160：1x 拆 4 处，2x 全对）。
     #[test]
-    #[ignore = "需要 WinRT（桌面会话）"]
     fn wide_image_is_still_scaled_up() {
         super::com::ensure().expect("COM 初始化");
         let pixmap = Pixmap::new(2003, 160).expect("pixmap");
@@ -260,10 +259,10 @@ mod tests {
     /// 大选区不放大（像素预算）：4K 全屏选区 2 倍会吃掉 130MB+。
     #[test]
     fn huge_selection_is_not_scaled() {
+        super::com::ensure().expect("COM 初始化");
         let pixmap = Pixmap::new(3840, 2160).expect("pixmap");
-        let err = bitmap::to_software_bitmap(&pixmap, 10000);
-        // 不放大时 3840 < 10000，应成功
-        assert!(err.is_ok(), "4K 选区不放大后应能转位图");
+        let bmp = bitmap::to_software_bitmap(&pixmap, 10000).expect("4K 选区不放大后应能转位图");
+        assert_eq!(bmp.PixelWidth().expect("w"), 3840, "4K 选区不应放大");
     }
 
     /// 空图直接拒绝（不调用引擎）。
