@@ -21,9 +21,10 @@ static TASKBAR_CREATED: OnceLock<u32> = OnceLock::new();
 /// 托盘图标补加定时器 ID（`WM_TIMER` 里按它识别，SYS-1）。
 pub(super) const TIMER_TRAY_RETRY: usize = 0x7A01;
 /// 补加次数上限与间隔：explorer 刚启动时通知区可能未就绪，NIM_ADD 会失败。
-/// 5 × 1s = 5s，低配机 explorer 重建通知区也能赶上。
-const TRAY_RETRY_MAX: u8 = 5;
-const TRAY_RETRY_MS: u32 = 1000;
+/// 5s × 36 = 3 分钟：开机自启时 explorer 可能晚到两分钟（#77 实测晚 114 秒），
+/// 只在失败态才计时器，不违反待机 0% CPU 红线。
+const TRAY_RETRY_MAX: u8 = 36;
+const TRAY_RETRY_MS: u32 = 5000;
 
 /// `TaskbarCreated` 注册消息 ID（0 表示注册失败）。
 /// 同时供 `wndproc` 用 `ChangeWindowMessageFilterEx` 放行 UIPI 拦截。
