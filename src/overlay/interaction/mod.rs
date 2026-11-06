@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 鼠标与绘制交互（CAP-2、EDT-1/2/3/7）：框选、八向缩放、空格移动选区、选区内绘制标注、
-//! 选中对象的拖动与缩放。命中优先级：
-//! 选中对象的手柄 > 曲线控制柄 > 选区手柄 > 已有对象（选中并可拖动）> 空白处绘制。
-//! 对象手柄与几何变换见 `objedit`；手柄/对象命中判定与选中状态见 `pick`，绘制草稿见 `draft`。
+//! 选中对象的拖动与缩放。命中优先级由 `pick::pick_target` 统一给出（ADR 0023）：
+//! 对象手柄 > 曲线控制柄 > 选区手柄 > 空格移动选区 > Ctrl + 对象本体 > 选中对象包围框边缘
+//! > 对象内部（绘制，薄位移松手则选中）> 空白处绘制。
+//! 对象手柄与几何变换见 `objedit`；命中判定见 `pick`，绘制草稿见 `draft`。
 
 mod draft;
 
 use super::geometry::SelRect;
-use super::objedit::{self, ObjHandle};
-use super::pick::{Handle, hit_handle};
-use super::wndproc::space_down;
+use super::objedit::ObjHandle;
+use super::pick::{Handle, PickTarget};
+
+/// 「拖了下」的判据（像素）：对象内部按下后位移超过它就转成绘制（ADR 0023 §3）。
+/// 与 `pick::is_degenerate` 的 2px 呼应——小于它的草稿本来就会被丢弃。
+pub(super) const CLICK_SLOP: i32 = 2;
 
 /// 交互阶段。
 #[derive(Clone, Copy, PartialEq)]
@@ -31,13 +35,28 @@ pub(super) struct Drag {
     py: i32,
 }
 
+/// 「按下但还没决定干什么」：对象内部的按下先落到这里（ADR 0023 §3）。
+/// 拖出 `CLICK_SLOP` 才转成绘制；直接松手则只选中 `index`。空白处的按下不走这里（那里立即绘制）。
+#[derive(Clone, Copy)]
+pub(super) struct PendingClick {
+    pub(super) x: i32,
+    pub(super) y: i32,
+    /// 按下处命中的对象：无位移松手时选中它。
+    pub(super) index: usize,
+}
+
 impl super::Overlay {
     /// 方向键微调（EDT-7 / CAP-2）：有选中对象 → 移动该对象（限制在选区内）；
     /// 否则 → 移动选区框（标注不跟随，允许落到选区外，导出以选区为准）。
     /// 每次按键 = 一步撤销。
     pub(super) fn nudge(&mut self, dx: i32, dy: i32) {
-        // 拖动/绘制中忽略：这些流程每帧从按下时的几何重算，微调会被覆盖
-        if self.obj_drag.is_some() || self.ctrl_drag.is_some() || self.drag.is_some() || self.draft.is_some() {
+        // 拖拽 / 绘制 / 单击待定中忽略：这些流程每帧从按下时的几何重算，微调会被覆盖
+        if self.obj_drag.is_some()
+            || self.ctrl_drag.is_some()
+            || self.drag.is_some()
+            || self.draft.is_some()
+            || self.pending_click.is_some()
+        {
             return;
         }
         if self.selected.is_some() {
@@ -87,70 +106,69 @@ impl super::Overlay {
             self.commit_text();
         }
         self.down_started_draw = false;
-        let new = match self.selection {
-            None => Some(self.begin_select(x, y)),
-            Some(sel) => {
-                // 1) 选中对象的八向手柄（EDT-7）：可能压在选区装饰或对象描边上，最优先
-                if let Some(i) = self.selected
-                    && let Some(h) = self
-                        .doc
-                        .objects()
-                        .get(i)
-                        .and_then(|o| objedit::hit_handle(o, x, y, self.ui))
-                {
-                    self.begin_obj_drag(i, h, x, y);
-                    return;
-                }
-                // 2) 曲线控制柄（EDT-3）：控制点常落在自己线身上，需先于「选中对象」判定
-                if let Some(index) = self.hit_control(x, y) {
-                    self.begin_control_drag(index);
-                    return;
-                }
-                if let Some(handle) = hit_handle(sel, x, y, self.ui) {
-                    self.drag = Some(Drag {
-                        handle,
-                        orig: sel,
-                        px: x,
-                        py: y,
-                    });
-                    self.phase = Phase::Adjusting;
-                    Some(sel)
-                } else if sel.contains(x, y) {
-                    if space_down() {
-                        // 按住空格拖动：移动整个选区（CAP-2）
-                        self.drag = Some(Drag {
-                            handle: Handle::Move,
-                            orig: sel,
-                            px: x,
-                            py: y,
-                        });
-                        self.phase = Phase::Adjusting;
-                        Some(sel)
-                    } else if let Some(i) = self.hit_object(x, y) {
-                        // 点中已有对象：选中并可直接拖动（EDT-7）；
-                        // 无位移的按下退化为单击选中，只有真正移动才进撤销栈
-                        self.begin_obj_drag(i, ObjHandle::Move, x, y);
-                        return;
-                    } else {
-                        // 空白处按下：用当前工具绘制标注（EDT-1/EDT-2/EDT-3）
-                        self.set_selected(None);
-                        self.down_started_draw = true;
-                        self.start_draw(x, y);
-                        return;
-                    }
-                } else {
-                    // 远处点击：开始新选区，并取消选中
+        let target = self.pick_target(x, y, super::wndproc::ctrl_down());
+        match target {
+            PickTarget::ObjHandle(i, h) => self.begin_obj_drag(i, h, x, y),
+            PickTarget::CurveCtrl(index) => self.begin_control_drag(index),
+            PickTarget::SelHandle(h) => {
+                self.drag = Some(Drag {
+                    handle: h,
+                    orig: sel_of(self.selection),
+                    px: x,
+                    py: y,
+                });
+                self.phase = Phase::Adjusting;
+            }
+            // 按住空格拖动：移动整个选区（CAP-2）
+            PickTarget::MoveSelection => {
+                self.drag = Some(Drag {
+                    handle: Handle::Move,
+                    orig: sel_of(self.selection),
+                    px: x,
+                    py: y,
+                });
+                self.phase = Phase::Adjusting;
+            }
+            // 移动对象：无位移的松手退化为单击选中（不进撤销栈）
+            PickTarget::ObjBody(i) => self.begin_obj_drag(i, ObjHandle::Move, x, y),
+            // 绘制优先（ADR 0023）：对象内部按下不立即建草稿——
+            // 聚光灯按下即暗化全选区，按下就建草稿会闪一下；也不在此改选中，
+            // 否则按下瞬间旧手柄会跳一下。改选中与起笔都推到“确实要画”之后。
+            PickTarget::Inside(i) => {
+                // 文本工具是「点击即放置」（EDT-4），不能延迟：否则对象内部永远放不下文字
+                if self.tool == crate::editor::Tool::Text {
                     self.set_selected(None);
-                    Some(self.begin_select(x, y))
+                    self.start_draw(x, y);
+                } else {
+                    self.pending_click = Some(PendingClick { x, y, index: i });
                 }
             }
-        };
-        self.set_selection(new);
+            // 空白处按下就是绘制（含文本工具点击放置）：立即置位，
+            // `down_started_draw` 兼作「双击完成截图」的判据（M3）
+            PickTarget::InsideEmpty => {
+                self.down_started_draw = true;
+                self.set_selected(None);
+                self.start_draw(x, y);
+            }
+            PickTarget::None => {
+                self.set_selected(None);
+                let sel = self.begin_select(x, y);
+                self.set_selection(Some(sel));
+            }
+        }
     }
 
     pub(super) fn on_mouse_move(&mut self, x: i32, y: i32) {
         // Shift 约束（EDT-1/EDT-2/EDT-7）：新建与二次编辑共用同一状态
         let shift = super::wndproc::shift_down();
+        // 对象内部按下后拖出阈值：转为绘制新标注（ADR 0023）
+        if let Some(p) = self.pending_click {
+            if (x - p.x).abs() > CLICK_SLOP || (y - p.y).abs() > CLICK_SLOP {
+                self.pending_click = None;
+                self.begin_pending_draw(p, x, y);
+            }
+            return;
+        }
         // 拖动选中对象（EDT-7）
         if self.obj_drag.is_some() {
             self.drag_obj(x, y, shift);
@@ -218,6 +236,11 @@ impl super::Overlay {
     }
 
     pub(super) fn on_lbutton_up(&mut self) {
+        // 对象内部「单击」（未拖出阈值）：退化为选中，不画任何东西（ADR 0023 §3）
+        if let Some(p) = self.pending_click.take() {
+            self.set_selected(Some(p.index));
+            return;
+        }
         // 结束对象拖动（EDT-7）：无位移视为单击（仅选中），不进撤销栈
         if self.obj_drag.is_some() {
             self.end_obj_drag();
@@ -258,4 +281,18 @@ impl super::Overlay {
         });
         sel
     }
+
+    /// 对象内部按下后拖出阈值：在按下点起笔，再按当前鼠标位置走一帧草稿（ADR 0023）。
+    /// 注意不能设 `down_started_draw`：它兼作「双击选区空白完成截图」的判据，
+    /// 在这里置位会让“双击对象”误触发完成截图。
+    fn begin_pending_draw(&mut self, p: PendingClick, x: i32, y: i32) {
+        self.set_selected(None);
+        self.start_draw(p.x, p.y);
+        self.on_mouse_move(x, y);
+    }
+}
+
+/// 选区存在性已在 `pick_target` 里保证，这里取默认值只为避免 `Option` 字段传染。
+fn sel_of(sel: Option<SelRect>) -> SelRect {
+    sel.unwrap_or(SelRect { x: 0, y: 0, w: 0, h: 0 })
 }

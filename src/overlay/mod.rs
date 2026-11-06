@@ -5,8 +5,10 @@
 //!
 //! 文件分工：`wndproc` 消息分发、`setup` 窗口创建、`geometry` 矩形运算、`surface` 像素缓冲与上屏、
 //! `cursor` 光标、`selection` 脏区重绘、`interaction` 鼠标交互、`pick` 对象选中与控制柄、
-//! `objedit` 对象手柄与拖动缩放、`font` 字体设置与字体面板、`annotate` 标注与输出、`toolbar` 工具栏、
-//! `ui` 按显示器 DPI 的界面缩放。
+//! `objedit` 对象手柄与拖动缩放、`wheel` 滚轮调属性、`font` 字体设置与字体面板、`annotate` 标注与输出、
+//! `toolbar` 工具栏、`ui` 按显示器 DPI 的界面缩放。
+//! 按下优先级（ADR 0023）见 `pick::pick_target`：手柄 > 曲线控制柄 > 选区手柄 > 空格移动选区
+//! > Ctrl + 对象 > 选中对象框边 > 对象内部（绘制）> 空白绘制。
 
 mod annotate;
 mod control;
@@ -26,6 +28,7 @@ mod text_edit_state;
 mod textinput;
 pub(crate) mod toolbar;
 pub(crate) mod ui;
+mod wheel;
 mod wndproc;
 
 use tiny_skia::Pixmap;
@@ -99,6 +102,8 @@ pub struct Overlay {
     filled: bool,
     /// 正在拖拽、尚未提交的标注对象。
     draft: Option<Object>,
+    /// 按下但还没决定是「画」还是「选中」的点击（ADR 0023）：对象内部与选区内空白都先记一笔。
+    pending_click: Option<interaction::PendingClick>,
     /// 上次左键按下是否启动了选区内空白绘制（双击完成截图判据，M3）。
     /// 不用 `draft.is_some()`：双击第一击的草稿会在弹起时被提交/丢弃。
     pub down_started_draw: bool,
