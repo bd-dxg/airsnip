@@ -64,7 +64,7 @@
 - 另存为：PNG / JPEG / WebP（无损），弹出系统对话框自选路径与格式
 - 文件名模板：`airsnip-20241231-235959` / 时间戳 / 仅日期；记住上次目录与格式，连拍不打断
 
-### OCR 文字识别（v0.8.0 预发布）
+### OCR 文字识别
 - 框选后按 `T` 或点工具栏「OCR」：覆盖层立刻关闭，弹出文字卡片
 - 识别走 Windows 自带的 `Windows.Media.Ocr`——图片不出本机、不联网、不要 API key、不计费
 - 卡片内可直接改错字：拖选、`Ctrl+A/C/V/X/Z`、右键菜单、输入法候选框跟随光标、长文本滚轮滚动
@@ -141,14 +141,14 @@
 ```powershell
 cargo run                 # 开发版（不提权，可调试）
 cargo build --release     # 发布版（manifest 要求管理员权限，单文件）
-cargo test                # 单测（264 项，另 11 项需 --ignored 手动触发）
+cargo test                # 单测（280 项，另 14 项需 --ignored 手动触发）
 cargo fmt --check         # 格式化检查
 cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
 pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip / .exe
 pwsh scripts/gen-latest-json.ps1 -Notes "说明"  # 生成并签名自动更新清单 latest.json
 ```
 
-技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.8.0-beta.1。
+技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.8.1。
 
 ## 已知限制
 
