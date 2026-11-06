@@ -1,6 +1,6 @@
 # 9. 界面图标统一（SVG 图标集 + 包围盒归一化）
 
-- **Status**: Accepted
+- **Status**: Accepted（部分结论已被 ADR 0010 / 0015 修订，见文末「后续变更」）
 - **Context**: 覆盖层工具栏的 19 个按钮图标、长截图状态条的 3 个按钮图标，此前全部是**手绘几何**（`overlay/toolbar/icons.rs` + `icons/actions.rs`）：每个图标各写一套 `PathBuilder`、各自的线宽（1.4/1.5/1.6/1.8/2.0/2.2）、各自的端点样式（Round 与 Butt/Miter 混用）、各自硬编码的偏移魔数（`r.x + 6.0`、`r.x + 8.0`）。结果是 17 个图标 17 种画法，视觉重量差 2–3 倍，且撤销图标在 `longshot/bar.rs` 里被重复实现了一遍（半径 6.5 vs 6.0）。B/I/字号加减号又走 DirectWrite 字形，与几何图标不同源。需要一个可维护、可替换、风格一致的方案。
 - **Decision**:
   1. **图标是资源文件，不是代码**：`assets/icons/ui/{toolbar,status}/*.svg`，文件名即 `Icon` 变体的小写形式（`Icon::Longshot` → `toolbar/longshot.svg`），`render/icon/data.rs` 用 `include_str!` 一一对应，缺文件编译期报错。
@@ -16,3 +16,16 @@
   - 素材风格目前是混合的：`rect`（虚线框）、`blur`（散点）来自外部图标集，笔画在 26px 下低于 1.5px，边缘会发灰（墨水 11.1% / 12.8%，是全组最轻的两个）。已在 `assets/icons/ui/README.md` 标注；若后续反馈看不清，换成自绘的实心版本即可。
   - 遗留：外部图标集（`arrow/highlight/pin/copy/save/rect/text/blur/glow/longshot/check/cross`）的**许可证与出处未登记**，发布前必须确认与 GPL-3.0-only 兼容并补进 `THIRD-PARTY.md`。
   - 后续（用户提出，未实现）：圆角改为在对象上提供内部控制柄（矩形/高斯模糊/高亮/聚光灯通用），届时可移除工具栏的「圆角」开关按钮。
+
+## 后续变更（由后续 ADR 修订本文，正文保持当时原样）
+
+| 本文写的 | 现状 | 来源 |
+|---|---|---|
+| 覆盖层工具栏 19 个按钮图标 | 现行 `assets/icons/ui/toolbar/` 为 **18 个 SVG**（圆角开关已由 ADR 0010 移除，OCR 按钮由 OCR 一期新增；B / I / 字号加减号也从 DirectWrite 字形改为 SVG） | ADR 0010、ADR 0015、ADR 0022 |
+| 素材多为外部混合风格，`rect` / `blur` 墨水 11.1% / 12.8%，边缘发灰 | 全组换为 **Material Symbols（outlined，Apache-2.0）**，墨水 11.8%～37.6% | ADR 0015、`assets/icons/ui/README.md` |
+| 「许可证与出处未登记」的遗留项 | **已消除**：换源后许可证链完整，已登记进 `THIRD-PARTY.md` | ADR 0015 |
+| `optical_scale` 微调：实心油漆桶 0.95、字号加减号 0.78 | 现值：`save` 0.92、`delete` 0.85、`ocr` 0.9，其余 1.0 | `src/render/icon/mod.rs` |
+| 墨水覆盖率测试区间 5%–45% | **5%–48%**（`src/render/icon/mod.rs`） | ADR 0015 换源后重定 |
+| 状态语义中「开关类（填充、圆角、B、I）」 | 圆角开关已不存在，只剩填充 / B / I | ADR 0010 |
+
+结论不变：图标仍是 `assets/icons/ui/` 下的 SVG 资源 + 包围盒归一化绘制 + 视觉重量测试守门，换源没有改动这条管线。

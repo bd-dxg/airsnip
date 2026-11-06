@@ -10,7 +10,7 @@
 | GPU | 无独显，仅 CPU 核显（渲染全程 CPU） |
 | 系统 | Windows 11 |
 | 构建 | `cargo build --release`（`lto="fat"`、`opt-level="z"`、`strip=true`） |
-| 二进制体积 | 0.98 MB（目标 ≤5 MB） |
+| 二进制体积 | 0.98 MB（测量时为 v0.5–v0.6；v0.8.0-beta.1 因静态 CRT + OCR 增至 1.38 MB，优化结论不变） |
 
 ## 测量方法
 
