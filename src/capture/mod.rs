@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 抓屏（CAP-1）：一次性抓取全部虚拟屏幕（含负坐标/混合 DPI 布局，CAP-5）。
-//! 以 `BitBlt`（`CAPTUREBLT`）为主，输出 BGRA 像素与 RGBA 预乘副本供 tiny-skia 使用。
+//!
+//! HDR 桌面下走 DXGI Desktop Duplication 取 FP16 帧再色调映射（`hdr`，issue #75）；
+//! 纯 SDR 环境仍用 `BitBlt`（`CAPTUREBLT`），更快且行为已验证。
+//! 两条路径输出同为 BGRA→RGBA 后的像素数据，供 tiny-skia 使用。
+
+mod hdr;
+mod hdr_display;
+mod tonemap;
 
 use std::mem::size_of;
 use std::ptr::null_mut;
@@ -74,11 +81,21 @@ fn swap_rb_parallel(buf: &mut [u8]) {
 
 /// 抓取屏幕指定区域（长截图逐帧采集视口用，LNG-2/3）。
 /// 屏幕坐标为物理像素；区域越界部分自动裁切（BitBlt 源在屏幕外返回黑像素）。
+///
+/// HDR 模式下走 DDA + 色调映射（否则长截图同样会过曝），纯 SDR 仍用 BitBlt。
 pub fn capture_region(x: i32, y: i32, w: u32, h: u32) -> Result<CapturedScreen, String> {
+    if w == 0 || h == 0 {
+        return Err("区域尺寸为 0，无法抓屏".into());
+    }
+    if let Some(result) = hdr::capture_region(x, y, w, h) {
+        return result;
+    }
+    capture_region_bitblt(x, y, w, h)
+}
+
+/// GDI `BitBlt` 抓取指定区域。
+fn capture_region_bitblt(x: i32, y: i32, w: u32, h: u32) -> Result<CapturedScreen, String> {
     unsafe {
-        if w == 0 || h == 0 {
-            return Err("区域尺寸为 0，无法抓屏".into());
-        }
         let hdc_screen = GetDC(None);
         if hdc_screen.0.is_null() {
             return Err("GetDC 失败".into());
@@ -140,7 +157,18 @@ pub fn capture_region(x: i32, y: i32, w: u32, h: u32) -> Result<CapturedScreen, 
 }
 
 /// 抓取整个虚拟屏幕（一次，冻结画面）。
+///
+/// 有显示器处于 HDR 模式时走 DDA + 色调映射，否则走 GDI `BitBlt`。
 pub fn capture_virtual_screen() -> Result<CapturedScreen, String> {
+    // HDR 路径返回 None 表示无需介入（纯 SDR 环境），继续走下面的 BitBlt。
+    if let Some(result) = hdr::capture_virtual_screen() {
+        return result;
+    }
+    capture_virtual_screen_bitblt()
+}
+
+/// GDI `BitBlt` 抓取整个虚拟屏幕（纯 SDR 环境的快路径）。
+fn capture_virtual_screen_bitblt() -> Result<CapturedScreen, String> {
     let t0 = std::time::Instant::now();
     unsafe {
         let vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
