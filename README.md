@@ -1,6 +1,6 @@
 # AirSnip（轻截）
 
-**1 MB 的 Windows 截图标注工具。** 常驻内存 1.2 MB、待机 0% CPU、按热键 0.12 秒出画面——
+**1.4 MB 的 Windows 截图标注工具。** 常驻内存 1.2 MB、待机 0% CPU、按热键 0.12 秒出画面——
 标注、二次编辑、长截图、贴图、多格式另存，功能一样不少。
 
 > 纯 CPU 渲染，不依赖 GPU、不套 Electron、不装运行时。解压即用的绿色单文件，在核显迷你主机、虚拟机、远程桌面里同样流畅。
@@ -13,8 +13,8 @@
 
 | 指标 | 实测 | 说明 |
 |---|---|---|
-| **单文件体积** | **1.21 MB** | 绿色免安装，一个 exe 就是全部 |
-| **下载包** | **0.67 MB** | zip，含文档与许可证 |
+| **单文件体积** | **1.38 MB** | 绿色免安装，一个 exe 就是全部 |
+| **下载包** | **0.77 MB** | zip，含文档与许可证 |
 | **待机内存** | **1.2 MB** | 常驻托盘时的 Private Working Set |
 | **待机 CPU** | **0.00%** | 事件驱动，无定时轮询 |
 | **热键 → 可用画面** | **124 ms** | 2560×1440：全屏抓取 + 暗化 + 覆盖层就绪 |
@@ -130,14 +130,14 @@
 ```powershell
 cargo run                 # 开发版（不提权，可调试）
 cargo build --release     # 发布版（manifest 要求管理员权限，单文件）
-cargo test                # 单测（220 项）
+cargo test                # 单测（258 项，另 12 项需 --ignored 手动触发）
 cargo fmt --check         # 格式化检查
 cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
 pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip / .exe
 pwsh scripts/gen-latest-json.ps1 -Notes "说明"  # 生成并签名自动更新清单 latest.json
 ```
 
-技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.6.0。
+技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.8.0-beta.1。
 
 ## 已知限制
 
