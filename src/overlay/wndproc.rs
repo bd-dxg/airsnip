@@ -200,6 +200,19 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             }
             LRESULT(0)
         }
+        // F10 是系统菜单键、Alt+键 也走 `WM_SYSKEYDOWN`（普通键才走 `WM_KEYDOWN`，见 #90）：
+        // 只接管「没按 Alt」（lparam bit 29）的动作键，其余透传保留 Alt+F4 / Alt+S 等组合。
+        WM_SYSKEYDOWN => {
+            let vk = wparam.0 as u32;
+            let alt_down = (lparam.0 as u32 >> 29) & 1 != 0;
+            let action =
+                vk == overlay.pin_key || vk == overlay.longshot_key || (vk == overlay.ocr_key && overlay.ocr_enabled);
+            if alt_down || overlay.is_editing_text() || !action {
+                return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+            }
+            overlay.on_aux_key(vk);
+            LRESULT(0)
+        }
         // 文本字符（EDT-4）：普通字符经 TranslateMessage 转 WM_CHAR；IME 候选经组合消息
         WM_CHAR => {
             if overlay.is_editing_text() {
