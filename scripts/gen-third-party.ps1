@@ -52,7 +52,8 @@ foreach ($lic in @(
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("- 来源：https://github.com/google/material-design-icons（``symbols/web/*/materialsymbolsoutlined``）")
 [void]$sb.AppendLine("- 许可证：Apache-2.0，https://www.apache.org/licenses/LICENSE-2.0")
-[void]$sb.AppendLine('- 使用范围：`assets/icons/ui/` 下全部 19 个 SVG（`toolbar/*` 与 `status/*`）。仅去掉 `width`/`height`、给 `<path>` 补 `fill="currentColor"`，图形未做其他修改。')
+$iconCount = @(Get-ChildItem (Join-Path $root "assets/icons/ui") -Recurse -Filter *.svg).Count
+[void]$sb.AppendLine('- 使用范围：`assets/icons/ui/` 下全部 ' + $iconCount + ' 个 SVG（`toolbar/*` / `status/*` / `panel/*`）。仅去掉 `width`/`height`、给 `<path>` 补 `fill="currentColor"`，图形未做其他修改。')
 [void]$sb.AppendLine()
 [void]$sb.AppendLine("### 本项目自绘")
 [void]$sb.AppendLine()

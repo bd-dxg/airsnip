@@ -32,6 +32,10 @@ status/{check,cross}.svg
 全组 **19 个界面图标**统一取自 Material Symbols 的 `materialsymbolsoutlined` 变体，
 映射关系记录在 `assets/icons/ui/README.md` 的「来源」表。
 
+> 数量变化（本 ADR 之后）：v0.7.0 加了设置面板的清除按钮（`panel/delete.svg`），
+> v0.8.0 开发期又加 OCR 按钮（`toolbar/ocr.svg`），现全组 **21 个**（toolbar 18 / status 2 / panel 1）；
+> `optical_scale` 不再只有 `save`，另加 `delete` 0.85、`ocr` 0.9。换源决策本身未变。
+
 清洗规则（保持渲染端不变）：
 
 - 去掉 `width` / `height`，保留素材原 `viewBox`（`0 -960 960 960`，少数为 `0 0 24 24`）

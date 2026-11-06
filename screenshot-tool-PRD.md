@@ -137,7 +137,7 @@
 | 热键 | 截图（默认 F1）、贴图（默认 F3）、长截图键（截图覆盖层内，默认 S），冲突检测与无修饰键提示 |
 | 截图 | 文件命名模板（日期+时间 / Unix 毫秒时间戳 / 仅日期）；保存路径与格式在系统「另存为」对话框中选择；是否自动复制、窗口吸附开关 |
 | 编辑 | 各工具默认颜色 / 线宽 / 字体 |
-| 外观 | 主题：跟随系统 / 浅色 / 深色；界面字体（默认 Microsoft YaHei UI） |
+| 外观 | 主题：跟随系统 / 浅色 / 深色；界面缩放（自动 / 100%～200%，见 ADR 0016）；界面字体（默认 Microsoft YaHei UI） |
 | 关于 | 版本号、开源许可 |
 | OCR 翻译 | 总开关、OCR 开关、识别语言（二期：翻译服务商与密钥） |
 
@@ -213,7 +213,7 @@ longshot/   滚动控制、帧采集、拼接、固定区域检测
 output/     剪贴板、文件保存、编码线程
 settings/   配置读写、设置面板 UI
 theme/      系统主题检测与调色板
-ocr/        （二期）Provider 抽象、WinHTTP 客户端、密钥存储
+ocr/        本地识别（Windows.Media.Ocr）、行序重排；文字气泡在 app/bubble/，翻译 provider 待二期
 ```
 
 ### 6.3 关键设计点
@@ -237,11 +237,11 @@ ocr/        （二期）Provider 抽象、WinHTTP 客户端、密钥存储
 | M0 骨架 | 托盘、热键、单实例、配置、自启、主题检测、清单文件（DPI） | S |
 | M1 截图主流程 | 抓屏、覆盖层、框选、暗化、复制、保存 | M |
 | M2 编辑器 | 对象模型、撤销重做、矩形 / 箭头（含曲线）/ 高亮 / 文本 / 模糊 | L |
-| M2b 贴图与导出格式 | 贴图窗口、F3 双入口流程（已实装；WebP 编码未做） | M |
+| M2b 贴图与导出格式 | 贴图窗口、F3 双入口流程（已实装；含 WebP 无损导出，见 ADR 0006） | M |
 | M3 设置面板 | 自绘面板、全部一期设置项、深浅色（已实装，含工具快捷键/冲突检测） | M |
 | M4 长截图 | 手动滚动、拼接、固定区域、失败处理、结果预览（已实装；自动滚动已移除） | L |
 | M5 打磨 | 性能剖析、多屏混合 DPI 测试、打包、图标、文档（许可证合规 + 性能剖析 + 打包分发已实装；多屏测试因无环境暂跳） | M |
-| 二期 OCR | OCR（本地 `Windows.Media.Ocr`）+ 独立文字气泡、三级开关 | M |
+| 二期 OCR | OCR（本地 `Windows.Media.Ocr`）+ 独立文字气泡、三级开关（**OCR 一期已交付，随 v0.8.0-beta.1 预发布**；翻译未做） | M |
 | 二期翻译 | 翻译 Provider（OpenAI 兼容优先）、DPAPI 密钥、隐私授权 | M |
 | 二期其他 | 渐变样式 | S |
 
@@ -263,7 +263,7 @@ ocr/        （二期）Provider 抽象、WinHTTP 客户端、密钥存储
 ## 9. 开源与许可
 - 项目开源，协议确定为 **GPL-3.0-only**。
 - 仓库根目录放置 `LICENSE`（GPL-3.0 全文），源文件头标注 `SPDX-License-Identifier: GPL-3.0-only`；发布二进制时同时提供对应源码的获取方式。
-- 当前依赖（windows-rs、tiny-skia、png、image-webp、jpeg-encoder 等 71 个 crate）均为宽松许可证（MIT / Apache-2.0 / BSD / Zlib / 0BSD / Unlicense / Unicode-3.0 / IJG），与 GPL-3.0 兼容。已实装：根目录 `deny.toml` + `cargo deny check`（许可证 / 安全公告 / 来源 / 重复版本四类检查，全绿）；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 从 `cargo metadata` 生成；设置面板「关于」页提供「第三方许可 → 查看清单」入口（浏览器打开仓库中的声明）。
+- 当前依赖（windows-rs、tiny-skia、png、image-webp、jpeg-encoder 等 98 个 crate）均为宽松许可证（MIT / Apache-2.0 / BSD / Zlib / 0BSD / Unlicense / Unicode-3.0 / IJG），与 GPL-3.0 兼容。已实装：根目录 `deny.toml` + `cargo deny check`（许可证 / 安全公告 / 来源 / 重复版本四类检查，全绿）；`THIRD-PARTY.md` 由 `scripts/gen-third-party.ps1` 从 `cargo metadata` 生成；设置面板「关于」页提供「第三方许可 → 查看清单」入口（浏览器打开仓库中的声明）。
 - 后续引入新依赖须确认与 GPL-3.0 兼容（MIT、BSD、Apache-2.0 兼容；仅限 GPL-2.0-only 的代码不兼容）。
 - 若接受外部贡献，需在仓库中明确贡献协议（如 DCO 或 CLA）。
 
