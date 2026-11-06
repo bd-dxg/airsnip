@@ -101,6 +101,13 @@
 
 全局热键默认 `F1` 截图、`F3` 贴图，可在设置面板修改；无修饰键会抢占其他程序按键，建议用 `Ctrl` / `Alt` 组合。
 
+## 系统要求
+
+- **Windows 10 及以上（64 位）**；Windows 11 已实测。只提供 x64 构建。
+- **Windows 7 / 8 / 8.1 无法运行**，且不是功能缺失——exe 在加载阶段就会被系统拒绝，双击后通常弹「无法定位程序输入点 WaitOnAddress 于动态链接库 KERNEL32.dll 上」或被提示缺少 `api-ms-win-core-synch-l1-2-0.dll`，进程起不来。
+
+  原因：程序静态导入了 Windows 10 之前不存在的系统 API——`WaitOnAddress`（Windows 8 引入，Rust 标准库从 1.78 起用它做锁）、`GetDpiForMonitor`（8.1）、`GetDpiForWindow`（10 1607），以及 WinRT OCR 的 `RoInitialize` / `RoGetActivationFactory`（Windows 8 引入，而 `Windows.Media.Ocr` 只在 Windows 10 上存在）。这些是导入表里的必解析项，无法运行时降级；要在 Win7 上跑需要自行编译 Rust 标准库（tier-3 目标 `x86_64-win7-windows-msvc`）并砍掉 OCR，本项目不做这个取舍。完整原因与导入项清单见 [#94](https://github.com/bd-dxg/airsnip/issues/94)。
+
 ## 下载与使用
 
 1. 从 [Releases](https://github.com/bd-dxg/airsnip/releases) 下载 `airsnip-v*-win-x64.zip`，解压到任意目录（绿色单文件，无需安装）
