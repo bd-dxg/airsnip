@@ -23,7 +23,6 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
 use crate::settings::Config;
-use crate::theme;
 use wndproc::create_message_window;
 
 /// 消息窗口类名（`FindWindowW` 唤起已有实例时用到）。
@@ -269,14 +268,6 @@ impl App {
             let mut cfg = self.config.clone();
             cfg.pin_border = next;
             cfg.save();
-        }
-    }
-
-    /// WM_SETTINGCHANGE：主题变更时刷新（SYS-6）。
-    fn handle_setting_change(&self, lparam: LPARAM) {
-        if theme::is_theme_change(lparam.0 as usize) {
-            // M0 记录当前主题；设置面板（M3）与覆盖层（M1）消费。
-            let _ = theme::system_theme();
         }
     }
 
