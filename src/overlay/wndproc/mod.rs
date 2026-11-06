@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 覆盖层窗口过程：消息分发、修饰键状态（Ctrl/Shift/空格）。
+//! 覆盖层窗口过程：消息分发。修饰键状态（Ctrl/Shift/空格）与 IME 读取在 `keys`。
+
+mod keys;
+
+pub(super) use keys::{ctrl_down, ime_string, shift_down, space_down};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT};
-use windows::Win32::UI::Input::Ime::{IME_COMPOSITION_STRING, ImmGetVirtualKey};
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus, VK_SNAPSHOT};
+use windows::Win32::UI::Input::Ime::ImmGetVirtualKey;
+use windows::Win32::UI::Input::KeyboardAndMouse::{SetFocus, VK_SNAPSHOT};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::Overlay;
@@ -266,45 +270,5 @@ fn app_from(hwnd: HWND) -> Option<&'static mut Overlay> {
         } else {
             Some(&mut *(ptr as *mut Overlay))
         }
-    }
-}
-
-/// 修饰键是否按下（`GetKeyState` 高位为 1 表示按下）。
-fn key_down(vk: i32) -> bool {
-    unsafe { GetKeyState(vk) as u16 & 0x8000 != 0 }
-}
-
-fn ctrl_down() -> bool {
-    key_down(0x11)
-}
-
-/// Shift 是否按下（文本输入修饰键 / 绘制约束 EDT-1·EDT-2）。
-pub(super) fn shift_down() -> bool {
-    key_down(0x10)
-}
-
-/// 空格键是否按下（按住空格拖动可移动整个选区，CAP-2）。
-pub(super) fn space_down() -> bool {
-    key_down(0x20)
-}
-
-/// 从 IME 上下文读取组合串/结果串（UTF-16 → String，EDT-4）。
-pub(super) fn ime_string(hwnd: HWND, what: IME_COMPOSITION_STRING) -> String {
-    unsafe {
-        use windows::Win32::UI::Input::Ime::{ImmGetCompositionStringW, ImmGetContext, ImmReleaseContext};
-        let ctx = ImmGetContext(hwnd);
-        if ctx.0.is_null() {
-            return String::new();
-        }
-        let len = ImmGetCompositionStringW(ctx, what, None, 0);
-        let out = if len <= 0 {
-            String::new()
-        } else {
-            let mut buf = vec![0u16; (len / 2) as usize];
-            ImmGetCompositionStringW(ctx, what, Some(buf.as_mut_ptr() as *mut core::ffi::c_void), len as u32);
-            String::from_utf16_lossy(&buf)
-        };
-        let _ = ImmReleaseContext(hwnd, ctx);
-        out
     }
 }

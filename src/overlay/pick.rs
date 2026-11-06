@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 命中测试与选中状态（EDT-3/EDT-7）：选区八向手柄、已有对象、曲线控制柄。
-//! 控制柄位置即曲线控制点 P1/P2（直线箭头时落在 1/3、2/3 处）。
+//! 命中测试与选中状态（EDT-3/EDT-7）：选区八向手柄、已有对象、曲线控制柄、
+//! 选中对象的包围框边缘。控制柄位置即曲线控制点 P1/P2（直线箭头时落在 1/3、2/3 处）。
+//!
+//! 「整块命中」与「按下目标」是两件事（ADR 0023）：`hit_object` 只用于对象级操作，
+//! 左键按下走 `pick_target`，它把命中结果分流为「绘制」或「移动 / 缩放」。
+//! 滚轮与属性调整在 `wheel`。
 
 use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke, Transform};
 
 use crate::editor::{Kind, Object, Point};
 
-use super::geometry::{SelRect, expand_rect, union_rect};
+use super::geometry::{SelRect, expand_rect};
+use super::objedit;
 use super::ui::Ui;
 
 /// 曲线控制柄半径基准值（含描边，需 ≤ 对象包围盒的余量）。
@@ -24,7 +29,7 @@ pub(super) fn pick_radius(ui: Ui) -> i32 {
 }
 
 /// 选区手柄类型（八向 + 移动）；对象手柄见 `objedit::ObjHandle`。
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Debug)]
 pub(super) enum Handle {
     N,
     S,
@@ -58,6 +63,56 @@ pub(super) fn hit_handle(sel: SelRect, x: i32, y: i32, ui: Ui) -> Option<Handle>
         }
     }
     None
+}
+
+/// 左键按下的命中目标（ADR 0023）：决定这次按下是「绘制」还是「移动 / 缩放」，
+/// 也是光标形状的唯一依据（两者必须一致，否则「看到的光标 ≠ 按下会发生的事」）。
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(super) enum PickTarget {
+    /// 什么都没命中：选区内框选、选区外重新框选。
+    None,
+    /// 选中对象的控制柄 → 缩放 / 圆角 / 拉端点。
+    ObjHandle(usize, objedit::ObjHandle),
+    /// 曲线控制柄 → 改弯曲。
+    CurveCtrl(usize),
+    /// 选区八向手柄 → 缩放选区。
+    SelHandle(Handle),
+    /// 空格 + 选区内 → 移动整个选区。
+    MoveSelection,
+    /// 对象本体（Ctrl 按下，或命中选中对象的包围框边缘）→ 移动该对象。
+    ObjBody(usize),
+    /// 命中对象内部但要走绘制通道：拖动 = 画新标注，无位移松手 = 选中该对象。
+    Inside(usize),
+    /// 选区内空白：直接绘制。
+    InsideEmpty,
+}
+
+/// 包围框边缘环带命中（ADR 0023 §2）：`frame_of` 外扩 / 内缩 `pick_radius` 的框线，
+/// 宽或高 ≤ 2×`pick_radius` 时退化整块（否则极小对象抓不到边、无法拖动）。
+/// 箭头不画包围框（只有两端点手柄），故不参与。
+pub(in crate::overlay) fn hit_frame_edge(obj: &Object, x: i32, y: i32, ui: Ui) -> bool {
+    if matches!(obj.kind, Kind::Arrow { .. }) {
+        return false;
+    }
+    let f = objedit::frame_of(obj);
+    let pick = pick_radius(ui);
+    // 整块包围盒（含外扩）：小对象直接判定整块
+    let (ox, oy) = (f.x - pick, f.y - pick);
+    let (ow, oh) = ((f.w + 2 * pick).max(0), (f.h + 2 * pick).max(0));
+    if !(x >= ox && x < ox + ow && y >= oy && y < oy + oh) {
+        return false;
+    }
+    if f.w <= 2 * pick || f.h <= 2 * pick {
+        return true;
+    }
+    // 环带 = 外框 − 内框（内框为包围盒内缩 pick）
+    let inner = SelRect {
+        x: f.x + pick,
+        y: f.y + pick,
+        w: f.w - 2 * pick,
+        h: f.h - 2 * pick,
+    };
+    !inner.contains(x, y)
 }
 
 /// 误触判定：长宽均不足 2px 的对象丢弃（EDT-1/EDT-2）。
@@ -97,10 +152,59 @@ impl super::Overlay {
     }
 
     /// 命中已有对象：从上层往下找（列表顺序即 z 序，EDT-7）。
+    /// 「整块命中」只服务对象级操作（双击编辑文本 / 恢复直线、滚轮调属性、单击选中）；
+    /// 左键按下时「移动还是绘制」由 `pick_target` 决定（ADR 0023）。
     pub(super) fn hit_object(&self, x: i32, y: i32) -> Option<usize> {
         let q = Point::new(x as f32, y as f32);
         let tol = pick_radius(self.ui) as f32;
         self.doc.objects().iter().rposition(|o| o.hit(q, tol))
+    }
+
+    /// 左键按下时的命中目标（ADR 0023）。
+    pub(super) fn pick_target(&self, x: i32, y: i32, ctrl: bool) -> PickTarget {
+        let ui = self.ui;
+        // 1) 选中对象的控制柄（EDT-7）：可能压在选区装饰或对象描边上，最优先
+        if let Some((index, handle)) = self
+            .selected
+            .and_then(|i| self.doc.objects().get(i).map(|o| (i, o)))
+            .and_then(|(i, o)| objedit::hit_handle(o, x, y, ui).map(|h| (i, h)))
+        {
+            return PickTarget::ObjHandle(index, handle);
+        }
+        // 2) 曲线控制柄（EDT-3）：控制点常落在自己线身上，需先于「选中对象」判定
+        if let Some(index) = self.hit_control(x, y) {
+            return PickTarget::CurveCtrl(index);
+        }
+        let Some(sel) = self.selection else {
+            return PickTarget::None;
+        };
+        // 3) 选区八向手柄（CAP-2）
+        if let Some(h) = hit_handle(sel, x, y, ui) {
+            return PickTarget::SelHandle(h);
+        }
+        if !sel.contains(x, y) {
+            return PickTarget::None;
+        }
+        // 4) 空格 + 选区内：移动整个选区（CAP-2），优先于对象
+        if super::wndproc::space_down() {
+            return PickTarget::MoveSelection;
+        }
+        // 5) Ctrl + 对象本体：移动该对象（ADR 0023 §2）
+        if let Some(index) = self.hit_object(x, y) {
+            if ctrl {
+                return PickTarget::ObjBody(index);
+            }
+            // 6) 选中对象的包围框边缘：移动（框外靠描边选中的箭头也走这条）
+            if let Some(i) = self.selected
+                && self.doc.objects().get(i).is_some_and(|o| hit_frame_edge(o, x, y, ui))
+            {
+                return PickTarget::ObjBody(i);
+            }
+            // 7) 其余命中对象内部：绘制优先（ADR 0023 §1）
+            return PickTarget::Inside(index);
+        }
+        // 8) 选区内空白：用当前工具绘制
+        PickTarget::InsideEmpty
     }
 
     /// 选中对象占据的像素区域。
@@ -113,97 +217,8 @@ impl super::Overlay {
             h: c.3 - c.1,
         })
     }
-
-    /// 鼠标滚轮（EDT-7/EDT-4）：悬停在线条/矩形边框 / 模糊区域 / 文本上时，
-    /// 滚轮连续调整线宽、模糊半径或字号（Ctrl 3 倍步进）；无悬停对象时调整当前工具默认值。
-    /// `sx`/`sy` 为屏幕坐标，需减虚拟屏幕原点转覆盖层坐标。
-    pub(super) fn on_mouse_wheel(&mut self, sx: i32, sy: i32, delta: i16, ctrl: bool) {
-        let (x, y) = (sx - self.capture.origin_x, sy - self.capture.origin_y);
-        let step = if ctrl { 3.0 } else { 1.0 } * if delta > 0 { 1.0 } else { -1.0 };
-        // 文本输入中：滚轮调整输入字号（EDT-4）
-        if let Some(edit) = self.text_edit.as_mut() {
-            edit.font_size = (edit.font_size + step).clamp(10.0, 96.0);
-            self.font_size = edit.font_size;
-            self.repaint_text_edit();
-            return;
-        }
-        if let Some(i) = self.hit_object(x, y) {
-            self.adjust_object(i, step);
-        } else {
-            // 空白处滚动：只改默认值，供下一次绘制沿用
-            match self.tool {
-                crate::editor::Tool::Rect | crate::editor::Tool::Arrow => {
-                    self.line_width = (self.line_width + step).clamp(1.0, 32.0);
-                }
-                crate::editor::Tool::Text => {
-                    self.font_size = (self.font_size + step).clamp(10.0, 96.0);
-                }
-                crate::editor::Tool::Blur => self.blur_radius = (self.blur_radius + step).clamp(4.0, 64.0),
-                crate::editor::Tool::Highlight | crate::editor::Tool::Glow => {}
-            }
-        }
-    }
-
-    /// 调整指定对象的线宽 / 模糊半径 / 字号（差分入撤销栈），并同步全局默认值。
-    fn adjust_object(&mut self, i: usize, step: f32) {
-        let before = self.selected_clip();
-        self.doc.begin();
-        let changed = {
-            let obj = &mut self.doc.objects_mut()[i];
-            let changed = match &mut obj.kind {
-                Kind::Rect { .. } | Kind::Arrow { .. } => {
-                    let w = (obj.style.width + step).clamp(1.0, 32.0);
-                    let changed = (w - obj.style.width).abs() > 0.01;
-                    if changed {
-                        obj.style.width = w;
-                        self.line_width = w;
-                    }
-                    changed
-                }
-                Kind::Blur { radius, .. } => {
-                    let r = (*radius + step).clamp(4.0, 64.0);
-                    let changed = (r - *radius).abs() > 0.01;
-                    if changed {
-                        *radius = r;
-                        self.blur_radius = r;
-                    }
-                    changed
-                }
-                // 高亮/聚光：无可调属性
-                Kind::Highlight { .. } | Kind::Glow { .. } => false,
-                // 文本：字号连续可调，同步重建测量缓存（EDT-4）
-                Kind::Text { font_size, .. } => {
-                    let fs =
-                        (*font_size + step).clamp(crate::editor::FONT_SIZE_RANGE.0, crate::editor::FONT_SIZE_RANGE.1);
-                    let changed = (*font_size - fs).abs() > 0.01;
-                    if changed {
-                        *font_size = fs;
-                        self.font_size = fs;
-                    }
-                    changed
-                }
-            };
-            // 非文本对象与未变字号下 remeasure 无操作
-            if changed {
-                crate::render::text::remeasure(&mut obj.kind);
-            }
-            changed
-        };
-        self.doc.commit(changed);
-        if !changed {
-            return;
-        }
-        let after = self.selected_clip();
-        let dirty = union_rect(before, after);
-        if let Some(d) = dirty {
-            self.repaint(expand_rect(d, 4));
-        }
-        if let Some(bar) = &self.bar {
-            // 撤销可用性与字号显示可能变化
-            self.repaint(expand_rect(bar.rect, 2));
-        }
-    }
 }
+
 /// 选中箭头的控制柄（EDT-3）：控制点处画圆点，与端点之间用虚线辅助线连接。
 pub(super) fn draw_curve_handles(pixmap: &mut Pixmap, obj: &Object, ui: Ui) {
     let (Some(cps), Kind::Arrow { from, to, .. }) = (obj.kind.control_points(), &obj.kind) else {
@@ -259,4 +274,102 @@ pub(super) fn dashed_line(pixmap: &mut Pixmap, a: Point, b: Point, ui: Ui) {
         ..Default::default()
     };
     pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::editor::{Kind, Object, Point, Style};
+
+    /// 基准缩放（100% DPI）：`pick_radius` = 6px。
+    fn base() -> Ui {
+        Ui::from_dpi(96)
+    }
+
+    fn rect_like(kind: Kind) -> Object {
+        Object {
+            kind,
+            style: Style::new([255, 0, 0, 255], 2.0),
+        }
+    }
+
+    /// 大矩形：框边环带命中、内部不命中（内部要留给绘制，ADR 0023）。
+    #[test]
+    fn frame_edge_hits_border_band_only() {
+        let (a, b) = (Point::new(50.0, 50.0), Point::new(250.0, 150.0));
+        let obj = rect_like(Kind::Rect {
+            a,
+            b,
+            radius: 0.0,
+            filled: false,
+        });
+        let ui = base();
+        let f = objedit::frame_of(&obj);
+        // 左边框上（含外扩 6px 内）→ 命中
+        assert!(hit_frame_edge(&obj, f.x, f.y + f.h / 2, ui), "边框上应命中");
+        assert!(hit_frame_edge(&obj, f.x - 5, f.y + f.h / 2, ui), "边框外 5px 应命中");
+        assert!(hit_frame_edge(&obj, f.x, f.y, ui), "左上角应命中");
+        // 内部（距边 10px 以上）→ 不命中
+        assert!(!hit_frame_edge(&obj, f.x + f.w / 2, f.y + f.h / 2, ui), "内部不应命中");
+        // 外侧更远 → 不命中
+        assert!(!hit_frame_edge(&obj, f.x - 20, f.y + f.h / 2, ui), "远处不应命中");
+    }
+
+    /// 极小对象（宽或高 ≤ 2×pick）退化为整块：否则抓不到边、无法拖动。
+    #[test]
+    fn tiny_object_hits_whole_block() {
+        let obj = rect_like(Kind::Glow {
+            a: Point::new(100.0, 100.0),
+            b: Point::new(108.0, 108.0),
+            corner: 0.0,
+        });
+        let ui = base();
+        let f = objedit::frame_of(&obj);
+        assert!(hit_frame_edge(&obj, f.x + 2, f.y + 2, ui), "小对象内部也应算框边");
+    }
+
+    /// 区域类对象（高亮 / 模糊 / 聚光）都有自己的包围框，框边可拖动。
+    #[test]
+    fn area_kinds_have_draggable_frame() {
+        let (a, b) = (Point::new(0.0, 0.0), Point::new(200.0, 100.0));
+        for kind in [
+            Kind::Highlight { a, b, corner: 0.0 },
+            Kind::Blur {
+                a,
+                b,
+                radius: 16.0,
+                corner: 0.0,
+            },
+            Kind::Glow { a, b, corner: 0.0 },
+        ] {
+            let obj = rect_like(kind);
+            let f = objedit::frame_of(&obj);
+            assert!(
+                hit_frame_edge(&obj, f.x, f.y + f.h / 2, base()),
+                "{obj:?} 的框边应可拖动"
+            );
+        }
+    }
+
+    /// 箭头只画两端点手柄、不画包围框，不参与框边命中（否则整条框都能拖）。
+    #[test]
+    fn arrow_has_no_frame_edge() {
+        let obj = rect_like(Kind::arrow(Point::new(0.0, 0.0), Point::new(100.0, 100.0)));
+        assert!(!hit_frame_edge(&obj, 0, 0, base()), "箭头不应有框边命中");
+    }
+
+    /// 命中半径随界面缩放放大（CAP-5）：100% 下 8px 外不命中，200% 下命中。
+    #[test]
+    fn frame_edge_scales_with_dpi() {
+        let obj = rect_like(Kind::Rect {
+            a: Point::new(50.0, 50.0),
+            b: Point::new(250.0, 150.0),
+            radius: 0.0,
+            filled: false,
+        });
+        let f = objedit::frame_of(&obj);
+        let (x, y) = (f.x - 8, f.y + f.h / 2);
+        assert!(!hit_frame_edge(&obj, x, y, base()), "100% 下 8px 外不应命中");
+        assert!(hit_frame_edge(&obj, x, y, Ui::from_dpi(192)), "200% 下 8px 内应命中");
+    }
 }

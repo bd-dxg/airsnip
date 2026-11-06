@@ -85,6 +85,7 @@ impl Overlay {
             font_list: None,
             filled: false,
             draft: None,
+            pending_click: None,
             down_started_draw: false,
             selected: None,
             ctrl_drag: None,

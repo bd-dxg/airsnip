@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 光标（CAP-2 / EDT-7）：按鼠标位置实时选择形状——
-//! 手柄 → 对应方向缩放光标、对象本体与曲线控制柄 → 四向移动、按住空格 → 抓手、其余 → 十字。
+//! 手柄 → 对应方向缩放光标、空格 → 抓手、对象内部 → 十字（要画新标注）、
+//! `Ctrl` + 对象与选中对象包围框边缘 → 四向移动。
+//! 判定直接复用 `pick::pick_target`，保证「看到的光标 = 按下会发生的事」（ADR 0023）。
 //! 自绘形状（十字 / 抓手）见 `paint`，方向与移动光标用系统内置。
 
 mod paint;
@@ -17,7 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::PCWSTR;
 
 use super::objedit::ObjHandle;
-use super::pick::Handle;
+use super::pick::{Handle, PickTarget};
 use super::ui::Ui;
 use super::wndproc::space_down;
 
@@ -110,8 +112,8 @@ impl super::Overlay {
         self.apply_cursor_at(p.x, p.y);
     }
 
-    /// 当前位置的光标形状。判定顺序与 `interaction::on_lbutton_down` 的命中优先级一致
-    /// （对象手柄 > 曲线控制柄 > 选区手柄 > 对象本体），保证「看到的光标 = 按下会发生的事」。
+    /// 当前位置的光标形状。直接复用 `interaction::on_lbutton_down` 的命中判定
+    /// （`pick::pick_target`），保证「看到的光标 = 按下会发生的事」（ADR 0023）。
     pub(super) fn cursor_at(&self, x: i32, y: i32) -> Shape {
         // 拖动中：沿用按下时对应的形状，不因鼠标暂时离开手柄而变回十字
         if let Some(d) = &self.obj_drag {
@@ -135,31 +137,19 @@ impl super::Overlay {
         {
             return Shape::Arrow;
         }
-        if let Some(sel) = self.selection {
-            if let Some(i) = self.selected
-                && let Some(h) = self
-                    .doc
-                    .objects()
-                    .get(i)
-                    .and_then(|o| super::objedit::hit_handle(o, x, y, self.ui))
-            {
-                return obj_shape(h);
-            }
-            if self.hit_control(x, y).is_some() {
-                // 曲线控制柄：拖动改变弯曲程度，用四向移动光标
-                return Shape::Move;
-            }
-            if let Some(h) = super::pick::hit_handle(sel, x, y, self.ui) {
-                return sel_shape(h);
-            }
-            if self.hit_object(x, y).is_some() {
-                return Shape::Move;
-            }
-        }
+        // 空格按住时抓手优先：此时鼠标在哪都能拖选区（cursor_at 先跳过工具栏判定）
         if space_down() {
             return Shape::Hand;
         }
-        Shape::Cross
+        match self.pick_target(x, y, super::wndproc::ctrl_down()) {
+            PickTarget::ObjHandle(_, h) => obj_shape(h),
+            // 曲线控制柄：拖动改变弯曲程度，用四向移动光标
+            PickTarget::CurveCtrl(_) => Shape::Move,
+            PickTarget::SelHandle(h) => sel_shape(h),
+            PickTarget::MoveSelection | PickTarget::ObjBody(_) => Shape::Move,
+            // 对象内部与空白都走绘制通道：十字才是诚实的（ADR 0023 §5）
+            PickTarget::Inside(_) | PickTarget::InsideEmpty | PickTarget::None => Shape::Cross,
+        }
     }
 }
 
