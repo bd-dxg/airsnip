@@ -78,6 +78,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             }
             LRESULT(0)
         }
+        // 右键取消：与 Esc 共用分层回退，避免误触一次性丢失标注（OUT-3/ADR 0027）
         WM_RBUTTONUP => {
             overlay.on_cancel();
             LRESULT(0)
@@ -164,16 +165,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 return LRESULT(0);
             }
             match vk {
-                // Esc：先收起取色面板 / 字体面板（EDT-4/EDT-7），否则取消截图
-                0x1B => {
-                    if overlay.color_panel_open() {
-                        overlay.close_color_panel();
-                    } else if overlay.font_list_open() {
-                        overlay.close_font_list();
-                    } else {
-                        overlay.on_cancel();
-                    }
-                }
+                // Esc：与右键共用分层取消（先收面板 / 取消输入；有标注则二次确认，OUT-3/ADR 0027）
+                0x1B => overlay.on_cancel(),
                 0x0D => overlay.on_copy(),                     // Enter
                 0x43 if ctrl_down() => overlay.on_copy(),      // Ctrl+C
                 0x53 if ctrl_down() => overlay.on_save(),      // Ctrl+S 保存（弹另存为对话框）

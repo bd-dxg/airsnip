@@ -292,6 +292,14 @@ pub fn message_box(owner: Option<HWND>, text: &str, flags: MESSAGEBOX_STYLE) {
     unsafe { MessageBoxW(owner, PCWSTR(ws.as_ptr()), w!("AirSnip"), flags) };
 }
 
+/// 弹「是 / 否」确认框，仅点「是」返回 true（取消截图的误触防护，见 ADR 0027）。
+/// `owner` 为 None 时使用当前活动窗口。
+pub fn confirm(owner: Option<HWND>, text: &str) -> bool {
+    let ws: Vec<u16> = text.encode_utf16().chain([0]).collect();
+    let r = unsafe { MessageBoxW(owner, PCWSTR(ws.as_ptr()), w!("AirSnip"), MB_YESNO | MB_ICONWARNING) };
+    r == IDYES
+}
+
 /// 将字符串写入固定长度 u16 数组（用于 NOTIFYICONDATAW.szTip 等）。
 pub fn wide_array<const N: usize>(s: &str) -> [u16; N] {
     let mut arr = [0u16; N];

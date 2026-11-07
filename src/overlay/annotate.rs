@@ -160,8 +160,31 @@ impl super::Overlay {
         });
     }
 
-    /// 右键取消（OUT-3）。
+    /// 取消截图（OUT-3 / ADR 0027）：`Esc` 与右键共用。分层回退，
+    /// 只有会丢失已完成的标注时才二次确认，避免一次误触清空全部工作（issue #114）。
     pub(super) fn on_cancel(&mut self) {
+        match cancel_step(
+            self.color_panel_open(),
+            self.font_list_open(),
+            self.is_editing_text(),
+            !self.doc.is_empty(),
+        ) {
+            CancelStep::ColorPanel => self.close_color_panel(),
+            CancelStep::FontPanel => self.close_font_list(),
+            // 文本 / 序号输入中右键 = 完成本次输入（保留文字），而非丢弃；
+            // Esc 取消输入走 `on_text_key`（键盘路径），不经过这里。
+            CancelStep::CommitText => self.commit_text(),
+            CancelStep::Confirm => {
+                if crate::app::confirm(Some(self.hwnd), "当前标注尚未保存，确定放弃并退出截图？") {
+                    self.exit_cancel();
+                }
+            }
+            CancelStep::Exit => self.exit_cancel(),
+        }
+    }
+
+    /// 直接取消：置标志并投递关闭消息，由消息循环退出覆盖层。
+    fn exit_cancel(&mut self) {
         self.cancelled = true;
         unsafe {
             let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
@@ -357,5 +380,55 @@ impl super::Overlay {
         unsafe {
             let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
+    }
+}
+
+/// 取消截图的分层步骤（OUT-3 / ADR 0027）：由内向外逐层回退，
+/// 只有会丢标注时才需确认。
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(super) enum CancelStep {
+    /// 收起取色面板。
+    ColorPanel,
+    /// 收起字体面板。
+    FontPanel,
+    /// 完成当前文本 / 序号输入（右键语义：保留已输入内容）。
+    CommitText,
+    /// 有未保存标注，二次确认。
+    Confirm,
+    /// 直接退出。
+    Exit,
+}
+
+/// 取消分层决策（纯函数，便于单测）：面板优先于输入，输入优先于退出；
+/// 有标注时改为确认。
+pub(super) fn cancel_step(color_panel: bool, font_panel: bool, editing: bool, has_annotations: bool) -> CancelStep {
+    if color_panel {
+        CancelStep::ColorPanel
+    } else if font_panel {
+        CancelStep::FontPanel
+    } else if editing {
+        CancelStep::CommitText
+    } else if has_annotations {
+        CancelStep::Confirm
+    } else {
+        CancelStep::Exit
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 分层优先级：取色面板 > 字体面板 > 文本输入 > （有标注？确认）> 退出。
+    #[test]
+    fn cancel_step_recedes_layer_by_layer() {
+        assert_eq!(cancel_step(true, true, true, true), CancelStep::ColorPanel);
+        assert_eq!(cancel_step(false, true, true, true), CancelStep::FontPanel);
+        assert_eq!(cancel_step(false, false, true, true), CancelStep::CommitText);
+        // 无面板 / 无输入：有标注需确认，否则直接退出
+        assert_eq!(cancel_step(false, false, false, true), CancelStep::Confirm);
+        assert_eq!(cancel_step(false, false, false, false), CancelStep::Exit);
+        // 有标注不会绕过前面的层
+        assert_eq!(cancel_step(false, true, false, true), CancelStep::FontPanel);
     }
 }
