@@ -7,7 +7,7 @@ use tiny_skia::Pixmap;
 
 use crate::editor::Tool;
 use crate::overlay::SelRect;
-use crate::overlay::shape::{rounded_rect, rounded_rect_outline};
+use crate::overlay::shape::rounded_rect;
 use crate::overlay::toolbar::{Action, State, Toolbar};
 use crate::overlay::ui::Ui;
 use crate::render::icon::{self, Icon};
@@ -20,6 +20,10 @@ use super::label::{LABEL_SIZE_BASE, centered_text, divider, fit_name, left_text}
 const PLUS_INK_LUMA: u32 = 140;
 /// 「＋」标记占色块边长的比例。
 const PLUS_ICON_RATIO: f32 = 0.6;
+/// 选中色块光晕的层数（由内向外每层扩 1 个基准像素）。
+const GLOW_LAYERS: usize = 7;
+/// 由内到外每层的不透明度（索引即扩展像素数）：越靠内越亮，叠出向外的长衰减。
+const GLOW_ALPHAS: [u8; GLOW_LAYERS + 1] = [0, 150, 95, 70, 52, 40, 30, 22];
 
 /// 绘制工具栏到像素图。
 pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
@@ -95,6 +99,10 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     h: r.h - inset * 2,
                 };
                 let color = crate::editor::swatch(i, state.custom_color);
+                // 正在使用的颜色：色块以自身颜色发光，替代早期的蓝色描边（EDT-7 后续）
+                if i == state.color {
+                    draw_glow(pixmap, swatch, ui.f(4.0), color, ui);
+                }
                 rounded_rect(pixmap, swatch, ui.f(4.0), color, Some(p.swatch_border));
                 // 自定义槽：叠一个小「＋」，提示点击可自选颜色（issue #73）
                 if i == crate::editor::CUSTOM_INDEX {
@@ -105,9 +113,6 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     };
                     let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
                     icon::draw(pixmap, Icon::Plus, cx, cy, r.w.min(r.h) as f32 * PLUS_ICON_RATIO, ink);
-                }
-                if i == state.color {
-                    rounded_rect_outline(pixmap, *r, ui.f(4.0), p.accent);
                 }
             }
             // 文本 / 序号工具无背景功能：填充开关置灰禁用
@@ -145,6 +150,27 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                 centered_text(pixmap, *r, &text, &spec, p.text);
             }
         }
+    }
+}
+
+/// 选中色块的光晕：用色块自身的颜色叠几层低透明度圆角矩形，
+/// 由外到内逐层加亮，纯 CPU 近似柔和发光（不引 GPU / 高斯模糊，符合无独显目标）。
+fn draw_glow(pixmap: &mut Pixmap, swatch: SelRect, radius: f32, color: [u8; 4], ui: Ui) {
+    for k in (1..=GLOW_LAYERS).rev() {
+        let e = ui.px(k as f32);
+        let layer = SelRect {
+            x: swatch.x - e,
+            y: swatch.y - e,
+            w: swatch.w + e * 2,
+            h: swatch.h + e * 2,
+        };
+        rounded_rect(
+            pixmap,
+            layer,
+            radius + e as f32,
+            [color[0], color[1], color[2], GLOW_ALPHAS[k]],
+            None,
+        );
     }
 }
 
