@@ -169,7 +169,9 @@ impl super::Overlay {
             let (w, h) = (cropped.width(), cropped.height());
             let px_total = w as usize * h as usize * 4;
             unsafe {
-                // 载荷头：u32 w + u32 h + i32 x + i32 y（选区在屏幕上的位置，PIN 定位用）
+                // 载荷头：u32 w + u32 h + i32 x + i32 y（选区屏幕位置 = 画布坐标 + 虚拟屏原点，
+                // 与 on_ocr / on_longshot 同一换算；单屏原点为 (0,0) 时二者相等，
+                // 多屏布局（副屏在左/上）漏加会导致贴图整体偏移 |原点| 像素）
                 let Ok(hg) = GlobalAlloc(GMEM_MOVEABLE, 16 + px_total) else {
                     // 分配失败：提示并保留覆盖层（用户可重按 F3 重试，审查 P2-1）
                     crate::app::message_box(None, "贴图内存分配失败，请关闭部分贴图后重试。", MB_OK | MB_ICONERROR);
@@ -185,8 +187,8 @@ impl super::Overlay {
                 *hp = w;
                 *hp.add(1) = h;
                 let sp = hp.add(2) as *mut i32;
-                *sp = sel.x;
-                *sp.add(1) = sel.y;
+                *sp = sel.x + self.capture.origin_x;
+                *sp.add(1) = sel.y + self.capture.origin_y;
                 std::ptr::copy_nonoverlapping(cropped.data().as_ptr(), (ptr as *mut u8).add(16), px_total);
                 let _ = GlobalUnlock(hg);
                 let _ = PostMessageW(
