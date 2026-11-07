@@ -40,6 +40,7 @@ impl super::Overlay {
         // 选区变化后字体面板的位置失效（EDT-4）：收起并连旧区域一起重绘
         let old_chrome = self.chrome_rect();
         self.font_list = None;
+        self.color_panel = None;
         self.bar = new.map(|s| toolbar::layout(s, vw, vh, self.text_row_visible(), self.ocr_enabled, self.ui));
         let new_chrome = self.chrome_rect();
 
@@ -143,9 +144,10 @@ impl super::Overlay {
             draw_curve_handles(&mut self.display, &obj, self.ui);
         }
         // 2c) 文本输入框（EDT-4；仅屏幕显示，提交后为对象）
+        let edit_color = self.current_color();
         if let Some(edit) = &self.text_edit {
             if intersect_rect(expand_rect(edit.region(), 2), region).is_some() {
-                textinput::draw_edit(&mut self.display, edit, crate::editor::PALETTE[self.color_index]);
+                textinput::draw_edit(&mut self.display, edit, edit_color);
             }
         }
         // 3) 选区边框与手柄（只在与选区装饰区域相交时重画）
@@ -169,6 +171,13 @@ impl super::Overlay {
             let (family, ..) = self.font_state();
             let panel = self.font_list.clone().expect("已判定为 Some");
             toolbar::fontlist::render(&mut self.display, &panel, &family, self.palette);
+        }
+        // 5b) 自定义颜色面板（EDT-7，issue #73）：同样位于工具栏之外
+        if let Some(rect) = self.color_panel.as_ref().map(|p| p.rect)
+            && intersect_rect(expand_rect(rect, 2), region).is_some()
+            && let Some(panel) = self.color_panel.as_ref()
+        {
+            toolbar::colorpanel::render(&mut self.display, panel, self.palette);
         }
         // 6) 选区尺寸提示（HUD）：走 DirectWrite 栅格化，与工具栏文字同一套渲染
         if let Some(sel) = self.selection {

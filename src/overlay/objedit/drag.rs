@@ -138,7 +138,7 @@ impl super::super::Overlay {
         let Some(i) = self.selected else {
             return;
         };
-        let color = crate::editor::PALETTE[self.color_index];
+        let color = self.current_color();
         let filled = self.filled;
         let before = self.selected_clip();
         self.doc.begin();

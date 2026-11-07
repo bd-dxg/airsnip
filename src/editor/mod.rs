@@ -8,6 +8,7 @@ mod curve;
 mod document;
 mod hit;
 mod number;
+pub(crate) mod palette;
 pub(crate) mod text;
 mod transform;
 
@@ -17,6 +18,7 @@ pub use curve::{
 };
 pub use document::{Document, MAX_HISTORY};
 pub use number::{next_number, number_arrow_start};
+pub use palette::{CUSTOM_DEFAULT, CUSTOM_INDEX, PALETTE, SWATCH_COUNT, custom_color_store, custom_color_take, swatch};
 pub use transform::{ArrowEnd, scale_factors, snap_direction, square_corner};
 
 /// 坐标点。
@@ -270,15 +272,6 @@ pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei UI";
 
 /// 字号可调范围（滚轮 / 第二行 −+ 共用）。
 pub const FONT_SIZE_RANGE: (f32, f32) = (10.0, 96.0);
-
-/// 颜色调色板（RGBA）。透明度由工具栏后续提供，当前固定 255。
-pub const PALETTE: [[u8; 4]; 5] = [
-    [255, 255, 255, 255],
-    [229, 57, 53, 255],
-    [251, 140, 0, 255],
-    [67, 160, 71, 255],
-    [30, 136, 229, 255],
-];
 
 #[cfg(test)]
 mod tests {

@@ -196,6 +196,8 @@ pub struct Config {
     pub pin_border: bool,
     /// 覆盖层界面缩放（CAP-5，默认自动）：4K@100% 这类高密度屏需要手动放大。
     pub ui_scale: UiScale,
+    /// 自定义标注颜色（EDT-7，issue #73）：工具栏取色按钮选定，None 表示尚未取过色。
+    pub custom_color: Option<[u8; 4]>,
     /// 保存文件名模板（OUT-2）。
     pub name_style: NameStyle,
     /// 上次保存用的格式扩展名（OUT-2，运行时记忆）：保存对话框下次默认选中该格式。
@@ -224,6 +226,7 @@ impl Default for Config {
             pin_position: PinPosition::Original,
             pin_border: true,
             ui_scale: UiScale::Auto,
+            custom_color: None,
             name_style: NameStyle::DateTime,
             last_save_ext: None,
             last_save_dir: None,
@@ -422,5 +425,19 @@ mod tests {
                 assert!(m.factor().is_some(), "{m:?} 应有固定倍率");
             }
         }
+    }
+
+    /// 自定义颜色（EDT-7）：旧配置缺字段回退 None，新值能往返。
+    #[test]
+    fn custom_color_defaults_and_roundtrip() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.custom_color, None, "旧配置应无自定义颜色");
+
+        let cfg = Config {
+            custom_color: Some([142, 36, 170, 255]),
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.custom_color, Some([142, 36, 170, 255]));
     }
 }

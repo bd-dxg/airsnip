@@ -71,9 +71,9 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let sx = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let sy = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
             let delta = ((wparam.0 >> 16) & 0xFFFF) as u16 as i16; // ±120 单位
-            // 字体面板上的滚轮用于滚动列表（EDT-4），不调节字号
+            // 字体面板上的滚轮用于滚动列表（EDT-4）；取色面板上滚轮不调节字号
             let (ox, oy) = (sx - overlay.capture.origin_x, sy - overlay.capture.origin_y);
-            if !overlay.on_font_list_wheel(ox, oy, delta) {
+            if !overlay.on_font_list_wheel(ox, oy, delta) && !overlay.over_color_panel(ox, oy) {
                 overlay.on_mouse_wheel(sx, sy, delta, ctrl_down());
             }
             LRESULT(0)
@@ -164,9 +164,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 return LRESULT(0);
             }
             match vk {
-                // Esc：先收起字体面板（EDT-4），否则取消截图
+                // Esc：先收起取色面板 / 字体面板（EDT-4/EDT-7），否则取消截图
                 0x1B => {
-                    if overlay.font_list_open() {
+                    if overlay.color_panel_open() {
+                        overlay.close_color_panel();
+                    } else if overlay.font_list_open() {
                         overlay.close_font_list();
                     } else {
                         overlay.on_cancel();

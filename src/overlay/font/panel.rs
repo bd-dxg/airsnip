@@ -11,14 +11,18 @@ use crate::overlay::toolbar::{self, fontlist::FontPanel};
 use super::FontChange;
 
 impl Overlay {
-    /// 展开 / 收起字体面板。
+    /// 展开 / 收起字体面板（与取色面板互斥）。
     pub(in crate::overlay) fn toggle_font_list(&mut self) {
-        let old = self.font_list.as_ref().map(|p| p.rect);
-        self.font_list = if self.font_list.is_some() {
-            None
+        let old = union_rect(
+            self.font_list.as_ref().map(|p| p.rect),
+            self.color_panel.as_ref().map(|p| p.rect),
+        );
+        if self.font_list.is_some() {
+            self.font_list = None;
         } else {
-            self.open_font_list()
-        };
+            self.close_color_panel();
+            self.font_list = self.open_font_list();
+        }
         if let Some(dirty) = union_rect(old, self.font_list.as_ref().map(|p| p.rect)) {
             self.repaint(expand_rect(dirty, 2));
         }

@@ -25,6 +25,7 @@ impl Overlay {
             ocr_enabled,
             pin_key,
             default_tool,
+            custom_color,
             save,
             ui_scale,
         } = opts;
@@ -76,6 +77,7 @@ impl Overlay {
             pin_key,
             save,
             color_index: 1, // 默认红色
+            custom_color,
             line_width: editor::DEFAULT_LINE_WIDTH,
             blur_radius: editor::DEFAULT_BLUR_RADIUS,
             font_size: editor::DEFAULT_FONT_SIZE,
@@ -84,6 +86,9 @@ impl Overlay {
             bold: false,
             italic: false,
             font_list: None,
+            color_panel: None,
+            color_edit: false,
+            color_edit_before: None,
             filled: false,
             draft: None,
             pending_click: None,
