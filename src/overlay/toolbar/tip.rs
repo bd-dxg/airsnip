@@ -2,40 +2,26 @@
 //! 控件悬浮提示（EDT-10）：鼠标悬停工具栏按钮或圆角控制柄约 400ms 后，
 //! 在其外侧弹出小气泡显示「名称 · 快捷键」；悬停立即给按钮底色，按下鼠标即隐藏。
 //! 决策与取舍（不加开关、一次性定时器）见 `docs/adr/0020-control-tooltips.md`。
+//! 气泡几何与绘制见 `paint` 子模块。
 
-use tiny_skia::{Pixmap, Transform};
 use windows::Win32::UI::WindowsAndMessaging::{KillTimer, SetTimer};
 
-use crate::editor::{Point, Tool};
+use crate::editor::Tool;
 use crate::overlay::Overlay;
 use crate::overlay::geometry::{SelRect, expand_rect, union_rect};
 use crate::overlay::objedit;
 use crate::overlay::pick::pick_radius;
-use crate::overlay::shape::rounded_rect;
-use crate::overlay::ui::Ui;
-use crate::render::text::{self as dwrite, FontSpec};
 use crate::settings::{UNBOUND, hotkey::vk_name};
-use crate::theme::Palette;
 
 use super::Action;
+
+mod paint;
+pub(crate) use paint::{bubble_rect, draw};
 
 /// 提示延迟（毫秒）。一次性定时器，只在悬停目标变化时重设（ADR 0020）。
 pub(crate) const DELAY_MS: u32 = 400;
 /// 定时器 ID（覆盖层窗口内唯一，与长截图执行窗口的定时器互不相干）。
 pub(crate) const TIMER_ID: usize = 2;
-
-/// 气泡与工具栏的间距。
-const GAP_BASE: f32 = 6.0;
-/// 气泡水平内边距。
-const PAD_X_BASE: f32 = 10.0;
-/// 气泡垂直内边距。
-const PAD_Y_BASE: f32 = 5.0;
-/// 气泡圆角半径。
-const RADIUS_BASE: f32 = 6.0;
-/// 气泡字号（与工具栏第二行标签同档）。
-const FONT_BASE: f32 = 13.0;
-/// 离屏幕边缘的最小留白。
-const MARGIN_BASE: f32 = 4.0;
 
 /// 悬停命中（决定按钮底色与气泡目标）。
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -100,47 +86,6 @@ fn compose(label: &str, key: Option<&str>) -> String {
         Some(k) => format!("{label} · {k}"),
         None => label.to_string(),
     }
-}
-
-/// 气泡几何：水平对齐 `anchor` 中心（钳制在屏幕内），垂直贴 `vertical` 外缘
-/// （下方优先，塞不下翻到上方）。
-/// 按钮的垂直参照是**整条工具栏**而非按钮所在行：贴行内会被第二行的字体控件挡住（ADR 0020）。
-/// 圆角控制柄没有工具栏可言，水平与垂直都参照手柄自身。
-pub(crate) fn bubble_rect(anchor: SelRect, vertical: SelRect, text: &str, vw: i32, vh: i32, ui: Ui) -> SelRect {
-    let spec = FontSpec::new(ui.f(FONT_BASE));
-    let (tw, th) = dwrite::measure(text, &spec);
-    let (pad_x, pad_y) = (ui.f(PAD_X_BASE), ui.f(PAD_Y_BASE));
-    let w = (tw + pad_x * 2.0).ceil() as i32;
-    let h = (th + pad_y * 2.0).ceil() as i32;
-    let gap = ui.px(GAP_BASE);
-    let margin = ui.px(MARGIN_BASE);
-    let x = (anchor.x + (anchor.w - w) / 2).clamp(margin, (vw - w - margin).max(margin));
-    let below = vertical.y + vertical.h + gap;
-    let y = if below + h + margin <= vh {
-        below
-    } else {
-        (vertical.y - gap - h).max(margin)
-    };
-    SelRect { x, y, w, h }
-}
-
-/// 绘制气泡（屏幕显示层，不进导出烘焙）。
-pub(crate) fn draw(pixmap: &mut Pixmap, bubble: &Bubble, p: &Palette, ui: Ui) {
-    // 背景改不透明：半透明底叠在暗图上会让小字发灰
-    let bg = [p.bg[0], p.bg[1], p.bg[2], 255];
-    rounded_rect(pixmap, bubble.rect, ui.f(RADIUS_BASE), bg, Some(p.border));
-    let spec = FontSpec::new(ui.f(FONT_BASE));
-    let (tw, th) = dwrite::measure(&bubble.text, &spec);
-    let x = bubble.rect.x as f32 + (bubble.rect.w as f32 - tw) / 2.0;
-    let y = bubble.rect.y as f32 + (bubble.rect.h as f32 - th) / 2.0;
-    dwrite::draw(
-        pixmap,
-        Point::new(x, y),
-        &bubble.text,
-        &spec,
-        p.text,
-        Transform::identity(),
-    );
 }
 
 impl Overlay {
@@ -323,6 +268,7 @@ impl Overlay {
 mod tests {
     use super::super::Toolbar;
     use super::*;
+    use crate::overlay::ui::Ui;
 
     fn base() -> Ui {
         Ui::from_dpi(96)
