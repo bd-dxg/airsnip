@@ -115,6 +115,13 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
     match section {
         Section::General => {
             push(RowId::Autostart, RowKind::Toggle, "开机自启", &mut y, items);
+            push(
+                RowId::ConfirmCancel,
+                RowKind::Toggle,
+                "取消前确认未保存标注",
+                &mut y,
+                items,
+            );
             push(RowId::Lang, RowKind::Readonly, "语言", &mut y, items);
             push(RowId::PinPosOriginal, RowKind::Radio, "贴图位置·原位置", &mut y, items);
             push(RowId::PinPosCenter, RowKind::Radio, "贴图位置·屏幕中间", &mut y, items);

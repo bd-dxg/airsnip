@@ -198,6 +198,8 @@ pub struct Config {
     pub ui_scale: UiScale,
     /// 自定义标注颜色（EDT-7，issue #73）：工具栏取色按钮选定，None 表示尚未取过色。
     pub custom_color: Option<[u8; 4]>,
+    /// 有未保存标注时取消截图先弹确认框（OUT-3 / ADR 0027，默认开）；关闭后直接退出（issue #120）。
+    pub confirm_cancel: bool,
     /// 保存文件名模板（OUT-2）。
     pub name_style: NameStyle,
     /// 上次保存用的格式扩展名（OUT-2，运行时记忆）：保存对话框下次默认选中该格式。
@@ -227,6 +229,7 @@ impl Default for Config {
             pin_border: true,
             ui_scale: UiScale::Auto,
             custom_color: None,
+            confirm_cancel: true,
             name_style: NameStyle::DateTime,
             last_save_ext: None,
             last_save_dir: None,
@@ -425,6 +428,20 @@ mod tests {
                 assert!(m.factor().is_some(), "{m:?} 应有固定倍率");
             }
         }
+    }
+
+    /// 取消前确认（OUT-3，issue #120）：旧配置缺字段回退开启（保持 ADR 0027 行为），关闭能往返。
+    #[test]
+    fn confirm_cancel_defaults_and_roundtrip() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert!(old.confirm_cancel, "旧配置应默认开启取消确认");
+
+        let cfg = Config {
+            confirm_cancel: false,
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert!(!back.confirm_cancel);
     }
 
     /// 自定义颜色（EDT-7）：旧配置缺字段回退 None，新值能往返。

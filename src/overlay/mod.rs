@@ -84,6 +84,8 @@ pub struct Overlay {
     ocr_key: u32,
     /// OCR 功能是否开启（OCR-1）：关闭时工具栏不出现 OCR 按钮、OCR 键不生效。
     ocr_enabled: bool,
+    /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。
+    confirm_cancel: bool,
     /// 贴图键（覆盖层内按下贴选区，默认 F3；设置面板可改，ADR 0019）。
     pin_key: u32,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
@@ -163,6 +165,8 @@ pub struct OverlayOpts {
     pub ocr_key: u32,
     /// OCR 是否开启（OCR-1）：关闭时工具栏不出现 OCR 按钮、OCR 键不生效。
     pub ocr_enabled: bool,
+    /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。
+    pub confirm_cancel: bool,
     /// 贴图键（默认 F3，设置面板可改；ADR 0019：可为鼠标键）。
     pub pin_key: u32,
     /// 本次会话的默认工具（记住上次使用，M3）。

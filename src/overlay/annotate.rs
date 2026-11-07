@@ -163,13 +163,14 @@ impl super::Overlay {
     }
 
     /// 取消截图（OUT-3 / ADR 0027）：`Esc` 与右键共用。分层回退，
-    /// 只有会丢失已完成的标注时才二次确认，避免一次误触清空全部工作（issue #114）。
+    /// 只有会丢失已完成的标注时才二次确认，避免一次误触清空全部工作（issue #114）；
+    /// 设置里关掉「取消前确认」后，有标注也直接退出（issue #120）。
     pub(super) fn on_cancel(&mut self) {
         match cancel_step(
             self.color_panel_open(),
             self.font_list_open(),
             self.is_editing_text(),
-            !self.doc.is_empty(),
+            self.confirm_cancel && !self.doc.is_empty(),
         ) {
             CancelStep::ColorPanel => self.close_color_panel(),
             CancelStep::FontPanel => self.close_font_list(),

@@ -23,6 +23,7 @@ impl Overlay {
             longshot_key,
             ocr_key,
             ocr_enabled,
+            confirm_cancel,
             pin_key,
             default_tool,
             custom_color,
@@ -95,6 +96,7 @@ impl Overlay {
             longshot_key,
             ocr_key,
             ocr_enabled,
+            confirm_cancel,
             pin_key,
             save,
             color_index: 1, // 默认红色
