@@ -5,9 +5,24 @@
 use crate::overlay::geometry::SelRect;
 
 use super::{
-    CLEAR_BTN, CONTENT_HEADER_H, H, Item, Layout, NAV_H, NAV_W, PAD, QR_ROW_H, ROW_H, Row, RowId, RowKind, Section, W,
-    ui_scale_row,
+    CELLPAD, CLEAR_BTN, CONTENT_HEADER_H, GRID_GAP, H, HOVER_PAD, Item, Layout, NAV_H, NAV_W, PAD, QR_ROW_H, ROW_H,
+    Row, RowId, RowKind, Section, W, ui_scale_row,
 };
+
+/// 内容区 [left, right] 外扩 `HOVER_PAD` 得到悬停高亮矩形（四周留出内边距）。
+fn hover_rect(left: i32, right: i32, y: i32, h: i32, s: f32) -> SelRect {
+    let hp = (HOVER_PAD as f32 * s) as i32;
+    SelRect {
+        x: left - hp,
+        y,
+        w: (right - left) + hp * 2,
+        h,
+    }
+}
+
+/// 单元格内控件区宽度基准（含键帽 + 间隙 + 清除按钮）：键帽 ≈ 140 − 8 − 30 = 102，
+/// 足够显示常见组合键（如 Ctrl+F3、鼠标侧键1）。
+const CELL_CONTROL_W: f32 = 140.0;
 
 /// 内容行几何（`s` 为 DPI 缩放系数，x 从导航栏右缘开始）。
 fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row {
@@ -22,6 +37,9 @@ fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row 
         id,
         kind,
         label,
+        label_pad: pad,
+        // 内容区（标签左内边距到右侧控件右缘）外扩 `HOVER_PAD`
+        hover: hover_rect(nav_w + pad, w - pad, y, h, s),
         rect: SelRect {
             x: nav_w,
             y,
@@ -48,11 +66,42 @@ fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row 
     }
 }
 
+/// 单元格行（两列排布用）：标签在左、键帽 + 清除按钮在右，控件区宽度按单元格收缩。
+fn mk_cell(id: RowId, label: &'static str, x: i32, y: i32, w: i32, s: f32) -> Row {
+    let h = (ROW_H as f32 * s) as i32;
+    let cellpad = (CELLPAD as f32 * s) as i32;
+    let cw = (CELL_CONTROL_W * s) as i32;
+    let btn = (CLEAR_BTN as f32 * s) as i32;
+    // 内容区 = 单元格左右各缩进 `CELLPAD`；悬停高亮再外扩 `HOVER_PAD`
+    let (content_l, content_r) = (x + cellpad, x + w - cellpad);
+    Row {
+        id,
+        kind: RowKind::KeyCap,
+        label,
+        label_pad: cellpad,
+        hover: hover_rect(content_l, content_r, y, h, s),
+        rect: SelRect { x, y, w, h },
+        control: SelRect {
+            x: content_r - cw,
+            y,
+            w: cw,
+            h,
+        },
+        clear: SelRect {
+            x: content_r - btn,
+            y: y + (h - btn) / 2,
+            w: btn,
+            h: btn,
+        },
+    }
+}
+
 /// 高行：高度按内容给（支持项目块），几何与标准行一致。
 fn mk_row_tall(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32, h: i32) -> Row {
     let mut row = mk_row(id, kind, label, y, s);
     row.rect.h = h;
     row.control.h = h;
+    row.hover.h = h;
     row
 }
 
@@ -71,19 +120,40 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             push(RowId::PinPosCenter, RowKind::Radio, "贴图位置·屏幕中间", &mut y, items);
         }
         Section::Hotkeys => {
-            push(RowId::HotkeyShot, RowKind::KeyCap, "截图", &mut y, items);
-            push(RowId::HotkeyPin, RowKind::KeyCap, "贴图", &mut y, items);
-            push(RowId::HotkeyBorder, RowKind::KeyCap, "贴图边框·窗口内", &mut y, items);
-            push(RowId::HotkeyLongshot, RowKind::KeyCap, "长截图·截图内", &mut y, items);
-            push(RowId::HotkeyOcr, RowKind::KeyCap, "OCR·截图内", &mut y, items);
-            push(RowId::ToolRect, RowKind::KeyCap, "工具·矩形", &mut y, items);
-            push(RowId::ToolArrow, RowKind::KeyCap, "工具·箭头", &mut y, items);
-            push(RowId::ToolText, RowKind::KeyCap, "工具·文本", &mut y, items);
-            push(RowId::ToolBlur, RowKind::KeyCap, "工具·模糊", &mut y, items);
-            push(RowId::ToolHighlight, RowKind::KeyCap, "工具·荧光笔", &mut y, items);
-            push(RowId::ToolGlow, RowKind::KeyCap, "工具·聚光灯", &mut y, items);
-            push(RowId::ToolNumber, RowKind::KeyCap, "工具·序号", &mut y, items);
-            push(RowId::ResetKeys, RowKind::Action, "恢复默认", &mut y, items);
+            // 两列排布：快捷键不必每个独占一行，行数减半、不把窗口撑高（保持横向比例）
+            let w = (W as f32 * s) as i32;
+            let nav_w = (NAV_W as f32 * s) as i32;
+            let pad = (PAD as f32 * s) as i32;
+            let cellpad = (CELLPAD as f32 * s) as i32;
+            let gap = (GRID_GAP as f32 * s) as i32;
+            let row_h = (ROW_H as f32 * s) as i32;
+            // 单元格左缘让出 CELLPAD，使单元格内标签与整行标签（NAV_W+PAD）对齐
+            let cell_x0 = nav_w + pad - cellpad;
+            let cell_w = (w - pad + cellpad - cell_x0 - gap) / 2;
+            let cells = [
+                (RowId::HotkeyShot, "截图"),
+                (RowId::HotkeyPin, "贴图"),
+                (RowId::HotkeyBorder, "贴图边框"),
+                (RowId::HotkeyLongshot, "长截图"),
+                (RowId::HotkeyOcr, "OCR"),
+                (RowId::ToolRect, "工具·矩形"),
+                (RowId::ToolArrow, "工具·箭头"),
+                (RowId::ToolText, "工具·文本"),
+                (RowId::ToolBlur, "工具·模糊"),
+                (RowId::ToolHighlight, "工具·荧光笔"),
+                (RowId::ToolGlow, "工具·聚光灯"),
+                (RowId::ToolNumber, "工具·序号"),
+            ];
+            for (i, (id, label)) in cells.iter().enumerate() {
+                let col = i % 2;
+                let row = i / 2;
+                let x = cell_x0 + col as i32 * (cell_w + gap);
+                let y = y0 + row as i32 * row_h;
+                items.push(Item::Row(mk_cell(*id, label, x, y, cell_w, s)));
+            }
+            y += cells.len().div_ceil(2) as i32 * row_h;
+            // 「恢复默认」做成右侧真正的按钮（标签留空，文案在按钮上）
+            push(RowId::ResetKeys, RowKind::Button, "", &mut y, items);
             push(RowId::Widenote, RowKind::Readonly, "提示", &mut y, items);
         }
         Section::Save => {
@@ -130,12 +200,20 @@ pub fn layout(section: Section, scale: f32) -> Layout {
     for sec in Section::ALL {
         items.push(Item::Nav(sec));
     }
-    // 内容区：节标题 + 各节最大行数（每节各自累计，取最高者）
+    // 内容区高度：节标题 + 各行伸到最底部的像素（按实际几何取，兼容两列排布，不能按行数×行高）
     let mut max_content = 0i32;
     for sec in Section::ALL {
         let mut rows = Vec::new();
         section_rows(sec, 0, s, &mut rows);
-        let h = (CONTENT_HEADER_H as f32 * s) as i32 + rows.len() as i32 * (ROW_H as f32 * s) as i32;
+        let bottom = rows
+            .iter()
+            .filter_map(|it| match it {
+                Item::Row(r) => Some(r.rect.y + r.rect.h),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0);
+        let h = (CONTENT_HEADER_H as f32 * s) as i32 + bottom;
         max_content = max_content.max(h);
     }
     // 当前节的内容行（实际绘制用）
