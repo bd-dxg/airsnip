@@ -5,7 +5,7 @@
 
 use tiny_skia::Pixmap;
 
-use crate::editor::{PALETTE, Tool};
+use crate::editor::Tool;
 use crate::overlay::SelRect;
 use crate::overlay::shape::{rounded_rect, rounded_rect_outline};
 use crate::overlay::toolbar::{Action, State, Toolbar};
@@ -15,6 +15,11 @@ use crate::render::text::FontSpec;
 use crate::theme::Palette;
 
 use super::label::{LABEL_SIZE_BASE, centered_text, divider, fit_name, left_text};
+
+/// 自定义色块上「＋」标记的黑白分界亮度（高于它用黑，否则用白）。
+const PLUS_INK_LUMA: u32 = 140;
+/// 「＋」标记占色块边长的比例。
+const PLUS_ICON_RATIO: f32 = 0.6;
 
 /// 绘制工具栏到像素图。
 pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
@@ -89,7 +94,18 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     w: r.w - inset * 2,
                     h: r.h - inset * 2,
                 };
-                rounded_rect(pixmap, swatch, ui.f(4.0), PALETTE[i], Some(p.swatch_border));
+                let color = crate::editor::swatch(i, state.custom_color);
+                rounded_rect(pixmap, swatch, ui.f(4.0), color, Some(p.swatch_border));
+                // 自定义槽：叠一个小「＋」，提示点击可自选颜色（issue #73）
+                if i == crate::editor::CUSTOM_INDEX {
+                    let ink = if luminance(color) > PLUS_INK_LUMA {
+                        [0, 0, 0, 255]
+                    } else {
+                        [255, 255, 255, 255]
+                    };
+                    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
+                    icon::draw(pixmap, Icon::Plus, cx, cy, r.w.min(r.h) as f32 * PLUS_ICON_RATIO, ink);
+                }
                 if i == state.color {
                     rounded_rect_outline(pixmap, *r, ui.f(4.0), p.accent);
                 }
@@ -130,6 +146,11 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
             }
         }
     }
+}
+
+/// 感知亮度（0..255）：用于自定义色块上「＋」标记的黑白选择。
+fn luminance(c: [u8; 4]) -> u32 {
+    (c[0] as u32 * 299 + c[1] as u32 * 587 + c[2] as u32 * 114) / 1000
 }
 
 /// 工具 → 图标。

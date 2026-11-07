@@ -96,6 +96,11 @@ impl super::Overlay {
                 return;
             }
         }
+        // 取色面板（EDT-7，issue #73）：不覆盖工具栏，排在工具栏之后；
+        // 命中即取样，点面板之外则收起并退回常规流程
+        if self.on_color_panel_down(x, y) {
+            return;
+        }
         // 字体面板（EDT-4）：不覆盖工具栏，故排在工具栏之后；命中行选字体，
         // 点面板之外则收起面板并退回常规流程
         if self.on_font_list_down(x, y) {
@@ -161,6 +166,10 @@ impl super::Overlay {
     }
 
     pub(super) fn on_mouse_move(&mut self, x: i32, y: i32) {
+        // 取色面板拖动 / 悬停（EDT-7，issue #73）：覆盖面板期间不改动选区与草稿
+        if self.on_color_panel_move(x, y) {
+            return;
+        }
         // Shift 约束（EDT-1/EDT-2/EDT-7）：新建与二次编辑共用同一状态
         let shift = super::wndproc::shift_down();
         // 对象内部按下后拖出阈值：转为绘制新标注（ADR 0023）
@@ -238,6 +247,10 @@ impl super::Overlay {
     }
 
     pub(super) fn on_lbutton_up(&mut self) {
+        // 取色面板取样结束（EDT-7，issue #73）：提交并消费
+        if self.on_color_panel_up() {
+            return;
+        }
         // 对象内部「单击」（未拖出阈值）：退化为选中，不画任何东西（ADR 0023 §3）
         if let Some(p) = self.pending_click.take() {
             self.set_selected(Some(p.index));

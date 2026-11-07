@@ -2,6 +2,7 @@
 //! 覆盖层工具栏（EDT-7）：布局与命中测试；绘制见 `draw` 子模块。
 //! 所有尺寸以 1080p / 100% DPI 为基准，经 `Ui` 按显示器 DPI 缩放（CAP-5）。
 
+pub(crate) mod colorpanel;
 mod draw;
 pub(crate) mod fontlist;
 mod label;
@@ -11,7 +12,7 @@ use std::sync::Arc;
 
 use tiny_skia::Pixmap;
 
-use crate::editor::{PALETTE, Tool};
+use crate::editor::{SWATCH_COUNT, Tool};
 use crate::overlay::geometry::{SelRect, info_offset, info_text_below, info_text_h};
 use crate::overlay::ui::Ui;
 use crate::theme::Palette;
@@ -42,6 +43,8 @@ const PAD_BASE: f32 = 5.0;
 pub struct State {
     pub tool: Tool,
     pub color: usize,
+    /// 自定义色（EDT-7）：绘制自定义色块用。
+    pub custom_color: [u8; 4],
     /// 矩形是否填充（EDT-1）。
     pub filled: bool,
     pub can_undo: bool,
@@ -155,7 +158,7 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ocr: b
         item(&mut c, btn, btn, Action::Tool(tool));
     }
     c.sep();
-    for i in 0..PALETTE.len() {
+    for i in 0..SWATCH_COUNT {
         item(&mut c, sw, sw, Action::Color(i));
     }
     c.sep();
@@ -356,16 +359,23 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 25);
+        assert_eq!(actions.len(), 26);
         assert_eq!(actions[..7], Tool::ALL.map(Action::Tool));
-        assert_eq!(actions[13], Action::Undo);
-        assert_eq!(actions[14], Action::Redo);
-        assert_eq!(actions[15], Action::Pin);
-        assert_eq!(actions[16], Action::Longshot);
-        assert_eq!(actions[17], Action::Copy);
-        assert_eq!(actions[18], Action::Save);
+        // 色块：预设 5 + 自定义 1（末尾，见 issue #73）
+        assert_eq!(actions[7], Action::Color(0));
         assert_eq!(
-            actions[19..],
+            actions[7 + crate::editor::CUSTOM_INDEX],
+            Action::Color(crate::editor::CUSTOM_INDEX)
+        );
+        assert_eq!(actions[13], Action::ToggleFill);
+        assert_eq!(actions[14], Action::Undo);
+        assert_eq!(actions[15], Action::Redo);
+        assert_eq!(actions[16], Action::Pin);
+        assert_eq!(actions[17], Action::Longshot);
+        assert_eq!(actions[18], Action::Copy);
+        assert_eq!(actions[19], Action::Save);
+        assert_eq!(
+            actions[20..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -383,7 +393,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false, false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 19);
+        assert_eq!(bar.hits.len(), 20);
     }
 
     /// OCR 按钮（OCR-3）：功能开启时紧跟长截图出现，关闭时完全不出现（OCR-1）。
@@ -391,16 +401,16 @@ mod tests {
     fn ocr_button_only_when_enabled() {
         let s = sel(100, 100, 400, 300);
         let off = layout(s, 2560, 1440, false, false, base());
-        assert_eq!(off.hits.len(), 19, "关闭时不应有 OCR 按钮");
+        assert_eq!(off.hits.len(), 20, "关闭时不应有 OCR 按钮");
         assert!(!off.hits.iter().any(|(_, a)| *a == Action::Ocr));
 
         let on = layout(s, 2560, 1440, false, true, base());
-        assert_eq!(on.hits.len(), 20);
+        assert_eq!(on.hits.len(), 21);
         let actions: Vec<Action> = on.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions[16], Action::Longshot);
-        assert_eq!(actions[17], Action::Ocr, "OCR 按钮应紧跟长截图");
-        assert_eq!(actions[18], Action::Copy);
-        assert_eq!(actions[19], Action::Save);
+        assert_eq!(actions[17], Action::Longshot);
+        assert_eq!(actions[18], Action::Ocr, "OCR 按钮应紧跟长截图");
+        assert_eq!(actions[19], Action::Copy);
+        assert_eq!(actions[20], Action::Save);
         // 多一个按钮后仍不能与信息文字重叠、不能越出屏幕
         for ui in [base(), Ui::from_dpi(192)] {
             let bar = layout(s, 2560, 1440, false, true, ui);

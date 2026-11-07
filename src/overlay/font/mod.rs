@@ -53,15 +53,16 @@ fn apply_fields(
 }
 
 impl super::Overlay {
-    /// 工具栏与字体面板的合并脏区（两者可能分离，重绘需一并覆盖）。
+    /// 工具栏与弹出面板（字体列表 / 取色）的合并脏区（可能分离，重绘需一并覆盖）。
     pub(super) fn chrome_rect(&self) -> Option<SelRect> {
-        union_rect(
-            self.bar.as_ref().map(|b| b.rect),
+        let panels = union_rect(
             self.font_list.as_ref().map(|p| p.rect),
-        )
+            self.color_panel.as_ref().map(|p| p.rect),
+        );
+        union_rect(self.bar.as_ref().map(|b| b.rect), panels)
     }
 
-    /// 重绘工具栏与字体面板所在区域。
+    /// 重绘工具栏与弹出面板（字体列表 / 取色）所在区域。
     pub(super) fn repaint_toolbar_chrome(&mut self) {
         if let Some(rect) = self.chrome_rect() {
             self.repaint(expand_rect(rect, 2));
@@ -109,6 +110,7 @@ impl super::Overlay {
         self.bar = Some(toolbar::layout(sel, vw, vh, want, self.ocr_enabled, self.ui));
         // 第二行显隐会改变工具栏高度，面板位置随之失效
         self.font_list = None;
+        self.color_panel = None;
         // 工具栏高度变了：悬停底色与气泡随之作废（EDT-10）
         let old_tip = self.reset_tip().map(|r| expand_rect(r, 2));
         if let Some(dirty) = union_rect(union_rect(old, self.chrome_rect()), old_tip) {

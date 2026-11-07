@@ -128,8 +128,12 @@ impl super::Overlay {
         if self.draft.is_some() {
             return Shape::Cross;
         }
-        // 工具栏与字体面板是点击目标而非绘制区：鼠标在其上时用系统箭头
-        if self.over_font_list(x, y) {
+        // 工具栏与弹出面板（字体列表 / 取色）是点击目标而非绘制区：鼠标在其上时用系统箭头
+        if self.over_font_list(x, y) || self.over_color_panel(x, y) {
+            return Shape::Arrow;
+        }
+        // 取色拖动中即使移出面板也保持箭头，避免拖出边界时闪回十字
+        if self.color_panel.as_ref().is_some_and(|p| p.dragging()) {
             return Shape::Arrow;
         }
         if let Some(bar) = &self.bar
