@@ -25,25 +25,26 @@ pub(super) fn draw_link(pixmap: &mut Pixmap, panel: &Panel, row: &super::control
 
 /// 操作按钮行：左侧标签已由 `draw_row` 用强调色画出，右侧补当前值与「›」指示可点。
 pub(super) fn draw_action(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
-    match row.id {
-        // 识别语言（OCR-6）：右侧直接显示当前选择，点一下切下一个
-        RowId::OcrLang => {
-            let text = format!("{} ›", super::ocr::language_text(&panel.config.ocr));
-            draw_trailing(pixmap, panel, row, &text, panel.palette.accent);
-        }
-        RowId::ResetKeys => draw_trailing(pixmap, panel, row, "›", panel.palette.accent),
-        _ => {}
+    // 识别语言（OCR-6）：右侧直接显示当前选择，点一下切下一个
+    if row.id == RowId::OcrLang {
+        let text = format!("{} ›", super::ocr::language_text(&panel.config.ocr));
+        draw_trailing(pixmap, panel, row, &text, panel.palette.accent);
     }
 }
 
-/// 版本更新按钮（SYS-7）：真正的按钮外观（圆角底 + 边框 + 居中文字）。
-/// 文案随状态变（检查更新 / 更新到 v0.7.0 / 下载中 42% / 重试），忙时置灰。
-pub(super) fn draw_button(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
+/// 按钮风格行：真正的按钮外观（圆角底 + 边框 + 居中文字）。
+/// 「恢复默认」（快捷键页）为固定文案；「版本更新」（关于页）文案随状态变、忙时置灰。
+/// `hovered`：鼠标悬停该行时给强调底色，明确「可点」。
+pub(super) fn draw_button(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, hovered: bool) {
     let p = panel.palette;
     let s = panel.scale;
-    let phase = state::phase();
-    let (text, enabled) = state::button(&phase);
-    let emphasis = state::button_emphasis(&phase);
+    let (text, enabled, emphasis) = if row.id == RowId::ResetKeys {
+        ("恢复默认".to_string(), true, false)
+    } else {
+        let phase = state::phase();
+        let (text, enabled) = state::button(&phase);
+        (text, enabled, state::button_emphasis(&phase))
+    };
 
     // 按钮高度与快捷键行的键帽一致（30px 基准）；宽度按文字量算，右对齐、不超出控件区
     let size = 15.0 * s;
@@ -52,7 +53,7 @@ pub(super) fn draw_button(pixmap: &mut Pixmap, panel: &Panel, row: &super::contr
     let pad = 16.0 * s;
     let c = &row.control;
     let bh = (30.0 * s) as i32;
-    let bw = ((tw + pad * 2.0) as i32).clamp((84.0 * s) as i32, c.w);
+    let bw = ((tw + pad * 2.0) as i32).clamp((90.0 * s) as i32, c.w);
     let btn = SelRect {
         x: c.x + c.w - bw,
         y: c.y + (c.h - bh) / 2,
@@ -63,8 +64,8 @@ pub(super) fn draw_button(pixmap: &mut Pixmap, panel: &Panel, row: &super::contr
     let (fill, border, fg) = if !enabled {
         // 忙：素色底 + 灰字，看起来就是「点不了」
         ([p.bg[0], p.bg[1], p.bg[2], 255], p.border, p.text_dim)
-    } else if emphasis {
-        // 有新版本 / 失败可重试：强调底色
+    } else if emphasis || hovered {
+        // 悬停，或「有新版本 / 失败可重试」：强调底色
         (p.accent_soft, p.accent, p.accent)
     } else {
         ([p.bg[0], p.bg[1], p.bg[2], 255], p.border, p.text)

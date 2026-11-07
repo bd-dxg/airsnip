@@ -12,8 +12,9 @@ pub use scale::*;
 
 /// 窗口内容总宽（横向桌面窗口，宽高比约 1.4）。
 pub const W: i32 = 720;
-/// 窗口内容总高：固定值，避免切换分类时窗口上下跳动；
-/// 内容更高的分类（快捷键 11 行）按实际内容兜底。
+/// 窗口内容总高：固定值，避免切换分类时窗口上下跳动。
+/// 最高的分类「快捷键」采用两列排布（见 `layout`），行数受控，必须落在此高内，
+/// 否则窗口会被内容撑高、变成近正方形（桌面窗口应保持宽 > 高）。
 pub const H: i32 = 520;
 /// 左侧导航栏宽。
 pub const NAV_W: i32 = 124;
@@ -25,6 +26,12 @@ pub const NAV_H: i32 = 44;
 pub const CONTENT_HEADER_H: i32 = 40;
 /// 内容行高度。
 pub const ROW_H: i32 = 46;
+/// 两列排布时的列间距（快捷键页，见 `layout`）。
+pub const GRID_GAP: i32 = 8;
+/// 单元格内容的水平内边距（两列排布：单元格比整行窄，内边距略小）。
+pub const CELLPAD: i32 = 16;
+/// 悬停高亮矩形相对内容外扩的距离（让高亮四周留出余量，不再紧贴控件）。
+pub const HOVER_PAD: i32 = 8;
 /// 支持项目行高度（文案 + 赞赏码，高于标准行）。
 pub const QR_ROW_H: i32 = 200;
 /// 快捷键行右侧清除按钮边长（与键帽同高，视觉上齐平）。
@@ -181,7 +188,11 @@ pub struct Row {
     pub id: RowId,
     pub kind: RowKind,
     pub label: &'static str,
-    /// 整行矩形（命中 + 悬停高亮）。
+    /// 标签左内边距（含 DPI 缩放）：整行为 `PAD`，两列单元格较小。
+    pub label_pad: i32,
+    /// 悬停高亮矩形：内容区四周外扩 `HOVER_PAD`（含圆角绘制），保证高亮有内边距。
+    pub hover: SelRect,
+    /// 整行矩形（命中区）。
     pub rect: SelRect,
     /// 右侧控件区（开关/按键框/说明文本）。
     pub control: SelRect,
@@ -224,6 +235,53 @@ mod tests {
         assert!(rows.contains(&RowId::Autostart));
         assert!(rows.contains(&RowId::Lang));
         assert!(l.height > 0);
+    }
+
+    /// 桌面窗口比例：任何分类页的内容都不得把窗口撑高（宽必须大于高），
+    /// 行数最多的快捷键页（两列排布后 6 行 + 2 行）也必须落在固定高内。
+    #[test]
+    fn panel_stays_landscape_for_every_section() {
+        for s in [1.0f32, 1.5, 2.0] {
+            for sec in Section::ALL {
+                let l = layout(sec, s);
+                assert!(
+                    l.height <= (H as f32 * s) as i32,
+                    "{sec:?} @{s}x 内容 {} 超过固定高",
+                    l.height
+                );
+                assert!(
+                    l.height < (W as f32 * s) as i32,
+                    "{sec:?} @{s}x 变成高 ≥ 宽：{} vs {}",
+                    l.height,
+                    (W as f32 * s) as i32
+                );
+            }
+            assert_eq!(
+                layout(Section::Hotkeys, s).height,
+                (H as f32 * s) as i32,
+                "@{s}x 快捷键页应落在固定高内"
+            );
+        }
+    }
+
+    /// 快捷键页两列排布：同一视觉行最多两项，总行数受控（不再每项独占一行）。
+    #[test]
+    fn hotkeys_use_two_columns() {
+        for s in [1.0f32, 1.5, 2.0] {
+            let l = layout(Section::Hotkeys, s);
+            let mut ys: std::collections::BTreeMap<i32, usize> = std::collections::BTreeMap::new();
+            let mut n = 0;
+            for item in &l.items {
+                let Item::Row(r) = item else { continue };
+                if r.kind == RowKind::KeyCap {
+                    n += 1;
+                    *ys.entry(r.rect.y).or_insert(0) += 1;
+                }
+            }
+            assert_eq!(n, 12, "@{s}x 快捷键键帽行应仍为 12 项");
+            assert!(ys.values().all(|&c| c <= 2), "@{s}x 同一行不应超过两项");
+            assert!(ys.len() <= 7, "@{s}x 两列排布后行数应受控：{}", ys.len());
+        }
     }
 
     #[test]
@@ -371,7 +429,7 @@ mod tests {
                     if let Item::Row(r) = item {
                         assert!(r.rect.x + r.rect.w <= w, "{sec:?} 行超出右边界");
                         assert!(r.rect.y + r.rect.h <= l.height, "{sec:?} 行超出下边界");
-                        assert!(r.control.x >= r.rect.x, "控件区应在行内");
+                        assert!(r.control.x >= r.rect.x, "{:?} @{scale}x 控件区应在行内", r.id);
                     }
                 }
             }

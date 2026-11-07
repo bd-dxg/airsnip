@@ -104,22 +104,14 @@ fn draw_content_header(pixmap: &mut Pixmap, panel: &Panel) {
 fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx: usize) {
     let p = panel.palette;
     let s = panel.scale;
-    if panel.hover == Some(idx) {
-        pixmap.fill_rect(
-            Rect::from_ltrb(
-                row.rect.x as f32,
-                row.rect.y as f32,
-                (row.rect.x + row.rect.w) as f32,
-                (row.rect.y + row.rect.h) as f32,
-            )
-            .unwrap(),
-            &paint_of(p.row_hover),
-            Transform::identity(),
-            None,
-        );
+    let hovered = panel.hover == Some(idx);
+    // 悬停底色：圆角矩形，比内容外扩 `HOVER_PAD`，四周留出余量（不再紧贴控件）。
+    // 按钮行不高亮整行（否则是一条长条），改由按钮自身高亮（见 `link::draw_button`）。
+    if hovered && row.kind != RowKind::Button {
+        rounded_rect(pixmap, row.hover, (6.0 * s) as f32, p.row_hover, None);
     }
     let size = 16.0 * s;
-    let lx = row.rect.x as f32 + super::controls::PAD as f32 * s;
+    let lx = row.rect.x as f32 + row.label_pad as f32;
     // 支持项目块的标签由 `reward::draw_block` 自己画（高行顶对齐），此处不重复绘制
     if row.kind != RowKind::Qr {
         let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
@@ -129,13 +121,13 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
     }
     match row.kind {
         RowKind::Toggle => draw_toggle(pixmap, panel, row),
-        RowKind::KeyCap => super::keycap::draw(pixmap, panel, row),
+        RowKind::KeyCap => super::keycap::draw(pixmap, panel, row, hovered),
         RowKind::Radio => draw_radio(pixmap, panel, row),
         RowKind::Readonly => draw_readonly(pixmap, panel, row),
         RowKind::About => draw_about(pixmap, panel, row),
         RowKind::Link => super::link::draw_link(pixmap, panel, row),
         RowKind::Action => super::link::draw_action(pixmap, panel, row),
-        RowKind::Button => super::link::draw_button(pixmap, panel, row),
+        RowKind::Button => super::link::draw_button(pixmap, panel, row, hovered),
         RowKind::Qr => super::reward::draw_block(pixmap, panel, row),
     }
 }

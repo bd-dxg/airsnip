@@ -47,8 +47,9 @@ pub(super) fn is_key_row(id: RowId) -> bool {
     )
 }
 
-/// 绘制键帽与清除按钮。
-pub(super) fn draw(pixmap: &mut Pixmap, panel: &Panel, row: &Row) {
+/// 绘制键帽与清除按钮。`hovered`：鼠标悬停该行时（或该行处于捕获态时）才显现清除按钮，
+/// 否则满屏垃圾桶太噪。
+pub(super) fn draw(pixmap: &mut Pixmap, panel: &Panel, row: &Row, hovered: bool) {
     let p = panel.palette;
     let s = panel.scale;
     let capturing = panel.capturing == Some(row.id);
@@ -85,17 +86,19 @@ pub(super) fn draw(pixmap: &mut Pixmap, panel: &Panel, row: &Row) {
     let y = kb.y as f32 + (kh as f32 - size * 1.2) / 2.0;
     draw_text(pixmap, x, y, &text, size, color);
 
-    // 清除按钮：等于键帽高度，右侧对齐
-    rounded_rect_outline(pixmap, row.clear, (6.0 * s) as f32, p.border);
-    let icon_color = if bound { p.icon } else { p.icon_dim };
-    icon::draw(
-        pixmap,
-        Icon::Delete,
-        row.clear.x as f32 + row.clear.w as f32 / 2.0,
-        row.clear.y as f32 + row.clear.h as f32 / 2.0,
-        row.clear.w as f32,
-        icon_color,
-    );
+    // 清除按钮：悬停该行或该行处于捕获态时才出现（等于键帽高度，右侧对齐）
+    if hovered || capturing {
+        rounded_rect_outline(pixmap, row.clear, (6.0 * s) as f32, p.border);
+        let icon_color = if bound { p.icon } else { p.icon_dim };
+        icon::draw(
+            pixmap,
+            Icon::Delete,
+            row.clear.x as f32 + row.clear.w as f32 / 2.0,
+            row.clear.y as f32 + row.clear.h as f32 / 2.0,
+            row.clear.w as f32,
+            icon_color,
+        );
+    }
 }
 
 /// 该行当前的虚拟键码（未绑定返回 `UNBOUND`）。
@@ -122,7 +125,8 @@ fn row_key(panel: &Panel, id: RowId) -> u32 {
 /// 热键按钮文本。
 fn keycap_text(panel: &Panel, id: RowId) -> String {
     if panel.capturing == Some(id) {
-        return "按下新按键...（Esc 取消）".into();
+        // 两列排布后键帽较窄，捕获提示保持简短
+        return "按下新键…".into();
     }
     let hk = &panel.config.hotkey;
     let tk = &panel.config.tool_keys;
