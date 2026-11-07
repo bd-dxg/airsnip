@@ -4,13 +4,14 @@
 //! 负责把 DXGI 输出与 DisplayConfig 的色彩状态对应起来，并提供把单个输出的帧
 //! 贴进虚拟屏画布的小工具（负坐标布局、越界裁剪）。
 
-use windows::Win32::Foundation::HMODULE;
+use windows::Win32::Foundation::{HMODULE, RECT};
 use windows::Win32::Graphics::Direct3D::{
     D3D_DRIVER_TYPE_UNKNOWN, D3D_FEATURE_LEVEL_10_0, D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_11_1,
 };
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CREATE_DEVICE_BGRA_SUPPORT, D3D11_SDK_VERSION, D3D11CreateDevice, ID3D11Device, ID3D11DeviceContext,
 };
+use windows::Win32::Graphics::Dxgi::Common::DXGI_MODE_ROTATION;
 use windows::Win32::Graphics::Dxgi::{CreateDXGIFactory1, IDXGIFactory1, IDXGIOutput6};
 use windows::core::Interface;
 
@@ -22,7 +23,9 @@ pub struct HdrOutput {
     pub device: ID3D11Device,
     pub context: ID3D11DeviceContext,
     /// 桌面矩形（物理像素，虚拟桌面坐标）。
-    pub rect: windows::Win32::Foundation::RECT,
+    pub rect: RECT,
+    /// 显示器旋转（DDA 帧是面板原生朝向，转正要用它，见 `frame::rotate_to_desktop`）。
+    pub rotation: DXGI_MODE_ROTATION,
     pub color: DisplayColorState,
 }
 
@@ -37,6 +40,10 @@ pub struct Frame {
 pub fn all_hdr_outputs(states: &[(String, DisplayColorState)]) -> Result<Vec<HdrOutput>, String> {
     let mut found = Vec::new();
     visit_attached_outputs(states, |output6, desc, color| {
+        // SDR 输出不需要 DDA：由 `all_sdr_rects` 交给 GDI BitBlt 补齐（混合桌面）。
+        if !color.hdr_enabled {
+            return Ok(true);
+        }
         let bounds = unsafe {
             output6
                 .GetDesc1()
@@ -49,8 +56,22 @@ pub fn all_hdr_outputs(states: &[(String, DisplayColorState)]) -> Result<Vec<Hdr
             device,
             context,
             rect: bounds,
+            rotation: desc.Rotation,
             color,
         });
+        Ok(true)
+    })?;
+    Ok(found)
+}
+
+/// 枚举全部 SDR 输出的桌面矩形（混合 HDR/SDR 桌面下，SDR 屏不走 DDA，
+/// 抓屏调用方用 GDI BitBlt 把这些区域补进画布，否则 SDR 屏留黑）。
+pub fn all_sdr_rects(states: &[(String, DisplayColorState)]) -> Result<Vec<RECT>, String> {
+    let mut found = Vec::new();
+    visit_attached_outputs(states, |_output6, desc, color| {
+        if !color.hdr_enabled {
+            found.push(desc.DesktopCoordinates);
+        }
         Ok(true)
     })?;
     Ok(found)
@@ -86,6 +107,7 @@ pub fn hdr_output_intersecting(
             device,
             context,
             rect: r,
+            rotation: desc.Rotation,
             color,
         });
         Ok(false) // 命中即停
@@ -134,10 +156,8 @@ where
                         .collect::<Vec<_>>(),
                 );
                 let color = state_for_device(states, &name);
-                // SDR 输出不需要 DDA：BitBlt 已正确且更快。
-                if !color.hdr_enabled {
-                    continue;
-                }
+                // 注意：这里不过滤 HDR/SDR——调用方各自决定（DDA 只吃 HDR 屏，
+                // SDR 屏由 all_sdr_rects 交给 GDI 补齐，混合桌面两路都要）。
                 if !visit(&output6, &desc, color)? {
                     return Ok(());
                 }

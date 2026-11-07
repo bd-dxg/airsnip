@@ -45,7 +45,8 @@ use geometry::SelRect;
 use interaction::{Drag, Phase};
 use text_edit_state::TextEdit;
 
-/// 覆盖层运行结果（M4 长截图视口选取复用）。#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 覆盖层运行结果（M4 长截图视口选取复用）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OverlayResult {
     /// 截图完成（已复制/保存/贴图）。
     Done,

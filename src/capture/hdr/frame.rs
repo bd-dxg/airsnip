@@ -18,7 +18,9 @@
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_USAGE_STAGING, ID3D11Texture2D,
 };
-use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT};
+use windows::Win32::Graphics::Dxgi::Common::{
+    DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_MODE_ROTATION,
+};
 use windows::Win32::Graphics::Dxgi::{DXGI_OUTDUPL_FRAME_INFO, IDXGIOutput5, IDXGIResource};
 use windows::core::Interface;
 
@@ -31,6 +33,61 @@ const ACQUIRE_TIMEOUT_MS: u32 = 300;
 const MAX_ACQUIRE_ATTEMPTS: u32 = 20;
 /// `DXGI_ERROR_WAIT_TIMEOUT`：桌面自上次抓帧后没有变化。
 const DXGI_ERROR_WAIT_TIMEOUT: i32 = 0x887A0027u32 as i32;
+
+/// 把 DDA 返回的未旋转帧转到桌面朝向（DXGI_OUTDUPL_DESC.Rotation）。
+///
+/// DDA 契约：帧是面板**原生**朝向（未旋转），旋转显示器的帧尺寸与桌面矩形
+/// 宽高互换，必须按 `Rotation` 转正后才能贴进虚拟屏画布——否则旋转屏的内容
+/// 会横着铺进相邻屏幕（多屏实测缺陷，2026-11）。
+/// 返回转正后的 (RGBA, 宽, 高)；IDENTITY/UNSPECIFIED 原样返回。
+pub fn rotate_to_desktop(rgba: Vec<u8>, w: u32, h: u32, rotation: DXGI_MODE_ROTATION) -> (Vec<u8>, u32, u32) {
+    match rotation.0 {
+        2 => rotate90(&rgba, w as usize, h as usize),
+        3 => rotate180(&rgba, w as usize, h as usize),
+        4 => rotate270(&rgba, w as usize, h as usize),
+        _ => (rgba, w, h),
+    }
+}
+
+/// 顺时针 90°：输出 h×w（宽高互换），dst(x', y') = src(y, h-1-x) 其中 x'=y 列……
+/// 即新图第 y' 行第 x' 列取原图第 x' 行第 h-1-y' 列（y'∈[0,w)）。
+fn rotate90(rgba: &[u8], w: usize, h: usize) -> (Vec<u8>, u32, u32) {
+    let mut out = vec![0u8; rgba.len()];
+    for y in 0..h {
+        for x in 0..w {
+            let src = (y * w + x) * 4;
+            let dst = (x * h + (h - 1 - y)) * 4;
+            out[dst..dst + 4].copy_from_slice(&rgba[src..src + 4]);
+        }
+    }
+    (out, h as u32, w as u32)
+}
+
+/// 180°：宽高不变，中心对称。
+fn rotate180(rgba: &[u8], w: usize, h: usize) -> (Vec<u8>, u32, u32) {
+    let mut out = vec![0u8; rgba.len()];
+    for y in 0..h {
+        for x in 0..w {
+            let src = (y * w + x) * 4;
+            let dst = ((h - 1 - y) * w + (w - 1 - x)) * 4;
+            out[dst..dst + 4].copy_from_slice(&rgba[src..src + 4]);
+        }
+    }
+    (out, w as u32, h as u32)
+}
+
+/// 逆时针 90°：输出 h×w。
+fn rotate270(rgba: &[u8], w: usize, h: usize) -> (Vec<u8>, u32, u32) {
+    let mut out = vec![0u8; rgba.len()];
+    for y in 0..h {
+        for x in 0..w {
+            let src = (y * w + x) * 4;
+            let dst = ((w - 1 - x) * h + y) * 4;
+            out[dst..dst + 4].copy_from_slice(&rgba[src..src + 4]);
+        }
+    }
+    (out, h as u32, w as u32)
+}
 
 /// 抓一帧并转换成 RGBA8。
 pub fn grab_frame(out: &HdrOutput) -> Result<Frame, String> {
@@ -121,6 +178,8 @@ pub fn grab_frame(out: &HdrOutput) -> Result<Frame, String> {
             bgra_to_rgba(data, pitch, w, h)
         };
         out.context.Unmap(&staging, 0);
+        // 旋转屏：DDA 帧是面板原生朝向，按 Rotation 转正后尺寸与桌面矩形一致
+        let (rgba, w, h) = rotate_to_desktop(rgba, w, h, out.rotation);
         let _ = dup.ReleaseFrame();
         if timing {
             eprintln!("[airsnip] HDR 抓帧总耗时 {:?}", t_all.elapsed());
@@ -131,5 +190,75 @@ pub fn grab_frame(out: &HdrOutput) -> Result<Frame, String> {
             height: h,
             rgba,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use windows::Win32::Graphics::Dxgi::Common::DXGI_MODE_ROTATION;
+
+    /// 2×2 测试图：四个像素各有独立颜色，验证旋转后角点映射。
+    fn sample() -> (Vec<u8>, u32, u32) {
+        // [A B / C D]，行优先
+        (vec![10, 0, 0, 255, 20, 0, 0, 255, 30, 0, 0, 255, 40, 0, 0, 255], 2, 2)
+    }
+
+    #[test]
+    fn rotate180_flips_both_axes() {
+        let (rgba, w, h) = sample();
+        let (out, w2, h2) = rotate_to_desktop(rgba, w, h, DXGI_MODE_ROTATION(3));
+        assert_eq!((w2, h2), (2, 2));
+        // 中心对称：A(0,0) ↔ D(1,1)，B(1,0) ↔ C(0,1)
+        assert_eq!(out[0], 40);
+        assert_eq!(out[12], 10);
+        assert_eq!(out[4], 30);
+        assert_eq!(out[8], 20);
+    }
+
+    #[test]
+    fn rotate90_swaps_dimensions() {
+        // 2×3 图（宽2 高3），ROTATE90 后应为 3×2
+        let mut rgba = Vec::new();
+        for v in 0..6u8 {
+            rgba.extend_from_slice(&[v, 0, 0, 255]);
+        }
+        let (out, w2, h2) = rotate_to_desktop(rgba, 2, 3, DXGI_MODE_ROTATION(2));
+        assert_eq!((w2, h2), (3, 2));
+        assert_eq!(out.len(), 6 * 4);
+        // 顺时针：原图第一行 [A B] 落到新图最右列，A 在右上角
+        let px = |out: &[u8], x: usize, y: usize, w2: usize| out[(y * w2 + x) * 4];
+        // 原图 (x=0,y=0)=A(0) → dst(x'=h-1-0=2, y'=0) 右上角
+        assert_eq!(px(&out, 2, 0, 3), 0);
+        // 原图 (x=1,y=2)=F(5) → dst(x'=h-1-2=0, y'=1) 左下角
+        assert_eq!(px(&out, 0, 1, 3), 5);
+        // 原图 (x=1,y=0)=B(1) → dst(x'=2, y'=1) 右下角
+        assert_eq!(px(&out, 2, 1, 3), 1);
+    }
+
+    #[test]
+    fn rotate270_swaps_dimensions_other_way() {
+        let mut rgba = Vec::new();
+        for v in 0..6u8 {
+            rgba.extend_from_slice(&[v, 0, 0, 255]);
+        }
+        let (out, w2, h2) = rotate_to_desktop(rgba, 2, 3, DXGI_MODE_ROTATION(4));
+        assert_eq!((w2, h2), (3, 2));
+        let px = |out: &[u8], x: usize, y: usize, w2: usize| out[(y * w2 + x) * 4];
+        // 逆时针：原图 (x=0,y=0)=A(0) → dst(x'=y=0, y'=w-1-x=1) 左下角
+        assert_eq!(px(&out, 0, 1, 3), 0);
+        // 原图 (x=1,y=2)=F(5) → dst(x'=2, y'=0) 右上角
+        assert_eq!(px(&out, 2, 0, 3), 5);
+        // 原图第一行 [A B] 落到新图最左列：dst(0,0)=B(1)
+        assert_eq!(px(&out, 0, 0, 3), 1);
+    }
+
+    #[test]
+    fn identity_keeps_frame_untouched() {
+        let (rgba, w, h) = sample();
+        let (out, w2, h2) = rotate_to_desktop(rgba.clone(), w, h, DXGI_MODE_ROTATION(1));
+        assert_eq!((w2, h2), (2, 2));
+        assert_eq!(out, rgba);
     }
 }

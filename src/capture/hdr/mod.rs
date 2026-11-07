@@ -10,10 +10,17 @@
 mod frame;
 mod output;
 
+use windows::Win32::Foundation::RECT;
+use windows::Win32::Graphics::Gdi::{
+    BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC,
+    DeleteObject, GetDC, ReleaseDC, SRCCOPY, SelectObject,
+};
+
 use super::CapturedScreen;
 use super::hdr_display::active_display_states;
+use super::tonemap::bgra_to_rgba;
 use frame::grab_frame;
-use output::{all_hdr_outputs, blit_into, hdr_output_intersecting};
+use output::{Frame, all_hdr_outputs, all_sdr_rects, blit_into, hdr_output_intersecting};
 
 /// 抓取整个虚拟屏幕。非 HDR 环境返回 `None`。
 pub fn capture_virtual_screen() -> Option<Result<CapturedScreen, String>> {
@@ -54,6 +61,22 @@ pub fn capture_virtual_screen() -> Option<Result<CapturedScreen, String>> {
             return Some(Err(e));
         }
     }
+    // 混合 HDR/SDR 桌面：SDR 显示器不走 DDA（all_hdr_outputs 已按 hdr_enabled 过滤），
+    // 其区域用 GDI BitBlt 补进画布，否则 SDR 屏在冻结画面里是黑的
+    // （多屏实测缺陷：主屏 SDR + 副屏 HDR 时主屏全黑，2026-11）。
+    let sdr_rects = match all_sdr_rects(&states) {
+        Ok(v) => v,
+        Err(e) => return Some(Err(e)),
+    };
+    for rect in &sdr_rects {
+        let frame = match gdi_sdr_frame(rect) {
+            Ok(f) => f,
+            Err(e) => return Some(Err(e)),
+        };
+        if let Err(e) = blit_into(&mut canvas, vw, vh, rect.left - vx, rect.top - vy, &frame) {
+            return Some(Err(e));
+        }
+    }
 
     Some(Ok(CapturedScreen {
         width: vw,
@@ -62,6 +85,71 @@ pub fn capture_virtual_screen() -> Option<Result<CapturedScreen, String>> {
         origin_y: vy,
         rgba: canvas,
     }))
+}
+
+/// GDI BitBlt 抓单个 SDR 输出矩形为 RGBA 帧（内容与画布同坐标系，物理像素）。
+fn gdi_sdr_frame(rect: &RECT) -> Result<Frame, String> {
+    let w = (rect.right - rect.left).max(0) as usize;
+    let h = (rect.bottom - rect.top).max(0) as usize;
+    if w == 0 || h == 0 {
+        return Ok(Frame {
+            width: 0,
+            height: 0,
+            rgba: Vec::new(),
+        });
+    }
+    unsafe {
+        let hdc_screen = GetDC(None);
+        if hdc_screen.0.is_null() {
+            return Err("GetDC 失败".into());
+        }
+        let hdc_mem = CreateCompatibleDC(None);
+        let mut bmi = BITMAPINFO::default();
+        bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+        bmi.bmiHeader.biWidth = w as i32;
+        bmi.bmiHeader.biHeight = -(h as i32); // 自上而下
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = BI_RGB.0;
+        let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hbmp = match CreateDIBSection(None, &bmi, DIB_RGB_COLORS, &mut bits, None, 0) {
+            Ok(b) => b,
+            Err(e) => {
+                let _ = ReleaseDC(None, hdc_screen);
+                return Err(format!("CreateDIBSection（SDR 补齐）失败：{e}"));
+            }
+        };
+        let old = SelectObject(hdc_mem, hbmp.into());
+        let blit = BitBlt(
+            hdc_mem,
+            0,
+            0,
+            w as i32,
+            h as i32,
+            Some(hdc_screen),
+            rect.left,
+            rect.top,
+            SRCCOPY,
+        );
+        let data = std::slice::from_raw_parts(bits as *const u8, w * h * 4);
+        let rgba = if blit.is_ok() {
+            bgra_to_rgba(data, w * 4, w as u32, h as u32)
+        } else {
+            Vec::new()
+        };
+        let _ = SelectObject(hdc_mem, old);
+        let _ = DeleteObject(hbmp.into());
+        let _ = DeleteDC(hdc_mem);
+        let _ = ReleaseDC(None, hdc_screen);
+        if !blit.is_ok() {
+            return Err("BitBlt（SDR 补齐）失败".into());
+        }
+        Ok(Frame {
+            width: w as u32,
+            height: h as u32,
+            rgba,
+        })
+    }
 }
 
 /// 抓取屏幕指定区域（长截图逐帧采集视口用，LNG-2/3）。非 HDR 环境返回 `None`。
