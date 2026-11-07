@@ -25,7 +25,7 @@ impl Overlay {
             ocr_enabled,
             pin_key,
             default_tool,
-            custom_color,
+            colors,
             save,
             ui_scale,
             pin_edit,
@@ -98,7 +98,7 @@ impl Overlay {
             pin_key,
             save,
             color_index: 1, // 默认红色
-            custom_color,
+            colors,
             line_width: editor::DEFAULT_LINE_WIDTH,
             blur_radius: editor::DEFAULT_BLUR_RADIUS,
             font_size: editor::DEFAULT_FONT_SIZE,

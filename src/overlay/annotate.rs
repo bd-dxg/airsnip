@@ -8,12 +8,12 @@ use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
 
 use super::{geometry::SelRect, toolbar};
-use crate::editor::{self, Style};
+use crate::editor::Style;
 
 impl super::Overlay {
-    /// 当前标注色（EDT-7）：预设按 `color_index` 取，自定义槽取 `custom_color`。
+    /// 当前标注色（EDT-7）：当前色块的颜色。
     pub(super) fn current_color(&self) -> [u8; 4] {
-        editor::swatch(self.color_index, self.custom_color)
+        self.colors[self.color_index]
     }
 
     /// 当前样式（EDT-7：颜色 + 连续线宽）。
@@ -69,7 +69,7 @@ impl super::Overlay {
         toolbar::State {
             tool: self.tool,
             color: self.color_index,
-            custom_color: self.custom_color,
+            colors: self.colors,
             filled: self.filled,
             can_undo: self.doc.can_undo(),
             can_redo: self.doc.can_redo(),
@@ -84,17 +84,12 @@ impl super::Overlay {
 
     /// 执行工具栏动作（EDT-7）。
     pub(super) fn apply_action(&mut self, action: toolbar::Action) {
-        // 除「自定义颜色」外，任何工具栏动作都收起取色面板（EDT-7，issue #73）
-        if action != toolbar::Action::Color(editor::CUSTOM_INDEX) {
-            self.close_color_panel();
-        }
+        // 任何工具栏动作都收起取色面板（EDT-7，issue #73）；
+        // 双击色块时第一击走这里（选用该色），第二击经 WM_LBUTTONDBLCLK 再展开面板
+        self.close_color_panel();
         match action {
             toolbar::Action::Tool(t) => self.tool = t,
             toolbar::Action::Color(i) => {
-                // 自定义色槽（EDT-7，issue #73）：展开 / 收起取色面板，不走普通色块流程
-                if i == editor::CUSTOM_INDEX {
-                    return self.toggle_color_panel();
-                }
                 self.color_index = i;
                 // EDT-7：颜色同时作用于选中的对象
                 self.style_selected();

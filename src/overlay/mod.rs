@@ -88,10 +88,10 @@ pub struct Overlay {
     pin_key: u32,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
     save: crate::settings::SavePrefs,
-    /// 当前色块下标（预设 0..PALETTE.len()，`CUSTOM_INDEX` 表示自定义色，EDT-7）。
+    /// 当前色块下标（0..SWATCH_COUNT，EDT-7）。
     color_index: usize,
-    /// 自定义色（EDT-7，issue #73）：工具栏取色按钮选定，初值来自配置或默认值。
-    custom_color: [u8; 4],
+    /// 色块颜色（EDT-7，issue #73 后续）：初值来自配置，双击色块取色改写。
+    colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
     /// 新建对象的默认线宽（滚轮 / 二级工具栏可连续调整）。
     line_width: f32,
     /// 新建模糊对象的默认半径（EDT-5）。
@@ -106,7 +106,7 @@ pub struct Overlay {
     italic: bool,
     /// 展开中的字体列表面板（EDT-4）。
     font_list: Option<toolbar::fontlist::FontPanel>,
-    /// 展开中的自定义颜色面板（EDT-7，issue #73）。
+    /// 展开中的取色面板（EDT-7，issue #73；双击色块打开）。
     color_panel: Option<toolbar::colorpanel::ColorPanel>,
     /// 取色拖动中是否已为选中对象开启撤销快照（按下时 `doc.begin`，松手归档，issue #73）。
     color_edit: bool,
@@ -167,8 +167,8 @@ pub struct OverlayOpts {
     pub pin_key: u32,
     /// 本次会话的默认工具（记住上次使用，M3）。
     pub default_tool: Tool,
-    /// 自定义标注色（EDT-7，issue #73）：来自配置，首次为 `CUSTOM_DEFAULT`。
-    pub custom_color: [u8; 4],
+    /// 色块颜色（EDT-7，issue #73 后续）：来自配置，缺省为 `DEFAULT_COLORS`。
+    pub colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
     pub save: crate::settings::SavePrefs,
     /// 界面缩放（CAP-5）。

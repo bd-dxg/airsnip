@@ -16,10 +16,6 @@ use crate::theme::Palette;
 
 use super::label::{LABEL_SIZE_BASE, centered_text, divider, fit_name, left_text};
 
-/// 自定义色块上「＋」标记的黑白分界亮度（高于它用黑，否则用白）。
-const PLUS_INK_LUMA: u32 = 140;
-/// 「＋」标记占色块边长的比例。
-const PLUS_ICON_RATIO: f32 = 0.6;
 /// 选中色块光晕的层数（由内向外每层扩 1 个基准像素）。
 const GLOW_LAYERS: usize = 7;
 /// 由内到外每层的不透明度（索引即扩展像素数）：越靠内越亮，叠出向外的长衰减。
@@ -98,22 +94,12 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     w: r.w - inset * 2,
                     h: r.h - inset * 2,
                 };
-                let color = crate::editor::swatch(i, state.custom_color);
+                let color = state.colors[i];
                 // 正在使用的颜色：色块以自身颜色发光，替代早期的蓝色描边（EDT-7 后续）
                 if i == state.color {
                     draw_glow(pixmap, swatch, ui.f(4.0), color, ui);
                 }
                 rounded_rect(pixmap, swatch, ui.f(4.0), color, Some(p.swatch_border));
-                // 自定义槽：叠一个小「＋」，提示点击可自选颜色（issue #73）
-                if i == crate::editor::CUSTOM_INDEX {
-                    let ink = if luminance(color) > PLUS_INK_LUMA {
-                        [0, 0, 0, 255]
-                    } else {
-                        [255, 255, 255, 255]
-                    };
-                    let (cx, cy) = (r.x as f32 + r.w as f32 / 2.0, r.y as f32 + r.h as f32 / 2.0);
-                    icon::draw(pixmap, Icon::Plus, cx, cy, r.w.min(r.h) as f32 * PLUS_ICON_RATIO, ink);
-                }
             }
             // 文本 / 序号工具无背景功能：填充开关置灰禁用
             Action::ToggleFill => {
@@ -172,11 +158,6 @@ fn draw_glow(pixmap: &mut Pixmap, swatch: SelRect, radius: f32, color: [u8; 4], 
             None,
         );
     }
-}
-
-/// 感知亮度（0..255）：用于自定义色块上「＋」标记的黑白选择。
-fn luminance(c: [u8; 4]) -> u32 {
-    (c[0] as u32 * 299 + c[1] as u32 * 587 + c[2] as u32 * 114) / 1000
 }
 
 /// 工具 → 图标。
