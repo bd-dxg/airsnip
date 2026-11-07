@@ -111,6 +111,28 @@ pub(super) fn restore_region(dst: &mut Pixmap, src: &Pixmap, r: SelRect) {
     blit_region(dst, src, r);
 }
 
+/// 把任意尺寸的 `src`（straight RGBA）盖印到 `dst` 的 (x, y) 处（贴图编辑模式落底图，ADR 0028）。
+/// 越界部分自动裁切；两侧均为 straight，直接逐行拷贝。
+pub(super) fn stamp(dst: &mut Pixmap, src: &Pixmap, x: i32, y: i32) {
+    let (dw, dh) = (dst.width() as i32, dst.height() as i32);
+    let (sw, sh) = (src.width() as i32, src.height() as i32);
+    let x0 = x.max(0);
+    let y0 = y.max(0);
+    let x1 = (x + sw).min(dw);
+    let y1 = (y + sh).min(dh);
+    if x1 <= x0 || y1 <= y0 {
+        return;
+    }
+    let row_bytes = (x1 - x0) as usize * 4;
+    let sx = (x0 - x) as usize;
+    for row in y0..y1 {
+        let sy = (row - y) as usize;
+        let dst_off = (row as usize * dw as usize + x0 as usize) * 4;
+        let src_off = (sy * sw as usize + sx) * 4;
+        dst.data_mut()[dst_off..dst_off + row_bytes].copy_from_slice(&src.data()[src_off..src_off + row_bytes]);
+    }
+}
+
 /// 暗化像素图：逐通道乘以 k/256，多线程分块并行。
 pub(super) fn dim_pixmap(pixmap: &mut Pixmap, k: u32) {
     let data = pixmap.data_mut();
@@ -233,4 +255,27 @@ pub(super) fn crop_pixmap(src: &Pixmap, r: SelRect) -> Option<Pixmap> {
             .copy_from_slice(&src.data()[off_src..off_src + w as usize * 4]);
     }
     Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 盖印（ADR 0028）：越界与负偏移均按交集裁切，不越界访问。
+    #[test]
+    fn stamp_copies_with_clipping() {
+        let red = [255u8, 0, 0, 255];
+        let mut dst = Pixmap::new(8, 8).unwrap();
+        dst.fill(tiny_skia::Color::BLACK);
+        let mut src = Pixmap::new(4, 4).unwrap();
+        src.fill(tiny_skia::Color::from_rgba8(255, 0, 0, 255));
+        stamp(&mut dst, &src, 6, 6); // 右下角越界，只盖 2×2
+        assert_eq!(&dst.data()[(6 * 8 + 6) * 4..(6 * 8 + 6) * 4 + 4], &red);
+        assert_eq!(&dst.data()[0..4], &[0, 0, 0, 255]); // 未覆盖处保持黑色
+
+        let mut dst2 = Pixmap::new(4, 4).unwrap();
+        dst2.fill(tiny_skia::Color::BLACK);
+        stamp(&mut dst2, &src, -2, -2); // 负偏移：src(2,2) 落到 dst(0,0)
+        assert_eq!(&dst2.data()[0..4], &red);
+    }
 }

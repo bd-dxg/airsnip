@@ -18,16 +18,21 @@ use windows::Win32::System::Memory::{GlobalLock, GlobalSize};
 use windows::Win32::System::Ole::{CF_BITMAP, CF_DIB};
 use windows::core::w;
 
-/// 读取剪贴板图片，失败返回错误信息（格式不支持 / 内容损坏）。
-pub(super) fn read_image() -> Result<Pixmap, String> {
+/// 剪贴板读图错误（ADR 0028）：区分「没有图片」与真正的读取异常。
+/// 「没有图片」是常见情况（复制了文字就按贴图键），调用方应静默忽略。
+pub(super) enum ReadError {
+    /// 剪贴板里没有任何图片格式。
+    NoImage,
+    /// 其它失败（无法打开剪贴板 / 图片损坏）。
+    Failed(String),
+}
+
+/// 读取剪贴板图片，失败返回 [`ReadError`]（格式不支持 / 内容损坏）。
+pub(super) fn read_image() -> Result<Pixmap, ReadError> {
     unsafe {
         if OpenClipboard(None).is_err() {
-            return Err("无法打开剪贴板".into());
+            return Err(ReadError::Failed("无法打开剪贴板".into()));
         }
-        let fail = |e: String| {
-            let _ = CloseClipboard();
-            e
-        };
 
         // 1) "PNG" 注册格式（现代程序偏好，直接 PNG 字节解码）
         let png_fmt = RegisterClipboardFormatW(w!("PNG"));
@@ -58,7 +63,8 @@ pub(super) fn read_image() -> Result<Pixmap, String> {
             return Ok(pm);
         }
 
-        Err(fail("剪贴板中没有图片".into()))
+        let _ = CloseClipboard();
+        Err(ReadError::NoImage)
     }
 }
 

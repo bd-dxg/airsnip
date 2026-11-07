@@ -139,7 +139,24 @@ impl Cursor {
 /// 计算工具栏布局：优先放在选区下方，空间不足则放上方。
 /// `text_row` 为真时附上第二行（文本工具或选中文本对象，EDT-4）；
 /// `ocr` 为假时不出「OCR」按钮（OCR-1：关闭时界面与无此功能时完全一致）。
+/// 仅测试使用的便捷入口（输出组恒开）；生产代码用 [`layout_ex`]。
+#[cfg(test)]
 pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ocr: bool, ui: Ui) -> Toolbar {
+    layout_ex(sel, screen_w, screen_h, text_row, ocr, true, ui)
+}
+
+/// 同 [`layout`]，额外用 `show_output` 控制「非编辑专属」元素：
+/// 贴图编辑模式（ADR 0028）下选区锁定，输出组（贴图 / 长截图 / OCR）不出现，
+/// 也不再为「宽 × 高」信息文字预留/绘制空间（`show_output == false`）。
+pub fn layout_ex(
+    sel: SelRect,
+    screen_w: i32,
+    screen_h: i32,
+    text_row: bool,
+    ocr: bool,
+    show_output: bool,
+    ui: Ui,
+) -> Toolbar {
     let (row_h, h2) = (ui.px(H_BASE), ui.px(H2_BASE));
     let (btn, sw) = (ui.px(BTN_BASE), ui.px(SW_BASE));
     let (gap, sep, pad) = (ui.px(GAP_BASE), ui.px(SEP_BASE), ui.px(PAD_BASE));
@@ -166,11 +183,13 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ocr: b
     c.sep();
     item(&mut c, btn, btn, Action::Undo);
     item(&mut c, btn, btn, Action::Redo);
-    c.sep();
-    item(&mut c, btn, btn, Action::Pin);
-    item(&mut c, btn, btn, Action::Longshot);
-    if ocr {
-        item(&mut c, btn, btn, Action::Ocr);
+    if show_output {
+        c.sep();
+        item(&mut c, btn, btn, Action::Pin);
+        item(&mut c, btn, btn, Action::Longshot);
+        if ocr {
+            item(&mut c, btn, btn, Action::Ocr);
+        }
     }
     c.sep();
     item(&mut c, btn, btn, Action::Copy);
@@ -202,15 +221,18 @@ pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ocr: b
     let x = sel.x.clamp(margin, (screen_w - w - margin).max(margin));
     // 信息文字占位（见 overlay::text_rect）：默认贴选区下方，与文字同侧时再让出一个文字高度；
     // 下方塞不下就翻到上方，且避开文字块（见 geometry::info_text_below）。
-    let text_below = info_text_below(sel, screen_h, total_h, ui);
+    // 贴图编辑模式（`show_output == false`）不画信息文字，也不为它预留空间。
     let offset = info_offset(ui);
+    let text_below = show_output && info_text_below(sel, screen_h, total_h, ui);
     let below = sel.y + sel.h + offset + if text_below { info_text_h(ui) } else { 0 };
     let y = if below + total_h + margin <= screen_h {
         below
-    } else if text_below {
+    } else if show_output && text_below {
         (sel.y - offset - total_h).max(ui.px(2.0))
-    } else {
+    } else if show_output {
         (sel.y - info_text_h(ui) - offset - offset - total_h).max(ui.px(2.0))
+    } else {
+        (sel.y - offset - total_h).max(ui.px(2.0))
     };
     let first = SelRect { x, y, w: w1, h: row_h };
     let second = text_row.then(|| SelRect {
@@ -443,5 +465,20 @@ mod tests {
             assert_eq!(a.0.w * 2, b.0.w, "元素宽度应翻倍：{:?}", a.1);
             assert_eq!(a.0.h * 2, b.0.h, "元素高度应翻倍：{:?}", a.1);
         }
+    }
+
+    /// 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图 / OCR）整体不出现，复制/保存仍在。
+    #[test]
+    fn output_group_hidden_when_editing() {
+        let s = sel(100, 100, 400, 300);
+        let full = layout_ex(s, 2560, 1440, false, true, true, base());
+        let edit = layout_ex(s, 2560, 1440, false, true, false, base());
+        let is_output = |a: &Action| matches!(a, Action::Pin | Action::Longshot | Action::Ocr);
+        assert!(full.hits.iter().any(|(_, a)| *a == Action::Pin));
+        assert!(!edit.hits.iter().any(|(_, a)| is_output(a)), "编辑模式不应有输出组");
+        assert!(edit.hits.iter().any(|(_, a)| *a == Action::Copy));
+        assert!(edit.hits.iter().any(|(_, a)| *a == Action::Save));
+        // 少了三个按钮，工具栏更窄
+        assert!(edit.rect.w < full.rect.w);
     }
 }

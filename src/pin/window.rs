@@ -26,7 +26,7 @@ pub(super) struct PinWindow {
     /// 当前缩放结果（premultiplied，透明度叠加时复用）。
     pub(super) scaled: Pixmap,
     /// 干净内容图（premultiplied，无边框扩展）：边框开关时重新烘焙用。
-    raw: Pixmap,
+    pub(super) raw: Pixmap,
     /// 窗口透明度 0-255（先缩放后叠加，独立于像素通道）。
     alpha: u8,
     /// 内容区在 original 中的四周偏移（边框扩展；0 = 无边框）。

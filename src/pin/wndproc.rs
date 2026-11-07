@@ -72,6 +72,12 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         // Esc 关闭不受 Alt 影响（Alt+Esc 罕见，一并处理无害）
         WM_SYSKEYDOWN | WM_KEYDOWN => {
             let vk = wparam.0 as u32;
+            // 空格：进入标注编辑（ADR 0028，issue #56）。只取 WM_KEYDOWN 的首次按下
+            // （lparam bit30=0，避开自动重复）且无 Alt（避开 Alt+Space 系统菜单）
+            if msg == WM_KEYDOWN && vk == 0x20 && (lparam.0 as u32 >> 30) & 1 == 0 {
+                super::request_edit(hwnd);
+                return LRESULT(0);
+            }
             if vk == 0x1B {
                 let _ = unsafe { post_close(hwnd) };
             } else if let Some((dx, dy)) = crate::app::hotkey::arrow_step(vk, held_modifiers() & 4 != 0) {

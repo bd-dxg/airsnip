@@ -180,15 +180,17 @@ impl super::Overlay {
         let Some(sel) = self.selection else {
             return PickTarget::None;
         };
-        // 3) 选区八向手柄（CAP-2）
-        if let Some(h) = hit_handle(sel, x, y, ui) {
+        // 3) 选区八向手柄（CAP-2）；贴图编辑模式（ADR 0028）选区锁定，不提供手柄
+        if !self.locked_selection
+            && let Some(h) = hit_handle(sel, x, y, ui)
+        {
             return PickTarget::SelHandle(h);
         }
         if !sel.contains(x, y) {
             return PickTarget::None;
         }
-        // 4) 空格 + 选区内：移动整个选区（CAP-2），优先于对象
-        if super::wndproc::space_down() {
+        // 4) 空格 + 选区内：移动整个选区（CAP-2），优先于对象；锁定态禁用
+        if !self.locked_selection && super::wndproc::space_down() {
             return PickTarget::MoveSelection;
         }
         // 5) Ctrl + 对象本体：移动该对象（ADR 0023 §2）

@@ -46,11 +46,13 @@ impl super::Overlay {
     /// 鼠标键 / 仅在松键才发现的功能键（ADR 0019、#67）：落到长截图键或工具切换键时执行。
     /// 覆盖层的 PrtScn（只有 WM_KEYUP）与中键/侧键（只有鼠标消息）共用。
     pub(super) fn on_aux_key(&mut self, vk: u32) {
-        if vk == self.pin_key {
+        // 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图 / OCR）不适用；工具切换仍生效
+        let outputs = !self.locked_selection;
+        if outputs && vk == self.pin_key {
             self.on_pin(); // PIN-1：贴选区
-        } else if vk == self.longshot_key {
+        } else if outputs && vk == self.longshot_key {
             self.on_longshot();
-        } else if vk == self.ocr_key && self.ocr_enabled {
+        } else if outputs && vk == self.ocr_key && self.ocr_enabled {
             self.on_ocr(); // OCR-3：OCR（功能关闭时不吃这个键，留给工具切换）
         } else if let Some(t) = self.tool_by_key(vk) {
             self.switch_tool(t);
@@ -175,7 +177,13 @@ impl super::Overlay {
             // Esc 取消输入走 `on_text_key`（键盘路径），不经过这里。
             CancelStep::CommitText => self.commit_text(),
             CancelStep::Confirm => {
-                if crate::app::confirm(Some(self.hwnd), "当前标注尚未保存，确定放弃并退出截图？") {
+                // 贴图编辑模式（ADR 0028）文案改为「退出编辑」
+                let msg = if self.locked_selection {
+                    "当前标注尚未保存，确定放弃并退出编辑？"
+                } else {
+                    "当前标注尚未保存，确定放弃并退出截图？"
+                };
+                if crate::app::confirm(Some(self.hwnd), msg) {
                     self.exit_cancel();
                 }
             }
@@ -193,7 +201,7 @@ impl super::Overlay {
 
     /// 输出用像素图：裁剪选区 → 把标注对象烘焙进结果图（OUT-1/OUT-2）。
     /// 标注坐标是覆盖层坐标系，需按裁剪原点平移到裁剪图坐标。
-    fn baked_selection(&self, sel: SelRect) -> Option<tiny_skia::Pixmap> {
+    pub(super) fn baked_selection(&self, sel: SelRect) -> Option<tiny_skia::Pixmap> {
         let mut cropped = crop_pixmap(&self.original, sel)?;
         render::bake_objects(&mut cropped, self.doc.objects(), (sel.x, sel.y));
         Some(cropped)
@@ -376,7 +384,7 @@ impl super::Overlay {
     }
 
     /// 结束覆盖层：取消标志已由调用方设置，这里只投递关闭消息。
-    fn close(&self) {
+    pub(super) fn close(&self) {
         unsafe {
             let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
         }
