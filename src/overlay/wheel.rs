@@ -34,6 +34,11 @@ impl super::Overlay {
                     self.font_size = (self.font_size + step).clamp(10.0, 96.0);
                 }
                 crate::editor::Tool::Blur => self.blur_radius = (self.blur_radius + step).clamp(4.0, 64.0),
+                // EDT-12：序号徽标随字号缩放
+                crate::editor::Tool::Number => {
+                    let r = crate::editor::FONT_SIZE_RANGE;
+                    self.number_font_size = (self.number_font_size + step).clamp(r.0, r.1);
+                }
                 crate::editor::Tool::Highlight | crate::editor::Tool::Glow => {}
             }
         }
@@ -66,6 +71,17 @@ impl super::Overlay {
                 }
                 // 高亮/聚光：无可调属性
                 Kind::Highlight { .. } | Kind::Glow { .. } => false,
+                // EDT-12 序号标记：字号连续可调（徽标圆半径由 remeasure 重算）
+                Kind::Number { font_size, .. } => {
+                    let r = crate::editor::FONT_SIZE_RANGE;
+                    let fs = (*font_size + step).clamp(r.0, r.1);
+                    let changed = (*font_size - fs).abs() > 0.01;
+                    if changed {
+                        *font_size = fs;
+                        self.number_font_size = fs;
+                    }
+                    changed
+                }
                 // 文本：字号连续可调，同步重建测量缓存（EDT-4）
                 Kind::Text { font_size, .. } => {
                     let fs =

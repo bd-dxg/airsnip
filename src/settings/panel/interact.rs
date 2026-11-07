@@ -257,6 +257,7 @@ impl Panel {
                     RowId::ToolBlur => self.config.tool_keys.blur = vk,
                     RowId::ToolHighlight => self.config.tool_keys.highlight = vk,
                     RowId::ToolGlow => self.config.tool_keys.glow = vk,
+                    RowId::ToolNumber => self.config.tool_keys.number = vk,
                     _ => {}
                 }
                 self.end_capture();

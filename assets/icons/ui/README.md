@@ -7,7 +7,7 @@
 
 ```
 ui/
-  toolbar/   # 覆盖层工具栏 18 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
+  toolbar/   # 覆盖层工具栏 19 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
   status/    # 长截图状态条
   panel/     # 设置面板行内按钮（快捷键行的清除按钮）
 ```
@@ -50,6 +50,7 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | `toolbar/highlight.svg` | `format_ink_highlighter`（**fill1** 变体，见下） |
 | `toolbar/blur.svg` | `blur_on` |
 | `toolbar/glow.svg` | `flashlight_on` |
+| `toolbar/number.svg` | `counter_1` |
 | `toolbar/fill.svg` | `format_color_fill` |
 | `toolbar/undo.svg` / `redo.svg` | `undo` / `redo` |
 | `toolbar/pin.svg` | `push_pin` |
@@ -82,7 +83,8 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | fill | 27.2 | check | 14.2 |
 | cross | 25.4 | pin | 14.8 |
 | undo / redo | 27.2 | longshot | 12.4 |
-| delete | 29.0 | ocr | 30.2 | |
+| delete | 29.0 | ocr | 30.2 |
+| number | 29.9 | | |
 
 全组落在 11.8%～37.6%，均在测试区间（5%～48%）内。个别图标用
 `render::icon::optical_scale` 微调：`save` 0.92（软盘 bbox 偏大）、

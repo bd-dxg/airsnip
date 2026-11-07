@@ -79,6 +79,7 @@ impl Overlay {
             line_width: editor::DEFAULT_LINE_WIDTH,
             blur_radius: editor::DEFAULT_BLUR_RADIUS,
             font_size: editor::DEFAULT_FONT_SIZE,
+            number_font_size: editor::DEFAULT_NUMBER_FONT_SIZE,
             font_family: std::sync::Arc::from(editor::DEFAULT_FONT_FAMILY),
             bold: false,
             italic: false,

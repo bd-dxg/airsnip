@@ -7,6 +7,7 @@ mod corner;
 mod curve;
 mod document;
 mod hit;
+mod number;
 pub(crate) mod text;
 mod transform;
 
@@ -15,6 +16,7 @@ pub use curve::{
     split_left, t_at_arc_from_end,
 };
 pub use document::{Document, MAX_HISTORY};
+pub use number::{next_number, number_arrow_start};
 pub use transform::{ArrowEnd, scale_factors, snap_direction, square_corner};
 
 /// 坐标点。
@@ -108,6 +110,16 @@ pub enum Kind {
     /// 高亮（聚光效果，与荧光笔是两种功能）：对角两点 + `corner` 圆角半径。
     /// 选区其余部分暗化、该区域显示原图亮度，详见渲染层说明。
     Glow { a: Point, b: Point, corner: f32 },
+    /// EDT-12 序号标记：`center` 为徽标圆心（按下点），`tip` 为引线箭头尖端（拖动终点）；
+    /// `n` 为显示的编号，`font_size` 为数字字号（滚轮连续调）。
+    /// `radius` 为徽标圆半径：由渲染层按字号与编号位数测量后写入（与 `Kind::Text::size` 同源约定）。
+    Number {
+        center: Point,
+        tip: Point,
+        n: u32,
+        font_size: f32,
+        radius: f32,
+    },
 }
 
 impl Kind {
@@ -125,9 +137,12 @@ impl Kind {
     pub fn control_points(&self) -> Option<[Point; 2]> {
         match *self {
             Kind::Arrow { c1, c2, .. } => Some([c1, c2]),
-            Kind::Rect { .. } | Kind::Text { .. } | Kind::Highlight { .. } | Kind::Blur { .. } | Kind::Glow { .. } => {
-                None
-            }
+            Kind::Rect { .. }
+            | Kind::Text { .. }
+            | Kind::Highlight { .. }
+            | Kind::Blur { .. }
+            | Kind::Glow { .. }
+            | Kind::Number { .. } => None,
         }
     }
 
@@ -169,6 +184,10 @@ impl Kind {
             Kind::Highlight { a, b, .. } | Kind::Blur { a, b, .. } | Kind::Glow { a, b, .. } => {
                 Bounds::around(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y), 1.0)
             }
+            // EDT-12 序号标记：徽标圆与引线箭头的并集（几何见 `number`）
+            Kind::Number {
+                center, tip, radius, ..
+            } => number::bounds(*center, *tip, *radius, style),
             // 文本：范围由测量缓存决定（EDT-4），padding 随字号缩放
             Kind::Text {
                 pos, size, font_size, ..
@@ -217,17 +236,20 @@ pub enum Tool {
     Blur,
     /// 聚光高亮：选区其余暗化、该区域恢复原图亮度。
     Glow,
+    /// EDT-12 序号标记：按下放徽标、拖动引线箭头。
+    Number,
 }
 
 impl Tool {
     /// 工具栏顺序。
-    pub const ALL: [Tool; 6] = [
+    pub const ALL: [Tool; 7] = [
         Tool::Rect,
         Tool::Arrow,
         Tool::Text,
         Tool::Highlight,
         Tool::Blur,
         Tool::Glow,
+        Tool::Number,
     ];
 }
 
@@ -239,6 +261,9 @@ pub const DEFAULT_BLUR_RADIUS: f32 = 16.0;
 
 /// 文本默认字号（EDT-4：物理像素，滚轮连续可调）。
 pub const DEFAULT_FONT_SIZE: f32 = 24.0;
+
+/// 序号标记默认字号（EDT-12：物理像素，徽标随字号缩放，滚轮连续可调）。
+pub const DEFAULT_NUMBER_FONT_SIZE: f32 = 20.0;
 
 /// 文本默认字体族（Win10/11 自带；字体面板可改，EDT-4）。
 pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei UI";
@@ -469,7 +494,61 @@ mod tests {
     fn tool_all_includes_text() {
         assert!(Tool::ALL.contains(&Tool::Text));
         assert!(Tool::ALL.contains(&Tool::Glow));
-        assert_eq!(Tool::ALL.len(), 6);
+        assert!(Tool::ALL.contains(&Tool::Number));
+        assert_eq!(Tool::ALL.len(), 7);
+    }
+
+    fn number(center: (f32, f32), tip: (f32, f32), n: u32) -> Object {
+        Object {
+            kind: Kind::Number {
+                center: Point::new(center.0, center.1),
+                tip: Point::new(tip.0, tip.1),
+                n,
+                font_size: 20.0,
+                radius: 14.0,
+            },
+            style: Style::new([255, 0, 0, 255], 3.0),
+        }
+    }
+
+    #[test]
+    fn number_bounds_cover_badge_and_arrow() {
+        // 只有徽标（tip 重合）：包围盒应覆盖圆心 ± 半径
+        let badge = number((100.0, 100.0), (100.0, 100.0), 1);
+        let b = badge.bounds();
+        assert!(b.x0 < 100.0 - 14.0 && b.x1 > 100.0 + 14.0, "应包住徽标圆：{b:?}");
+        assert!(b.y0 < 100.0 - 14.0 && b.y1 > 100.0 + 14.0);
+        // 带引线：包围盒应延伸到尖端之外（箭头头部随线宽外扩）
+        let arrow = number((100.0, 100.0), (300.0, 100.0), 1);
+        assert!(arrow.bounds().x1 > 300.0, "引线箭头应超出尖端：{:?}", arrow.bounds());
+    }
+
+    #[test]
+    fn number_hit_badge_and_leader() {
+        let obj = number((50.0, 50.0), (200.0, 50.0), 1);
+        assert!(obj.hit(Point::new(50.0, 50.0), 2.0), "徽标圆心应命中");
+        assert!(obj.hit(Point::new(50.0 + 12.0, 50.0), 2.0), "徽标圆内应命中");
+        assert!(obj.hit(Point::new(150.0, 50.0), 2.0), "引线线段上应命中");
+        assert!(!obj.hit(Point::new(150.0, 120.0), 2.0), "引线外不应命中");
+    }
+
+    #[test]
+    fn number_arrow_start_sits_on_badge_edge() {
+        let start = number_arrow_start(Point::new(0.0, 0.0), Point::new(100.0, 0.0), 10.0);
+        assert!((start.x - 10.0).abs() < 1e-3 && start.y.abs() < 1e-3, "{start:?}");
+        // 未拖动（tip 重合）：返回圆心，不产生 NaN
+        assert_eq!(
+            number_arrow_start(Point::new(5.0, 6.0), Point::new(5.0, 6.0), 10.0),
+            Point::new(5.0, 6.0)
+        );
+    }
+
+    #[test]
+    fn next_number_takes_max_plus_one() {
+        assert_eq!(next_number(&[]), 1, "空文档从 1 开始");
+        // 中间删掉一个（1、3）也不重排：新号取最大值 +1
+        let objs = vec![number((0.0, 0.0), (0.0, 0.0), 1), number((0.0, 0.0), (0.0, 0.0), 3)];
+        assert_eq!(next_number(&objs), 4);
     }
 
     #[test]

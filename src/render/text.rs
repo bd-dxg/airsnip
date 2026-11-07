@@ -123,19 +123,27 @@ pub fn measure(text: &str, spec: &FontSpec) -> (f32, f32) {
     approx(text, spec.size)
 }
 
-/// 重测文本对象的尺寸缓存（EDT-4：字号 / 字体族 / 粗斜体变化后调用）；非文本对象无操作。
+/// 重测受字号影响的几何缓存（EDT-4/EDT-12：字号 / 字体 / 编号变化后调用）。
+/// 文本对象重算测量尺寸；序号标记重算徽标圆半径；其余对象无操作。
 pub fn remeasure(kind: &mut Kind) {
-    if let Kind::Text {
-        text,
-        font_size,
-        font_family,
-        bold,
-        italic,
-        size,
-        ..
-    } = kind
-    {
-        *size = measure(text, &FontSpec::from_parts(font_family, *font_size, *bold, *italic));
+    match kind {
+        Kind::Text {
+            text,
+            font_size,
+            font_family,
+            bold,
+            italic,
+            size,
+            ..
+        } => {
+            *size = measure(text, &FontSpec::from_parts(font_family, *font_size, *bold, *italic));
+        }
+        Kind::Number {
+            n, font_size, radius, ..
+        } => {
+            *radius = super::number_radius(*font_size, *n);
+        }
+        _ => {}
     }
 }
 

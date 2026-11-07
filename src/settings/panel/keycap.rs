@@ -27,7 +27,7 @@ pub(super) enum Zone {
     Clear,
 }
 
-/// 是否为快捷键行（热键 + 工具切换键，共 10 行）。
+/// 是否为快捷键行（热键 + 工具切换键，共 11 行）。
 /// 这些行共用「点键帽捕获 / 点清除按钮清空」的交互。
 pub(super) fn is_key_row(id: RowId) -> bool {
     matches!(
@@ -43,6 +43,7 @@ pub(super) fn is_key_row(id: RowId) -> bool {
             | RowId::ToolBlur
             | RowId::ToolHighlight
             | RowId::ToolGlow
+            | RowId::ToolNumber
     )
 }
 
@@ -113,6 +114,7 @@ fn row_key(panel: &Panel, id: RowId) -> u32 {
         RowId::ToolBlur => tk.blur,
         RowId::ToolHighlight => tk.highlight,
         RowId::ToolGlow => tk.glow,
+        RowId::ToolNumber => tk.number,
         _ => crate::settings::UNBOUND,
     }
 }
@@ -136,6 +138,7 @@ fn keycap_text(panel: &Panel, id: RowId) -> String {
         RowId::ToolBlur => super::controls::key_name(tk.blur, 0),
         RowId::ToolHighlight => super::controls::key_name(tk.highlight, 0),
         RowId::ToolGlow => super::controls::key_name(tk.glow, 0),
+        RowId::ToolNumber => super::controls::key_name(tk.number, 0),
         _ => String::new(),
     }
 }
@@ -182,17 +185,18 @@ impl Panel {
             RowId::ToolBlur => tk.blur = crate::settings::UNBOUND,
             RowId::ToolHighlight => tk.highlight = crate::settings::UNBOUND,
             RowId::ToolGlow => tk.glow = crate::settings::UNBOUND,
+            RowId::ToolNumber => tk.number = crate::settings::UNBOUND,
             _ => return,
         }
         self.config_dirty = true;
     }
 
-    /// 一键恢复默认快捷键（10 项全部还原，含已清空的项）。
+    /// 一键恢复默认快捷键（11 项全部还原，含已清空的项）。
     pub(super) fn reset_keys(&mut self) {
         self.end_capture();
         if !confirm(
             self.hwnd,
-            "恢复默认会覆盖当前全部 10 项快捷键设置（包括已清空的项）。\n确定恢复吗？",
+            "恢复默认会覆盖当前全部 11 项快捷键设置（包括已清空的项）。\n确定恢复吗？",
         ) {
             return;
         }

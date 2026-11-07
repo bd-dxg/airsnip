@@ -18,6 +18,7 @@ pub(crate) mod geometry;
 mod ime;
 mod init;
 mod interaction;
+mod number_edit;
 mod objedit;
 mod pick;
 mod selection;
@@ -93,6 +94,8 @@ pub struct Overlay {
     blur_radius: f32,
     /// 新建文本对象的默认字号（EDT-4，滚轮 / 第二行可调）。
     font_size: f32,
+    /// 新建序号标记的默认字号（EDT-12，滚轮可调；徽标圆随字号缩放）。
+    number_font_size: f32,
     /// 新建文本对象的默认字体族、粗体、斜体（EDT-4，第二行工具栏可改）。
     font_family: std::sync::Arc<str>,
     bold: bool,

@@ -69,6 +69,8 @@ pub fn draw_object_with(pixmap: &mut Pixmap, obj: &Object, transform: Transform)
         // 聚光高亮：不在底图上涂色，效果由「选区暗化 + 区域恢复原图亮度」的渲染管线提供
         // （屏幕显示见 overlay::selection::repaint，导出见 bake_objects）
         Kind::Glow { .. } => {}
+        // EDT-12 序号标记：徽标圆 + 引线箭头 + 反白数字
+        Kind::Number { .. } => draw_number(pixmap, obj, transform),
     }
 }
 
@@ -207,6 +209,60 @@ fn unit_dir(c1: Point, c2: Point, to: Point, pts: &[Point]) -> (f32, f32) {
 fn normalize(x: f32, y: f32) -> Option<(f32, f32)> {
     let len = (x * x + y * y).sqrt();
     if len < 1e-6 { None } else { Some((x / len, y / len)) }
+}
+
+/// EDT-12 徽标圆半径：按编号位数与字号测量后取值（渲染层算，缓存进对象供几何/命中复用）。
+pub fn number_radius(font_size: f32, n: u32) -> f32 {
+    let mut spec = text::FontSpec::new(font_size);
+    spec.bold = true;
+    let (w, _) = text::measure(&n.to_string(), &spec);
+    (w * 0.5 + font_size * 0.35).max(font_size * 0.8)
+}
+
+/// EDT-12 序号标记：先画徽标边缘引出的箭头（复用直线箭头绘制），再画实心徽标圆，最后叠反白数字。
+fn draw_number(pixmap: &mut Pixmap, obj: &Object, tr: Transform) {
+    let Kind::Number {
+        center,
+        tip,
+        n,
+        font_size,
+        radius,
+    } = &obj.kind
+    else {
+        return;
+    };
+    let (center, tip) = (*center, *tip);
+    // 1) 引线箭头：起点在徽标边缘，箭头头部随线宽（直线控制点置于 1/3、2/3 处）
+    let start = crate::editor::number_arrow_start(center, tip, *radius);
+    let (dx, dy) = (tip.x - start.x, tip.y - start.y);
+    if dx * dx + dy * dy >= 1.0 {
+        let c1 = Point::new(start.x + dx / 3.0, start.y + dy / 3.0);
+        let c2 = Point::new(start.x + dx * 2.0 / 3.0, start.y + dy * 2.0 / 3.0);
+        draw_arrow(pixmap, start, c1, c2, tip, &obj.style, tr);
+    }
+    // 2) 徽标圆（实心，颜色取调色板）
+    let mut pb = PathBuilder::new();
+    pb.push_circle(center.x, center.y, *radius);
+    if let Some(path) = pb.finish() {
+        pixmap.fill_path(&path, &paint_of(obj.style.color), FillRule::Winding, tr, None);
+    }
+    // 3) 数字：按徽标底色亮度自动取反色（白底用黑字，否则白字），避免白徽标上看不见
+    let mut spec = text::FontSpec::new(*font_size);
+    spec.bold = true;
+    let label = n.to_string();
+    let (tw, th) = text::measure(&label, &spec);
+    let pos = Point::new(center.x - tw * 0.5, center.y - th * 0.5 + *font_size * 0.08);
+    text::draw(pixmap, pos, &label, &spec, contrast_ink(obj.style.color), tr);
+}
+
+/// 徽标底色对应的数字颜色：按感知亮度（BT.601）在白/黑间取反色。
+fn contrast_ink(badge: [u8; 4]) -> [u8; 4] {
+    let lum = (badge[0] as u32 * 299 + badge[1] as u32 * 587 + badge[2] as u32 * 114) / 1000;
+    if lum >= 150 {
+        [0, 0, 0, 255]
+    } else {
+        [255, 255, 255, 255]
+    }
 }
 
 #[cfg(test)]
@@ -569,5 +625,61 @@ mod tests {
         assert!(r > 20 && r < 255, "亮块中心应被模糊：r={r}");
         let (out, _, _, _) = pixel(&p, 2, 10);
         assert_eq!(out, 0, "模糊区外应保持黑色");
+    }
+
+    /// EDT-12：徽标圆半径随编号位数增大（一位 → 两位 → 三位）。
+    #[test]
+    fn number_radius_grows_with_digits() {
+        let one = number_radius(20.0, 1);
+        let two = number_radius(20.0, 10);
+        let three = number_radius(20.0, 100);
+        assert!(one > 0.0, "半径应非零：{one}");
+        assert!(two >= one && three >= two, "位数越多半径不应更小：{one}/{two}/{three}");
+    }
+
+    /// EDT-12：徽标为实心圆、引线画到尖端，区域外不被污染。
+    #[test]
+    fn number_draw_paints_badge_and_leader() {
+        let mut p = new_pixmap(120, 120);
+        p.fill(tiny_skia::Color::from_rgba8(0, 0, 0, 255));
+        let radius = number_radius(20.0, 1);
+        let obj = Object {
+            kind: Kind::Number {
+                center: Point::new(40.0, 60.0),
+                tip: Point::new(112.0, 60.0),
+                n: 1,
+                font_size: 20.0,
+                radius,
+            },
+            style: Style::new([200, 30, 30, 255], 3.0),
+        };
+        draw_object(&mut p, &obj);
+        // 徽标圆心附近应为红色（实心圆）
+        let (r, g, b, _) = pixel(&p, 28, 60);
+        assert!(r > 150 && g < 100 && b < 100, "徽标应为红色：{r},{g},{b}");
+        // 引线尖端附近应有像素
+        assert!(pixel(&p, 108, 60).0 > 0, "引线箭头处应有像素");
+        // 远离对象处保持黑色
+        assert_eq!(pixel(&p, 5, 5), (0, 0, 0, 255));
+    }
+
+    /// EDT-12：数字颜色随徽标底色自动反色（白底绘深色数字）。
+    #[test]
+    fn number_digit_contrasts_with_badge() {
+        let mut p = new_pixmap(60, 60);
+        let radius = number_radius(20.0, 1);
+        let obj = Object {
+            kind: Kind::Number {
+                center: Point::new(30.0, 30.0),
+                tip: Point::new(30.0, 30.0),
+                n: 1,
+                font_size: 20.0,
+                radius,
+            },
+            style: Style::new([255, 255, 255, 255], 3.0),
+        };
+        draw_object(&mut p, &obj);
+        let has_dark = (0..60).any(|y| (0..60).any(|x| pixel(&p, x, y).0 < 80 && pixel(&p, x, y).3 > 0));
+        assert!(has_dark, "白底徽标上应绘制深色数字");
     }
 }

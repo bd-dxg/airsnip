@@ -126,6 +126,8 @@ pub(super) fn is_degenerate(obj: &Object) -> bool {
         Kind::Glow { a, b, .. } => (a.x - b.x).abs() < 2.0 && (a.y - b.y).abs() < 2.0,
         // 文本：空文本在提交时已拦截，进入文档的均为有效对象
         Kind::Text { .. } => false,
+        // 序号标记（EDT-12）：只点一下不拖也是有效对象（只有徽标、无引线）
+        Kind::Number { .. } => false,
     }
 }
 
@@ -349,6 +351,19 @@ mod tests {
                 "{obj:?} 的框边应可拖动"
             );
         }
+    }
+
+    /// 序号标记（EDT-12）：只点一下不拖（只有徽标）也是有效对象，不算误触。
+    #[test]
+    fn number_is_never_degenerate() {
+        let obj = rect_like(Kind::Number {
+            center: Point::new(10.0, 10.0),
+            tip: Point::new(10.0, 10.0),
+            n: 1,
+            font_size: 20.0,
+            radius: 14.0,
+        });
+        assert!(!is_degenerate(&obj), "序号徽标不应被判为误触丢弃");
     }
 
     /// 箭头只画两端点手柄、不画包围框，不参与框边命中（否则整条框都能拖）。

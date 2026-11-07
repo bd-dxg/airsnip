@@ -27,6 +27,8 @@ pub(super) struct TextEdit {
     pub font_family: std::sync::Arc<str>,
     pub bold: bool,
     pub italic: bool,
+    /// EDT-12：本次输入是在改序号标记的编号（只收数字字符，提交时写回 `n`）。
+    pub number: bool,
 }
 
 impl TextEdit {
@@ -161,6 +163,7 @@ mod tests {
             font_family: std::sync::Arc::from(crate::editor::DEFAULT_FONT_FAMILY),
             bold: false,
             italic: false,
+            number: false,
         }
     }
 
