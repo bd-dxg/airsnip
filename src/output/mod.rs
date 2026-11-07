@@ -38,6 +38,11 @@ pub fn copy_to_clipboard(pixmap: &Pixmap) -> Result<(), String> {
         }
 
         // CF_DIB：BITMAPINFOHEADER + BGRA 像素。
+        // 按「自下而上」（biHeight 为正）存储：这是 GDI 与主流截图工具的统一写法。
+        // 「自上而下」（biHeight 为负）虽合法，但部分应用的 DIB 解析器按正高度推算
+        // 行序与数据量，遇到负高度会判空而拒绝粘贴（如飞书）；biSizeImage 也一并填上，
+        // 避免依赖它的解析器把像素数据算成 0 字节。
+        let stride = w as usize * 4;
         let header_size = size_of::<BITMAPINFOHEADER>() as usize;
         let hdib = match GlobalAlloc(GMEM_MOVEABLE, header_size + bgra.len()) {
             Ok(h) => h,
@@ -50,14 +55,20 @@ pub fn copy_to_clipboard(pixmap: &Pixmap) -> Result<(), String> {
         let header = BITMAPINFOHEADER {
             biSize: header_size as u32,
             biWidth: w as i32,
-            biHeight: -(h as i32), // 自上而下
+            biHeight: h as i32, // 自下而上
             biPlanes: 1,
             biBitCount: 32,
             biCompression: BI_RGB.0,
+            biSizeImage: (stride * h as usize) as u32,
             ..Default::default()
         };
         std::ptr::copy_nonoverlapping(&header as *const _ as *const u8, ptr as *mut u8, header_size);
-        std::ptr::copy_nonoverlapping(bgra.as_ptr(), (ptr as *mut u8).add(header_size), bgra.len());
+        // bgra 自顶向下排列，写入时逐行反转成自下而上。
+        let pixels = (ptr as *mut u8).add(header_size);
+        for y in 0..h as usize {
+            let src = bgra.as_ptr().add((h as usize - 1 - y) * stride);
+            std::ptr::copy_nonoverlapping(src, pixels.add(y * stride), stride);
+        }
         let _ = GlobalUnlock(hdib);
         if SetClipboardData(CF_DIB.0 as u32, Some(HANDLE(hdib.0))).is_err() {
             // SetClipboardData 失败时剪贴板未接管句柄，必须自行释放
