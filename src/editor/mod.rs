@@ -18,7 +18,7 @@ pub use curve::{
 };
 pub use document::{Document, MAX_HISTORY};
 pub use number::{next_number, number_arrow_start};
-pub use palette::{CUSTOM_DEFAULT, CUSTOM_INDEX, PALETTE, SWATCH_COUNT, custom_color_store, custom_color_take, swatch};
+pub use palette::{DEFAULT_COLORS, SWATCH_COUNT, colors_store, colors_take};
 pub use transform::{ArrowEnd, scale_factors, snap_direction, square_corner};
 
 /// 坐标点。

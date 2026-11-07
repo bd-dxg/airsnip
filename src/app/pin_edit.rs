@@ -80,7 +80,7 @@ impl App {
             ocr_enabled: self.config.ocr.enabled,
             pin_key: self.config.hotkey.pin_key,
             default_tool: crate::settings::last_tool(),
-            custom_color: self.config.custom_color.unwrap_or(crate::editor::CUSTOM_DEFAULT),
+            colors: self.config.swatch_colors,
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,
                 last_ext: self.config.last_save_ext.clone(),

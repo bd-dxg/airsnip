@@ -57,7 +57,8 @@ impl Tip {
     }
 }
 
-/// 按钮名称；返回 None 表示该控件不提示（颜色块 / 第二行字体控件，ADR 0020）。
+/// 按钮名称；返回 None 表示该控件不提示（第二行字体控件，ADR 0020）。
+/// 色块例外：双击改色不直观，悬停时提示操作方式（issue #73 后续）。
 fn action_label(action: Action) -> Option<&'static str> {
     match action {
         Action::Tool(Tool::Rect) => Some("矩形工具"),
@@ -76,6 +77,7 @@ fn action_label(action: Action) -> Option<&'static str> {
         Action::Ocr => Some("OCR"),
         Action::Copy => Some("复制"),
         Action::Save => Some("保存"),
+        Action::Color(_) => Some("单击使用 · 双击改色"),
         _ => None,
     }
 }
@@ -220,7 +222,7 @@ impl Overlay {
         if let Some(bar) = self.bar.as_ref()
             && let Some(a) = bar.hit(x, y)
         {
-            // 命中工具栏即定案：颜色块与第二行控件返回 None（不提示）
+            // 命中工具栏即定案：第二行控件返回 None（不提示）
             return action_label(a).map(|_| Hit::Button(a));
         }
         let obj = self.selected_object()?;
@@ -282,7 +284,7 @@ mod tests {
         SelRect { x, y, w, h }
     }
 
-    /// 第一行 13 个按钮都有名称；颜色块与第二行字体控件明确不提示（ADR 0020）。
+    /// 第一行按钮与色块都有提示；第二行字体控件明确不提示（ADR 0020）。
     #[test]
     fn labels_cover_first_row_only() {
         let first_row = Tool::ALL.map(Action::Tool).into_iter().chain([
@@ -293,12 +295,12 @@ mod tests {
             Action::Longshot,
             Action::Copy,
             Action::Save,
+            Action::Color(0),
         ]);
         for a in first_row {
             assert!(action_label(a).is_some(), "{a:?} 应有提示名称");
         }
         for a in [
-            Action::Color(0),
             Action::FontPick,
             Action::ToggleBold,
             Action::ToggleItalic,

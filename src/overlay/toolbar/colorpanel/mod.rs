@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 自定义颜色面板（EDT-7，issue #73）：工具栏「自定义颜色」色块展开的自绘取色浮层。
+//! 取色面板（EDT-7，issue #73）：双击工具栏色块展开的自绘取色浮层，改写该色块。
 //! 内容：色相条 + 饱和度 / 明度方块 + 快捷色块。布局 / 命中在本模块，绘制见 `paint`，
 //! 交互落在 `interact`。仿 `toolbar::fontlist`（同为主线程内自绘浮层）。
 //! 尺寸基准为 100% DPI，经 `Ui` 缩放（CAP-5）。
@@ -57,7 +57,7 @@ pub(in crate::overlay) struct ColorPanel {
 }
 
 impl ColorPanel {
-    /// 从「自定义颜色」色块与工具栏位置展开：水平居中于色块，优先显示在工具栏上方，
+    /// 从被双击的色块与工具栏位置展开：水平居中于色块，优先显示在工具栏上方，
     /// 上方空间不足时翻到下方；并钳回屏幕内。
     pub(in crate::overlay) fn open(
         anchor: SelRect,

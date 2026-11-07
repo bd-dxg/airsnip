@@ -182,7 +182,7 @@ impl super::Overlay {
             let panel = self.font_list.clone().expect("已判定为 Some");
             toolbar::fontlist::render(&mut self.display, &panel, &family, self.palette);
         }
-        // 5b) 自定义颜色面板（EDT-7，issue #73）：同样位于工具栏之外
+        // 5b) 取色面板（EDT-7，issue #73）：同样位于工具栏之外
         if let Some(rect) = self.color_panel.as_ref().map(|p| p.rect)
             && intersect_rect(expand_rect(rect, 2), region).is_some()
             && let Some(panel) = self.color_panel.as_ref()
