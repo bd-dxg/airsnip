@@ -31,6 +31,8 @@ impl super::Overlay {
             Some(crate::editor::Tool::Highlight)
         } else if vk == k.glow {
             Some(crate::editor::Tool::Glow)
+        } else if vk == k.number {
+            Some(crate::editor::Tool::Number)
         } else {
             None
         }
@@ -82,8 +84,8 @@ impl super::Overlay {
                 self.style_selected();
             }
             toolbar::Action::ToggleFill => {
-                // 文本工具无背景功能：填充开关仅对矩形有效，文本下忽略
-                if self.tool != crate::editor::Tool::Text {
+                // 文本 / 序号工具无背景功能：填充开关仅对矩形有效，这两类下忽略
+                if !matches!(self.tool, crate::editor::Tool::Text | crate::editor::Tool::Number) {
                     self.filled = !self.filled;
                     self.style_selected();
                 }

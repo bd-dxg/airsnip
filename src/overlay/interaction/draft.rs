@@ -42,17 +42,31 @@ impl super::super::Overlay {
                 b: p,
                 corner: 0.0,
             },
+            // EDT-12 序号标记：按下即在 p 处放徽标（tip 与圆心同点，拖动时才出现引线箭头）
+            Tool::Number => {
+                let n = crate::editor::next_number(self.doc.objects());
+                let font_size = self.number_font_size;
+                Kind::Number {
+                    center: p,
+                    tip: p,
+                    n,
+                    font_size,
+                    radius: render::number_radius(font_size, n),
+                }
+            }
         };
         self.doc.begin();
         self.draft = Some(Object {
             kind,
             style: self.current_style(),
         });
-        // 聚光灯：按下即进入暗化态（选区其余区域变暗、本区域亮），全选区重绘一次
-        if self.tool == Tool::Glow {
-            if let Some(sel) = self.selection {
-                self.repaint(sel);
-            }
+        // 按下即需立即重绘的情形：
+        // 聚光灯——进入暗化态（选区其余区域变暗、本区域亮）；
+        // 序号标记——徽标应随按下立刻出现，不等鼠标移动。
+        if matches!(self.tool, Tool::Glow | Tool::Number)
+            && let Some(sel) = self.selection
+        {
+            self.repaint(sel);
         }
     }
 
@@ -94,6 +108,20 @@ impl super::super::Overlay {
                     b: end,
                     corner: *corner,
                 },
+                // 序号标记：只更新引线尖端（圆心 / 编号 / 字号 / 半径不变）
+                Kind::Number {
+                    center,
+                    n,
+                    font_size,
+                    radius,
+                    ..
+                } => Kind::Number {
+                    center: *center,
+                    tip: end,
+                    n: *n,
+                    font_size: *font_size,
+                    radius: *radius,
+                },
                 // 文本不经草稿拖拽（Text 工具走输入状态机）
                 Kind::Text { .. } => return,
             };
@@ -103,7 +131,7 @@ impl super::super::Overlay {
         }
     }
 
-    /// 草稿终点：鼠标点已夹在选区内，再按 Shift 施加几何约束（EDT-1/EDT-2）；
+    /// 草稿终点：鼠标点已夹在选区内，再按 Shift 施加几何约束（EDT-1/EDT-2/EDT-12）；
     /// 约束结果仍要落在选区内，故再夹一次（贴边时正方形/45° 会被裁到边界）。
     fn constrained_end(&self, cx: i32, cy: i32, shift: bool, sel: SelRect) -> Point {
         let end = Point::new(cx as f32, cy as f32);
@@ -112,7 +140,9 @@ impl super::super::Overlay {
         }
         let snapped = match self.draft.as_ref().map(|d| &d.kind) {
             Some(Kind::Rect { a, .. }) => crate::editor::square_corner(*a, end),
+            // 箭头与序号引线共用方向吸附（起点 / 徽标圆心为锚点）
             Some(Kind::Arrow { from, .. }) => crate::editor::snap_direction(*from, end),
+            Some(Kind::Number { center, .. }) => crate::editor::snap_direction(*center, end),
             _ => return end,
         };
         Point::new(

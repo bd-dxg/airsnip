@@ -29,10 +29,11 @@ pub fn conflict_for(
         RowId::ToolBlur => (tk.blur, 0),
         RowId::ToolHighlight => (tk.highlight, 0),
         RowId::ToolGlow => (tk.glow, 0),
+        RowId::ToolNumber => (tk.number, 0),
         _ => (u32::MAX, u32::MAX),
     };
     // 已配置键位：热键按「键+修饰」比较，工具键按「虚拟键」比较
-    let pairs: [(&str, u32, u32, bool); 11] = [
+    let pairs: [(&str, u32, u32, bool); 12] = [
         ("截图", hk.screenshot_key, hk.screenshot_modifiers, true),
         ("贴图", hk.pin_key, hk.pin_modifiers, true),
         ("贴图边框", hk.border_key, hk.border_modifiers, true),
@@ -45,6 +46,7 @@ pub fn conflict_for(
         ("工具·模糊", tk.blur, 0, false),
         ("工具·荧光笔", tk.highlight, 0, false),
         ("工具·聚光灯", tk.glow, 0, false),
+        ("工具·序号", tk.number, 0, false),
     ];
     for (name, kv, km, is_hotkey) in pairs {
         if kv == self_vk && km == self_mods {

@@ -28,6 +28,7 @@ impl super::Overlay {
             font_family: self.font_family.clone(),
             bold: self.bold,
             italic: self.italic,
+            number: false,
         };
         self.text_edit = Some(edit);
         self.set_ime_enabled(true);
@@ -66,6 +67,7 @@ impl super::Overlay {
             font_family,
             bold,
             italic,
+            number: false,
         });
         self.set_ime_enabled(true);
         // 原对象隐藏、输入框登场，立即重绘
@@ -83,6 +85,11 @@ impl super::Overlay {
     pub(super) fn commit_text(&mut self) {
         let Some(edit) = self.text_edit.take() else { return };
         self.set_ime_enabled(false);
+        // EDT-12：改编号走单独分支（只解析数字，空 / 非法则保持原号）
+        if edit.number {
+            self.finish_number_edit(edit);
+            return;
+        }
         if edit.chars.is_empty() {
             // 编辑已有对象时全部删掉 = 删除该对象；新建时空文本直接丢弃
             if let Some(i) = edit.obj_index {
@@ -133,7 +140,8 @@ impl super::Overlay {
     }
 
     /// 文本输入变化后的重绘：覆盖整个选区，彻底避免文本变短/光标位移时的尾部残留。
-    fn repaint_whole_selection(&mut self) {
+    /// `pub(super)`：编号编辑（`number_edit`）提交后也复用。
+    pub(super) fn repaint_whole_selection(&mut self) {
         // 输入态的开始/结束会影响第二行显隐（EDT-4）
         self.refresh_toolbar();
         if let Some(sel) = self.selection {
@@ -147,6 +155,13 @@ impl super::Overlay {
             return;
         }
         let Some(edit) = self.text_edit.as_mut() else { return };
+        // EDT-12：编号编辑只接受数字字符（最多 4 位，避免荒谬的大数）
+        if edit.number {
+            let is_digit = char::from_u32(unit as u32).is_some_and(|c| c.is_ascii_digit());
+            if !is_digit || edit.chars.len() >= 4 {
+                return;
+            }
+        }
         edit.push_code_unit(unit);
         self.repaint_text_edit();
     }
@@ -193,8 +208,8 @@ impl super::Overlay {
             0x27 => edit.move_caret(1),            // →
             0x24 => edit.caret = 0,                // Home
             0x23 => edit.caret = edit.chars.len(), // End
-            // Enter：Shift/Ctrl 组合换行，单独 Enter 提交
-            0x0D if shift || ctrl => edit.insert_char('\n'),
+            // Enter：Shift/Ctrl 组合换行（编号编辑不换行），单独 Enter 提交
+            0x0D if (shift || ctrl) && !edit.number => edit.insert_char('\n'),
             0x0D => self.commit_text(), // Enter：提交
             // Esc：字体面板展开时先收面板（保留输入态），否则取消输入（EDT-4）
             0x1B => {

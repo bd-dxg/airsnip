@@ -82,6 +82,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             push(RowId::ToolBlur, RowKind::KeyCap, "工具·模糊", &mut y, items);
             push(RowId::ToolHighlight, RowKind::KeyCap, "工具·荧光笔", &mut y, items);
             push(RowId::ToolGlow, RowKind::KeyCap, "工具·聚光灯", &mut y, items);
+            push(RowId::ToolNumber, RowKind::KeyCap, "工具·序号", &mut y, items);
             push(RowId::ResetKeys, RowKind::Action, "恢复默认", &mut y, items);
             push(RowId::Widenote, RowKind::Readonly, "提示", &mut y, items);
         }

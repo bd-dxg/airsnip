@@ -21,6 +21,15 @@ impl Kind {
                 let (a, b) = super::text::rect(*pos, *size);
                 hit_rect(a, b, true, q, tol)
             }
+            // 序号标记（EDT-12）：徽标圆内或引线线段附近都算命中
+            Kind::Number {
+                center, tip, radius, ..
+            } => {
+                let (dx, dy) = (q.x - center.x, q.y - center.y);
+                let r = *radius + tol;
+                dx * dx + dy * dy <= r * r
+                    || curve::dist_to_polyline(&[super::number_arrow_start(*center, *tip, *radius), *tip], q) <= tol
+            }
         }
     }
 }

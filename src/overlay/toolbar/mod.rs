@@ -356,16 +356,16 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 24);
-        assert_eq!(actions[..6], Tool::ALL.map(Action::Tool));
-        assert_eq!(actions[12], Action::Undo);
-        assert_eq!(actions[13], Action::Redo);
-        assert_eq!(actions[14], Action::Pin);
-        assert_eq!(actions[15], Action::Longshot);
-        assert_eq!(actions[16], Action::Copy);
-        assert_eq!(actions[17], Action::Save);
+        assert_eq!(actions.len(), 25);
+        assert_eq!(actions[..7], Tool::ALL.map(Action::Tool));
+        assert_eq!(actions[13], Action::Undo);
+        assert_eq!(actions[14], Action::Redo);
+        assert_eq!(actions[15], Action::Pin);
+        assert_eq!(actions[16], Action::Longshot);
+        assert_eq!(actions[17], Action::Copy);
+        assert_eq!(actions[18], Action::Save);
         assert_eq!(
-            actions[18..],
+            actions[19..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -383,7 +383,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false, false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 18);
+        assert_eq!(bar.hits.len(), 19);
     }
 
     /// OCR 按钮（OCR-3）：功能开启时紧跟长截图出现，关闭时完全不出现（OCR-1）。
@@ -391,16 +391,16 @@ mod tests {
     fn ocr_button_only_when_enabled() {
         let s = sel(100, 100, 400, 300);
         let off = layout(s, 2560, 1440, false, false, base());
-        assert_eq!(off.hits.len(), 18, "关闭时不应有 OCR 按钮");
+        assert_eq!(off.hits.len(), 19, "关闭时不应有 OCR 按钮");
         assert!(!off.hits.iter().any(|(_, a)| *a == Action::Ocr));
 
         let on = layout(s, 2560, 1440, false, true, base());
-        assert_eq!(on.hits.len(), 19);
+        assert_eq!(on.hits.len(), 20);
         let actions: Vec<Action> = on.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions[15], Action::Longshot);
-        assert_eq!(actions[16], Action::Ocr, "OCR 按钮应紧跟长截图");
-        assert_eq!(actions[17], Action::Copy);
-        assert_eq!(actions[18], Action::Save);
+        assert_eq!(actions[16], Action::Longshot);
+        assert_eq!(actions[17], Action::Ocr, "OCR 按钮应紧跟长截图");
+        assert_eq!(actions[18], Action::Copy);
+        assert_eq!(actions[19], Action::Save);
         // 多一个按钮后仍不能与信息文字重叠、不能越出屏幕
         for ui in [base(), Ui::from_dpi(192)] {
             let bar = layout(s, 2560, 1440, false, true, ui);

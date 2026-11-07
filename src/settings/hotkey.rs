@@ -67,6 +67,8 @@ pub struct ToolKeys {
     pub blur: ToolKey,
     pub highlight: ToolKey,
     pub glow: ToolKey,
+    /// EDT-12 序号标记。
+    pub number: ToolKey,
 }
 
 /// 修饰键位掩码（与 `HotkeyConfig` 的 `*_modifiers` 一致）。
@@ -150,6 +152,7 @@ impl Default for ToolKeys {
             blur: 0x34,      // 4
             highlight: 0x35, // 5
             glow: 0x36,      // 6
+            number: 0x37,    // 7
         }
     }
 }

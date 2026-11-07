@@ -32,6 +32,10 @@ impl Kind {
                 }
             }
             Kind::Text { pos, .. } => *pos = Point::new(pos.x + dx, pos.y + dy),
+            Kind::Number { center, tip, .. } => {
+                *center = Point::new(center.x + dx, center.y + dy);
+                *tip = Point::new(tip.x + dx, tip.y + dy);
+            }
         }
     }
 
@@ -107,6 +111,14 @@ impl Kind {
                 // 字号只跟纵向比例走（文字不做横向拉伸）
                 *font_size = (*font_size * sy).clamp(FONT_RANGE.0, FONT_RANGE.1);
                 *size = ((size.0 * sx).max(1.0), (size.1 * sy).max(1.0));
+            }
+            // 序号标记：圆心与引线尖端各自映射，字号随纵向比例（徽标半径由渲染层重算）
+            Kind::Number {
+                center, tip, font_size, ..
+            } => {
+                *center = map(*center);
+                *tip = map(*tip);
+                *font_size = (*font_size * sy).clamp(FONT_RANGE.0, FONT_RANGE.1);
             }
         }
     }
@@ -330,6 +342,46 @@ mod tests {
         };
         assert_eq!(from, Point::new(10.0, 10.0));
         assert_eq!(to, Point::new(40.0, 10.0));
+    }
+
+    #[test]
+    fn translate_and_remap_number() {
+        let mut k = Kind::Number {
+            center: Point::new(10.0, 10.0),
+            tip: Point::new(40.0, 10.0),
+            n: 2,
+            font_size: 20.0,
+            radius: 14.0,
+        };
+        k.translate(5.0, -3.0);
+        assert_eq!(
+            k,
+            Kind::Number {
+                center: Point::new(15.0, 7.0),
+                tip: Point::new(45.0, 7.0),
+                n: 2,
+                font_size: 20.0,
+                radius: 14.0,
+            }
+        );
+        // 纵向放大一倍：字号随之翻倍（徽标半径由渲染层重算，不在此处）
+        let from = Bounds {
+            x0: 0.0,
+            y0: 0.0,
+            x1: 50.0,
+            y1: 20.0,
+        };
+        let to = Bounds {
+            x0: 0.0,
+            y0: 0.0,
+            x1: 50.0,
+            y1: 40.0,
+        };
+        k.remap(from, to);
+        let Kind::Number { font_size, .. } = &k else {
+            panic!("应仍是序号")
+        };
+        assert!((*font_size - 40.0).abs() < 0.5, "字号应随纵向比例翻倍：{font_size}");
     }
 
     #[test]

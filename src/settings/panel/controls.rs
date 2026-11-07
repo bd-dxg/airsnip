@@ -89,6 +89,8 @@ pub enum RowId {
     ToolBlur,
     ToolHighlight,
     ToolGlow,
+    /// 工具切换键：序号标记（EDT-12）。
+    ToolNumber,
     /// 无修饰键风险提示（只读）。
     Widenote,
     /// 一键恢复默认快捷键（SYS-2，快捷键页底部）。
@@ -255,6 +257,7 @@ mod tests {
                     RowId::ToolBlur,
                     RowId::ToolHighlight,
                     RowId::ToolGlow,
+                    RowId::ToolNumber,
                     RowId::ResetKeys,
                     RowId::Widenote,
                 ],
@@ -304,7 +307,7 @@ mod tests {
                 assert_eq!(r.clear.w, 0, "{:?} 非键帽行不应有清除按钮", r.id);
             }
         }
-        assert_eq!(caps, 11, "快捷键页应有 11 个键帽行");
+        assert_eq!(caps, 12, "快捷键页应有 12 个键帽行");
     }
 
     /// 任意缩放下键帽仍有足够宽度显示组合键文本。

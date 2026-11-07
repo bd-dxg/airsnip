@@ -89,7 +89,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
             let edited = overlay
                 .hit_object(x, y)
-                .map(|i| overlay.begin_edit_text(i))
+                .map(|i| overlay.begin_edit_object(i))
                 .unwrap_or(false);
             let handled = if edited { true } else { overlay.reset_curve_at(x, y) };
             if !handled {
