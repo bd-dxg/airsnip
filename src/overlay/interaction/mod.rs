@@ -63,6 +63,10 @@ impl super::Overlay {
             self.nudge_object(dx, dy);
             return;
         }
+        // 贴图编辑模式（ADR 0028）：选区锁定，方向键不得移动选区（否则写回会按偏移矩形裁剪）
+        if self.locked_selection {
+            return;
+        }
         self.nudge_selection(dx, dy);
     }
 
@@ -157,6 +161,8 @@ impl super::Overlay {
                 self.set_selected(None);
                 self.start_draw(x, y);
             }
+            // 贴图编辑模式（ADR 0028）：选区锁定，点选区外不改选区
+            PickTarget::None if self.locked_selection => {}
             PickTarget::None => {
                 self.set_selected(None);
                 let sel = self.begin_select(x, y);

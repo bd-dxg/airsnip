@@ -9,6 +9,7 @@ pub mod filedlg;
 pub(crate) mod hotkey;
 pub(crate) mod mouse;
 pub mod open;
+mod pin_edit;
 pub mod popmenu;
 mod tray;
 mod wndproc;
@@ -40,6 +41,12 @@ pub const WM_PIN_BORDER_CHANGED: u32 = WM_APP + 5;
 pub const WM_OCR_REQUEST: u32 = WM_APP + 6;
 /// OCR 卡片 → 主窗口：用户切了「自动复制」开关（wparam = 0 关 / 1 开）。
 pub const WM_OCR_AUTOCOPY_CHANGED: u32 = WM_APP + 7;
+/// 贴图窗口 → 主窗口：请求进入标注编辑（wparam = 贴图句柄，ADR 0028）。
+pub const WM_PIN_EDIT_REQUEST: u32 = WM_APP + 8;
+/// 覆盖层线程 → 主窗口：贴图编辑完成 / 取消（wparam = 载荷 HGLOBAL 或 0，lparam = 目标贴图句柄，ADR 0028）。
+pub const WM_PIN_EDIT_DONE: u32 = WM_APP + 9;
+/// 贴图窗口 → 主窗口：请求「另存为」（wparam = 贴图句柄，OUT-2）。
+pub const WM_PIN_SAVE_REQUEST: u32 = WM_APP + 10;
 
 /// 截图覆盖层是否在运行（跨线程；截图期间撤销全局贴图热键）。
 /// 鼠标热键（`mouse`）共用：截图期间同样不响应鼠标贴图键。
@@ -72,6 +79,8 @@ pub struct App {
     pub settings_open: bool,
     /// 托盘图标补加重试次数（explorer 未就绪时用定时器重试，SYS-1）。
     pub tray_retry: u8,
+    /// 正在被编辑的贴图（ADR 0028）：完成后写回；取消 / 复制 / 保存后恢复显示。
+    pub pin_edit_target: Option<HWND>,
 }
 
 /// 入口：单实例检查 → 创建消息窗口 → 托盘 / 热键 → 消息循环。
@@ -99,6 +108,7 @@ pub fn run() -> i32 {
         hinstance,
         settings_open: false,
         tray_retry: 0,
+        pin_edit_target: None,
     });
     // 先存窗口用户数据：wndproc 通过它访问 App，而 ensure_tray / register_hotkeys
     // 都可能触发消息（如 explorer 刚就绪时的 TaskbarCreated），早于此刻会丢图标。
@@ -194,6 +204,8 @@ impl App {
             },
             // 覆盖层界面缩放（CAP-5）：随配置快照传入覆盖层线程
             ui_scale: self.config.ui_scale,
+            // 普通截图非贴图编辑（ADR 0028）
+            pin_edit: None,
         };
         // 长截图完成后也要弹同一个对话框（「另存为」入口）
         let longshot_save = opts.save.clone();

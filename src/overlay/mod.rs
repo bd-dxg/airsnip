@@ -21,6 +21,7 @@ mod interaction;
 mod number_edit;
 mod objedit;
 mod pick;
+mod pin_edit;
 mod selection;
 mod setup;
 pub(crate) mod shape;
@@ -125,6 +126,10 @@ pub struct Overlay {
     ctrl_drag: Option<(usize, Point)>,
     /// 正在拖动的选中对象（EDT-7 移动/缩放）。
     obj_drag: Option<objedit::ObjDrag>,
+    /// 选区是否锁定（贴图编辑模式，ADR 0028）：禁止移动 / 缩放选区。
+    locked_selection: bool,
+    /// 贴图编辑目标句柄（ADR 0028）：完成时随结果回带给主线程写回贴图。
+    pin_edit_target: Option<usize>,
     /// 文本输入中状态（EDT-4）。
     text_edit: Option<TextEdit>,
     /// 当前工具栏布局（选区存在时才有）。
@@ -168,6 +173,18 @@ pub struct OverlayOpts {
     pub save: crate::settings::SavePrefs,
     /// 界面缩放（CAP-5）。
     pub ui_scale: crate::settings::UiScale,
+    /// 贴图编辑模式（ADR 0028）：以贴图显示像素为底图、选区锁定为内容矩形，完成写回贴图。
+    pub pin_edit: Option<PinEdit>,
+}
+
+/// 贴图编辑模式的启动参数（ADR 0028）。
+pub struct PinEdit {
+    /// 贴图内容在覆盖层坐标中的矩形（= 屏幕矩形 − 抓屏原点）。
+    pub rect: (i32, i32, u32, u32),
+    /// 贴图当前显示像素（straight RGBA，`PinWindow::export_content` 产出）。
+    pub pixels: Pixmap,
+    /// 目标贴图窗口句柄（跨线程传原生值；完成消息回带给主线程）。
+    pub target: usize,
 }
 
 /// 显示覆盖层并阻塞运行，直到截图完成、取消或触发长截图。
@@ -207,6 +224,17 @@ pub fn run(capture: CapturedScreen, opts: OverlayOpts, hinstance: HINSTANCE, mai
         let t_pos = std::time::Instant::now();
         let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), origin_x, origin_y, vw, vh, SWP_SHOWWINDOW);
         let pos = t_pos.elapsed();
+        // 贴图编辑模式（ADR 0028）：初始选区由 seed 设定，主动画一帧（选区装饰 + 工具栏 + HUD），
+        // 否则首帧只会上传底图（普通截图的工具栏由用户框选触发重绘）
+        if (*raw).locked_selection {
+            (*raw).refresh_toolbar();
+            (*raw).repaint(SelRect {
+                x: 0,
+                y: 0,
+                w: vw,
+                h: vh,
+            });
+        }
         // 显示后强制整窗重绘：隐藏窗口的 DC 内容在显示时会丢失，
         // 用 InvalidateRect + UpdateWindow 同步触发 WM_PAINT 全窗绘制，避免闪烁。
         let _ = InvalidateRect(Some(hwnd), None, false);

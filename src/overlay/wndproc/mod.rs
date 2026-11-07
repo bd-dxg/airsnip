@@ -98,7 +98,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 if let Some(sel) = overlay.selection {
                     if sel.contains(x, y) && overlay.down_started_draw {
                         overlay.draft = None;
-                        overlay.on_copy();
+                        overlay.finish_output();
                     }
                 }
             }
@@ -159,22 +159,28 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             } else {
                 wparam.0 as u32
             };
-            // 空格按下立即刷新光标：系统只在鼠标移动时发 WM_SETCURSOR，不能等它
+            // 空格按下立即刷新光标：系统只在鼠标移动时发 WM_SETCURSOR，不能等它。
+            // 贴图编辑模式（ADR 0028）下空格 = 完成（选区锁定，无需空格移动选区）。
             if vk == 0x20 {
-                overlay.apply_cursor_now(hwnd);
+                if overlay.locked_selection {
+                    overlay.finish_output();
+                } else {
+                    overlay.apply_cursor_now(hwnd);
+                }
                 return LRESULT(0);
             }
             match vk {
                 // Esc：与右键共用分层取消（先收面板 / 取消输入；有标注则二次确认，OUT-3/ADR 0027）
                 0x1B => overlay.on_cancel(),
-                0x0D => overlay.on_copy(),                     // Enter
-                0x43 if ctrl_down() => overlay.on_copy(),      // Ctrl+C
-                0x53 if ctrl_down() => overlay.on_save(),      // Ctrl+S 保存（弹另存为对话框）
-                k if k == overlay.pin_key => overlay.on_pin(), // PIN-1：贴选区（键可配，默认 F3）
+                0x0D => overlay.finish_output(), // Enter：普通=复制关闭，编辑=写回贴图（ADR 0028）
+                0x43 if ctrl_down() => overlay.on_copy(), // Ctrl+C
+                0x53 if ctrl_down() => overlay.on_save(), // Ctrl+S 保存（弹另存为对话框）
+                // PIN-1：贴选区（键可配，默认 F3）；编辑模式下输出组不适用
+                k if k == overlay.pin_key && !overlay.locked_selection => overlay.on_pin(),
                 // 长截图键（默认 S，设置面板可改）：当前选区作为滚动视口（M4）
-                k if k == overlay.longshot_key => overlay.on_longshot(),
+                k if k == overlay.longshot_key && !overlay.locked_selection => overlay.on_longshot(),
                 // OCR 键（默认 T，设置面板可改，OCR-3）：功能关闭时不占用该键
-                k if k == overlay.ocr_key && overlay.ocr_enabled => overlay.on_ocr(),
+                k if k == overlay.ocr_key && overlay.ocr_enabled && !overlay.locked_selection => overlay.on_ocr(),
                 0x5A if ctrl_down() => {
                     // Ctrl+Z 撤销 / Ctrl+Shift+Z 重做（EDT-7）
                     if shift_down() {
@@ -204,8 +210,10 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         WM_SYSKEYDOWN => {
             let vk = wparam.0 as u32;
             let alt_down = (lparam.0 as u32 >> 29) & 1 != 0;
-            let action =
-                vk == overlay.pin_key || vk == overlay.longshot_key || (vk == overlay.ocr_key && overlay.ocr_enabled);
+            let action = !overlay.locked_selection
+                && (vk == overlay.pin_key
+                    || vk == overlay.longshot_key
+                    || (vk == overlay.ocr_key && overlay.ocr_enabled));
             if alt_down || overlay.is_editing_text() || !action {
                 return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
             }

@@ -9,6 +9,7 @@
 mod border;
 pub mod clipboard; // tests 用
 mod dib;
+mod edit;
 mod menu;
 mod scale;
 mod window;
@@ -18,11 +19,11 @@ mod zoom;
 use std::sync::Mutex;
 
 use tiny_skia::Pixmap;
-use windows::Win32::Foundation::{GlobalFree, HGLOBAL, HINSTANCE, HWND};
+use windows::Win32::Foundation::{GlobalFree, HGLOBAL, HINSTANCE, HWND, LPARAM, WPARAM};
 use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetSystemMetrics, MB_ICONERROR, MB_OK, PostMessageW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-    SM_YVIRTUALSCREEN, WM_CLOSE,
+    FindWindowW, GetSystemMetrics, MB_ICONERROR, MB_OK, PostMessageW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WM_CLOSE,
 };
 
 use crate::app::message_box;
@@ -108,29 +109,88 @@ pub fn from_clipboard(hinstance: HINSTANCE, place: PinPosition, show_border: boo
                 let _ = e;
             }
         }
-        Err(e) => {
+        // 剪贴板里没有图片（复制的是文字等）：静默忽略，不再弹错误框（ADR 0028，issue #56）
+        Err(clipboard::ReadError::NoImage) => {}
+        Err(clipboard::ReadError::Failed(e)) => {
             message_box(None, &e, MB_OK | MB_ICONERROR);
         }
     }
 }
 
-/// PIN-1：覆盖层线程跨线程传递的裁剪图载荷（GlobalAlloc: u32 w + u32 h + i32 x + i32 y + RGBA）。
-/// 由主线程 wndproc 调用；读取后负责释放。
-pub unsafe fn from_payload(hg: HGLOBAL, hinstance: HINSTANCE, place: PinPosition, show_border: bool) {
+/// 贴图窗口按空格 / 右键「编辑」→ 请求主窗口进入标注编辑（ADR 0028，issue #56）。
+pub(super) fn request_edit(hwnd: HWND) {
     unsafe {
-        // 1) 锁内仅拷贝载荷，随即释放句柄；后续创建/弹窗不再持有锁（审查 P2-2：
-        //    模态 MessageBox 重入消息循环，锁着 HGLOBAL 是坏味道）。
-        let payload: Option<(Pixmap, (i32, i32))> = (|| {
+        let Ok(main) = FindWindowW(crate::app::WINDOW_CLASS, None) else {
+            return;
+        };
+        let _ = PostMessageW(
+            Some(main),
+            crate::app::WM_PIN_EDIT_REQUEST,
+            WPARAM(hwnd.0 as usize),
+            LPARAM(0),
+        );
+    }
+}
+
+/// 读取贴图内容像素与内容屏幕矩形（编辑前，ADR 0028）：(x, y, w, h, 内容像素)。
+pub fn read_for_edit(hwnd: HWND) -> Option<(i32, i32, u32, u32, Pixmap)> {
+    unsafe {
+        let win = dib::pin_from(hwnd)?;
+        // 若正处于滚轮缩放的最近邻预览帧，先精修，避免把低质量预览像素带进编辑（审查 P3）
+        win.finalize_preview();
+        let (x, y, _, _) = win.content_screen_rect();
+        let pm = win.export_content()?;
+        let (w, h) = (pm.width(), pm.height());
+        Some((x, y, w, h, pm))
+    }
+}
+
+/// 隐藏 / 恢复显示贴图（编辑期间隐藏，ADR 0028）。
+pub fn hide(hwnd: HWND) {
+    unsafe {
+        if let Some(win) = dib::pin_from(hwnd) {
+            win.set_visible(false);
+        }
+    }
+}
+
+/// 恢复显示贴图（取消 / 复制 / 保存后，ADR 0028）。
+pub fn show(hwnd: HWND) {
+    unsafe {
+        if let Some(win) = dib::pin_from(hwnd) {
+            win.set_visible(true);
+        }
+    }
+}
+
+/// 编辑完成：用新内容替换贴图并恢复显示（ADR 0028）。
+pub fn apply_edit(hwnd: HWND, pixmap: Pixmap) {
+    unsafe {
+        if let Some(win) = dib::pin_from(hwnd) {
+            let _ = win.replace_content(pixmap);
+            win.set_visible(true);
+        }
+    }
+}
+
+/// 导出贴图内容像素（右键「另存为」用）：去边框扩展、premultiplied → straight。
+pub fn export_content(hwnd: HWND) -> Option<Pixmap> {
+    unsafe { dib::pin_from(hwnd)?.export_content() }
+}
+
+/// 解码贴图载荷（`u32 w + u32 h + i32 x + i32 y + RGBA`）为像素图与屏幕坐标，读取后释放句柄。
+/// 贴图创建与编辑写回共用，避免两处内存生命周期代码漂移（审查 P2）。
+pub unsafe fn decode_payload(hg: HGLOBAL) -> Option<(Pixmap, (i32, i32))> {
+    unsafe {
+        let payload = (|| {
             let ptr = GlobalLock(hg);
             if ptr.is_null() {
                 return None;
             }
             let hp = ptr as *const u32;
-            let w = *hp;
-            let h = *hp.add(1);
+            let (w, h) = (*hp, *hp.add(1));
             let sp = hp.add(2) as *const i32;
-            let x = *sp;
-            let y = *sp.add(1);
+            let (x, y) = (*sp, *sp.add(1));
             let total = (w as usize) * (h as usize) * 4;
             let size = tiny_skia::IntSize::from_wh(w, h)?;
             let src = std::slice::from_raw_parts((ptr as *const u8).add(16), total);
@@ -139,8 +199,16 @@ pub unsafe fn from_payload(hg: HGLOBAL, hinstance: HINSTANCE, place: PinPosition
         })();
         let _ = GlobalUnlock(hg);
         let _ = GlobalFree(Some(hg));
+        payload
+    }
+}
 
-        let Some((pm, (x, y))) = payload else {
+/// PIN-1：覆盖层线程跨线程传递的裁剪图载荷（GlobalAlloc: u32 w + u32 h + i32 x + i32 y + RGBA）。
+/// 由主线程 wndproc 调用；读取后负责释放。
+pub unsafe fn from_payload(hg: HGLOBAL, hinstance: HINSTANCE, place: PinPosition, show_border: bool) {
+    unsafe {
+        // 锁内仅拷贝载荷、随即释放句柄（`decode_payload` 内完成）；后续创建/弹窗不再持有锁
+        let Some((pm, (x, y))) = decode_payload(hg) else {
             message_box(None, "贴图载荷尺寸非法", MB_OK | MB_ICONERROR);
             return;
         };

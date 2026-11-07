@@ -9,7 +9,8 @@ use windows::core::{PCWSTR, w};
 
 use super::{
     App, TIMER_UPDATE_CHECK, WINDOW_CLASS, WM_OCR_AUTOCOPY_CHANGED, WM_OCR_REQUEST, WM_OVERLAY_DONE,
-    WM_PIN_BORDER_CHANGED, WM_PIN_FROM_EDITOR, WM_TRAY, icon_resource, tray,
+    WM_PIN_BORDER_CHANGED, WM_PIN_EDIT_DONE, WM_PIN_EDIT_REQUEST, WM_PIN_FROM_EDITOR, WM_PIN_SAVE_REQUEST, WM_TRAY,
+    icon_resource, tray,
 };
 
 /// 注册消息窗口类并创建窗口（隐藏）。
@@ -190,6 +191,38 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             }
             LRESULT(0)
         }
+        WM_PIN_EDIT_REQUEST => {
+            // 贴图窗口请求进入标注编辑（ADR 0028）：主线程起编辑覆盖层
+            if let Some(app) = app_from(hwnd) {
+                app.start_pin_edit(HWND(wparam.0 as *mut core::ffi::c_void));
+            }
+            LRESULT(0)
+        }
+        WM_PIN_SAVE_REQUEST => {
+            // 贴图右键「另存为」（OUT-2）：主线程弹原生保存对话框
+            if let Some(app) = app_from(hwnd) {
+                app.save_pin_as(HWND(wparam.0 as *mut core::ffi::c_void));
+            }
+            LRESULT(0)
+        }
+        WM_PIN_EDIT_DONE => {
+            // 贴图编辑完成 / 取消（ADR 0028）：wparam = 载荷 HGLOBAL 或 0，lparam = 目标贴图句柄
+            if let Some(app) = app_from(hwnd) {
+                let target = HWND(lparam.0 as *mut core::ffi::c_void);
+                if wparam.0 == 0 {
+                    // 取消 / 复制 / 保存：贴图保持原样，恢复显示
+                    crate::pin::show(target);
+                } else {
+                    let hg = HGLOBAL(wparam.0 as *mut core::ffi::c_void);
+                    match unsafe { crate::pin::decode_payload(hg) } {
+                        Some((pm, _)) => crate::pin::apply_edit(target, pm),
+                        None => crate::pin::show(target),
+                    }
+                }
+                app.pin_edit_target = None;
+            }
+            LRESULT(0)
+        }
         WM_OVERLAY_DONE => {
             if let Some(app) = app_from(hwnd) {
                 app.register_hotkeys(); // 重注册截图期间撤销的贴图热键
@@ -210,6 +243,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 }
                 if changed {
                     app.config.save();
+                }
+                // 贴图编辑未走完成消息（取消 / 复制 / 保存）：把隐藏的贴图恢复显示（ADR 0028）
+                if let Some(target) = app.pin_edit_target.take() {
+                    crate::pin::show(target);
                 }
             }
             LRESULT(0)

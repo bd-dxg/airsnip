@@ -41,7 +41,17 @@ impl super::Overlay {
         let old_chrome = self.chrome_rect();
         self.font_list = None;
         self.color_panel = None;
-        self.bar = new.map(|s| toolbar::layout(s, vw, vh, self.text_row_visible(), self.ocr_enabled, self.ui));
+        self.bar = new.map(|s| {
+            toolbar::layout_ex(
+                s,
+                vw,
+                vh,
+                self.text_row_visible(),
+                self.ocr_enabled,
+                !self.locked_selection,
+                self.ui,
+            )
+        });
         let new_chrome = self.chrome_rect();
 
         let mut dirty: Option<SelRect> = None;
@@ -179,8 +189,11 @@ impl super::Overlay {
         {
             toolbar::colorpanel::render(&mut self.display, panel, self.palette);
         }
-        // 6) 选区尺寸提示（HUD）：走 DirectWrite 栅格化，与工具栏文字同一套渲染
-        if let Some(sel) = self.selection {
+        // 6) 选区尺寸提示（HUD）：走 DirectWrite 栅格化，与工具栏文字同一套渲染。
+        //    贴图编辑模式（ADR 0028）不需要尺寸提示；工具栏也不再为它预留空间（见 toolbar::layout_ex）
+        if let Some(sel) = self.selection
+            && !self.locked_selection
+        {
             let bar_h = self.bar.as_ref().map(|b| b.rect.h).unwrap_or(0);
             if intersect_rect(text_rect(sel, w, h, bar_h, self.ui), region).is_some() {
                 draw_info_text(&mut self.display, sel, w, h, bar_h, self.ui);

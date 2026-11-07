@@ -107,7 +107,15 @@ impl super::Overlay {
         }
         let old = self.chrome_rect();
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
-        self.bar = Some(toolbar::layout(sel, vw, vh, want, self.ocr_enabled, self.ui));
+        self.bar = Some(toolbar::layout_ex(
+            sel,
+            vw,
+            vh,
+            want,
+            self.ocr_enabled,
+            !self.locked_selection,
+            self.ui,
+        ));
         // 第二行显隐会改变工具栏高度，面板位置随之失效
         self.font_list = None;
         self.color_panel = None;
