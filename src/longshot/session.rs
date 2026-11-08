@@ -7,7 +7,7 @@
 
 use super::engine::{Canvas, Step};
 use super::stitch::Params;
-use crate::capture::capture_region;
+use crate::capture::RegionCapture;
 
 /// 连续定位失败达到该拍数时在状态条提示「放慢滚动」。
 const FAIL_HINT: u32 = 2;
@@ -19,27 +19,27 @@ pub trait Source {
     fn capture(&mut self) -> Result<Vec<u8>, String>;
 }
 
-/// 真实帧源：屏幕区域抓取。
+/// 真实帧源：屏幕区域抓取。HDR 下跨帧复用抓帧会话（issue #128）。
 pub struct ScreenSource {
-    x: i32,
-    y: i32,
     w: u32,
     h: u32,
+    region: RegionCapture,
 }
 
 impl ScreenSource {
-    pub fn new(x: i32, y: i32, w: u32, h: u32) -> Self {
-        Self { x, y, w, h }
+    pub fn new(x: i32, y: i32, w: u32, h: u32) -> Result<Self, String> {
+        let region = RegionCapture::new(x, y, w, h)?;
+        Ok(Self { w, h, region })
     }
 }
 
 impl Source for ScreenSource {
     fn capture(&mut self) -> Result<Vec<u8>, String> {
-        let screen = capture_region(self.x, self.y, self.w, self.h)?;
-        if screen.rgba.len() != (self.w * self.h * 4) as usize {
+        let rgba = self.region.grab()?;
+        if rgba.len() != (self.w * self.h * 4) as usize {
             return Err("抓帧尺寸不符".into());
         }
-        Ok(screen.rgba)
+        Ok(rgba)
     }
 }
 
@@ -64,7 +64,8 @@ pub struct Session {
 
 impl Session {
     pub fn new(x: i32, y: i32, w: u32, h: u32, max_height: u32) -> Result<Self, String> {
-        Self::with_source(Box::new(ScreenSource::new(x, y, w, h)), w, h, max_height)
+        let source = ScreenSource::new(x, y, w, h)?;
+        Self::with_source(Box::new(source), w, h, max_height)
     }
 
     /// 用指定帧源构造（测试注入模拟页面）。

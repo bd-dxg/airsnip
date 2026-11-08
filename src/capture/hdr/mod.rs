@@ -9,6 +9,10 @@
 
 mod frame;
 mod output;
+mod session;
+
+pub use frame::GrabError;
+pub use session::RegionCapturer;
 
 use super::CapturedScreen;
 use super::hdr_display::active_display_states;
@@ -149,6 +153,28 @@ mod tests {
             None => println!("当前非 HDR 环境，长截图走 BitBlt"),
             Some(Ok(s)) => assert_eq!(s.rgba.len(), (w * h * 4) as usize),
             Some(Err(e)) => panic!("HDR 区域抓取失败：{e}"),
+        }
+    }
+
+    /// 长截图的区域抓帧会话（issue #128）：建会话后应先拿到一帧真实画面。
+    /// 复用会话在后续帧桌面静止时返回 None，由长截图流程覆盖。
+    #[test]
+    #[ignore]
+    fn hdr_region_session_grabs_first_frame() {
+        let _guard = CAPTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        make_per_monitor_v2();
+        let (x, y) = unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN};
+            (GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN))
+        };
+        let (w, h) = (400u32, 300u32);
+        match RegionCapturer::open(x, y, w, h) {
+            None => println!("当前非 HDR 环境，长截图走 BitBlt"),
+            Some(Ok(c)) => {
+                let f = c.grab(true).expect("抓帧失败").expect("应拿到首帧");
+                assert_eq!(f.len(), (w * h * 4) as usize);
+            }
+            Some(Err(e)) => panic!("建立 HDR 区域会话失败：{e}"),
         }
     }
 

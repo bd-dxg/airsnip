@@ -7,7 +7,10 @@
 
 mod hdr;
 mod hdr_display;
+mod region;
 mod tonemap;
+
+pub use region::RegionCapture;
 
 use std::mem::size_of;
 use std::ptr::null_mut;
