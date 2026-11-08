@@ -16,7 +16,7 @@
 //!    （通常是全黑），必须丢弃重试。
 //!
 //! 本模块把「建会话」「取一帧」拆成两个函数：单次截图现建现用（`grab_frame`），
-//! 长截图逐帧复用同一会话（`super::session::RegionCapturer`，issue #128）。
+//! 长截图逐帧复用同一会话（`super::session::HdrRegionSession`，issue #128）。
 
 use windows::Win32::Graphics::Direct3D11::{
     D3D11_CPU_ACCESS_READ, D3D11_MAP_READ, D3D11_MAPPED_SUBRESOURCE, D3D11_USAGE_STAGING, ID3D11Texture2D,
@@ -36,6 +36,8 @@ const MAX_ACQUIRE_ATTEMPTS: u32 = 20;
 const DXGI_ERROR_WAIT_TIMEOUT: i32 = 0x887A0027u32 as i32;
 /// `DXGI_ERROR_ACCESS_LOST`：duplication 会话失效（分辨率切换 / 全屏独占 / 锁屏等）。
 const DXGI_ERROR_ACCESS_LOST: i32 = 0x887A0026u32 as i32;
+/// 复用会话判定「桌面无变化」时的等待上限（远小于首帧超时，避免空耗 UI 线程）。
+const IDLE_ACQUIRE_TIMEOUT_MS: u32 = 16;
 
 /// 抓帧失败：区分「会话失效需重建」与一般错误。
 #[derive(Debug)]
@@ -44,6 +46,20 @@ pub enum GrabError {
     Lost,
     /// 其他错误，附文本。
     Other(String),
+}
+
+/// 保证 `AcquireNextFrame` 与 `ReleaseFrame` 严格配对：
+/// 从 `break` 拿到 `resource` 起到显式 `drop` 前，任何一步失败都会在 `Drop` 里补上释放。
+struct FrameGuard<'a> {
+    dup: &'a IDXGIOutputDuplication,
+}
+
+impl Drop for FrameGuard<'_> {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = self.dup.ReleaseFrame();
+        }
+    }
 }
 
 /// 为一个输出建立桌面复制会话（`DuplicateOutput1`，请求 FP16 + BGRA8 兜底）。
@@ -76,6 +92,11 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
     let timing = std::env::var_os("AIRSNIP_TIMING").is_some();
     let t_all = std::time::Instant::now();
     unsafe {
+        let timeout = if need_frame {
+            ACQUIRE_TIMEOUT_MS
+        } else {
+            IDLE_ACQUIRE_TIMEOUT_MS
+        };
         let mut attempts = 0;
         let resource: IDXGIResource = loop {
             if attempts >= MAX_ACQUIRE_ATTEMPTS {
@@ -83,7 +104,7 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
             }
             let mut info = DXGI_OUTDUPL_FRAME_INFO::default();
             let mut res: Option<IDXGIResource> = None;
-            match dup.AcquireNextFrame(ACQUIRE_TIMEOUT_MS, &mut info, &mut res) {
+            match dup.AcquireNextFrame(timeout, &mut info, &mut res) {
                 Ok(()) => {
                     if info.LastPresentTime != 0 {
                         break res.ok_or_else(|| GrabError::Other("桌面资源为空".into()))?;
@@ -106,6 +127,7 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
             }
         };
 
+        let frame_guard = FrameGuard { dup };
         let texture: ID3D11Texture2D = resource
             .cast()
             .map_err(|e| GrabError::Other(format!("取纹理失败：{e}")))?;
@@ -124,7 +146,8 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
             .map_err(|e| GrabError::Other(format!("CreateTexture2D（staging）失败：{e}")))?;
         let staging = staging.ok_or_else(|| GrabError::Other("staging 纹理为空".into()))?;
         out.context.CopyResource(&staging, &texture);
-        let _ = dup.ReleaseFrame();
+        // 帧内容已拷入 staging，释放桌面帧（guard 负责配对，此处显式释放）。
+        drop(frame_guard);
 
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
         out.context
@@ -162,7 +185,7 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
 
 /// 一次性抓一帧（单次截图用）：现建会话 → 取帧 → 释放会话。
 ///
-/// 长截图请改用 `super::session::RegionCapturer` 复用会话 —— 每帧重建 DXGI 会在
+/// 长截图请改用 `super::session::HdrRegionSession` 复用会话 —— 每帧重建 DXGI 会在
 /// NVIDIA 驱动上累积泄漏（issue #128）。
 pub fn grab_frame(out: &HdrOutput) -> Result<Frame, String> {
     let dup = open_duplication(out)?;

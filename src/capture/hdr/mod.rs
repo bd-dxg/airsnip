@@ -12,7 +12,7 @@ mod output;
 mod session;
 
 pub use frame::GrabError;
-pub use session::RegionCapturer;
+pub use session::HdrRegionSession;
 
 use super::CapturedScreen;
 use super::hdr_display::active_display_states;
@@ -168,7 +168,7 @@ mod tests {
             (GetSystemMetrics(SM_XVIRTUALSCREEN), GetSystemMetrics(SM_YVIRTUALSCREEN))
         };
         let (w, h) = (400u32, 300u32);
-        match RegionCapturer::open(x, y, w, h) {
+        match HdrRegionSession::open(x, y, w, h) {
             None => println!("当前非 HDR 环境，长截图走 BitBlt"),
             Some(Ok(c)) => {
                 let f = c.grab(true).expect("抓帧失败").expect("应拿到首帧");

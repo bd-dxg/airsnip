@@ -35,11 +35,12 @@ impl ScreenSource {
 
 impl Source for ScreenSource {
     fn capture(&mut self) -> Result<Vec<u8>, String> {
+        let (w, h) = (self.w, self.h);
         let rgba = self.region.grab()?;
-        if rgba.len() != (self.w * self.h * 4) as usize {
+        if rgba.len() != (w * h * 4) as usize {
             return Err("抓帧尺寸不符".into());
         }
-        Ok(rgba)
+        Ok(rgba.to_vec())
     }
 }
 

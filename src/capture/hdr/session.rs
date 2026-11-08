@@ -14,7 +14,7 @@ use super::frame::{self, GrabError};
 use super::output::{HdrOutput, blit_into, hdr_output_intersecting};
 
 /// 一个 HDR 输出的区域抓帧会话：持有设备与 duplication，跨帧复用。
-pub struct RegionCapturer {
+pub struct HdrRegionSession {
     out: HdrOutput,
     dup: IDXGIOutputDuplication,
     x: i32,
@@ -23,7 +23,7 @@ pub struct RegionCapturer {
     h: u32,
 }
 
-impl RegionCapturer {
+impl HdrRegionSession {
     /// 若请求区域落在 HDR 输出上则建立会话；非 HDR 返回 `None`（调用方走 BitBlt）。
     pub fn open(x: i32, y: i32, w: u32, h: u32) -> Option<Result<Self, String>> {
         let states = crate::capture::hdr_display::active_display_states();
