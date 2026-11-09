@@ -138,6 +138,7 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let s = panel.scale;
     let on = match row.id {
         RowId::Autostart => panel.autostart_on,
+        RowId::ConfirmCancel => panel.config.confirm_cancel,
         RowId::AutoCheckUpdate => panel.config.auto_check_update,
         RowId::OcrToggle => panel.config.ocr.enabled,
         RowId::OcrAutoCopy => panel.config.ocr.auto_copy,

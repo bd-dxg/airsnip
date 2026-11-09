@@ -34,6 +34,7 @@ impl App {
             // OCR 键与开关（OCR-1/OCR-3）：关闭时覆盖层不出现 OCR 入口
             ocr_key: self.config.hotkey.ocr_key,
             ocr_enabled: self.config.ocr.enabled,
+            confirm_cancel: self.config.confirm_cancel,
             // 贴图键（覆盖层内贴选区，默认 F3；ADR 0019：可改为鼠标键）
             pin_key: self.config.hotkey.pin_key,
             default_tool: crate::settings::last_tool(),

@@ -77,6 +77,8 @@ impl Section {
 pub enum RowId {
     /// 开机自启开关。
     Autostart,
+    /// 连按两次退出开关（OUT-3，issue #120）：有未保存标注时，同一键连按两次才退出。
+    ConfirmCancel,
     /// 语言展示（一期仅 zh-CN）。
     Lang,
     /// 截图热键。
@@ -299,6 +301,7 @@ mod tests {
             let expected = match sec {
                 Section::General => vec![
                     RowId::Autostart,
+                    RowId::ConfirmCancel,
                     RowId::Lang,
                     RowId::PinPosOriginal,
                     RowId::PinPosCenter,

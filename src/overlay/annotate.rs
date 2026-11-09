@@ -164,26 +164,23 @@ impl super::Overlay {
 
     /// 取消截图（OUT-3 / ADR 0027）：`Esc` 与右键共用。分层回退，
     /// 只有会丢失已完成的标注时才二次确认，避免一次误触清空全部工作（issue #114）。
-    pub(super) fn on_cancel(&mut self) {
+    /// 二次确认是**同一键连按两次**（非模态提示，见 `cancel_hint`，issue #120），不再弹系统确认框；
+    /// 设置里关掉「连按两次退出」后，有标注也直接退出。
+    pub(super) fn on_cancel(&mut self, key: u32) {
         match cancel_step(
             self.color_panel_open(),
             self.font_list_open(),
             self.is_editing_text(),
-            !self.doc.is_empty(),
+            self.confirm_cancel && !self.doc.is_empty(),
         ) {
             CancelStep::ColorPanel => self.close_color_panel(),
             CancelStep::FontPanel => self.close_font_list(),
             // 文本 / 序号输入中右键 = 完成本次输入（保留文字），而非丢弃；
             // Esc 取消输入走 `on_text_key`（键盘路径），不经过这里。
             CancelStep::CommitText => self.commit_text(),
+            // 有未保存标注：第一次弹出「再按一次」提示，同键在时间窗内再按才退出（issue #120）
             CancelStep::Confirm => {
-                // 贴图编辑模式（ADR 0028）文案改为「退出编辑」
-                let msg = if self.locked_selection {
-                    "当前标注尚未保存，确定放弃并退出编辑？"
-                } else {
-                    "当前标注尚未保存，确定放弃并退出截图？"
-                };
-                if crate::app::confirm(Some(self.hwnd), msg) {
+                if self.arm_cancel(key) {
                     self.exit_cancel();
                 }
             }
@@ -217,14 +214,14 @@ pub(super) enum CancelStep {
     FontPanel,
     /// 完成当前文本 / 序号输入（右键语义：保留已输入内容）。
     CommitText,
-    /// 有未保存标注，二次确认。
+    /// 有未保存标注，进入二次确认（同键连按两次，见 `cancel_hint`）。
     Confirm,
     /// 直接退出。
     Exit,
 }
 
 /// 取消分层决策（纯函数，便于单测）：面板优先于输入，输入优先于退出；
-/// 有标注时改为确认。
+/// 有标注时进入二次确认。
 pub(super) fn cancel_step(color_panel: bool, font_panel: bool, editing: bool, has_annotations: bool) -> CancelStep {
     if color_panel {
         CancelStep::ColorPanel

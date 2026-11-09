@@ -12,6 +12,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{SetFocus, VK_SNAPSHOT};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::Overlay;
+use super::cancel_hint;
 use super::geometry::SelRect;
 
 /// 自定义消息：显示后异步设置前台与输入焦点。
@@ -39,6 +40,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         WM_LBUTTONDOWN => {
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
+            // 任何左键动作都解除取消待命（OUT-3 / issue #120）
+            overlay.clear_cancel_arm();
             // 按下即隐藏悬浮提示（EDT-10）：拖拽时气泡不应挡住标注
             overlay.hide_tip();
             overlay.on_lbutton_down(x, y);
@@ -62,6 +65,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             overlay.on_tip_timer();
             LRESULT(0)
         }
+        // 二次确认提示超时自动消失（OUT-3 / issue #120）
+        WM_TIMER if wparam.0 == cancel_hint::TIMER_ID => {
+            overlay.on_cancel_timer();
+            LRESULT(0)
+        }
         WM_LBUTTONUP => {
             overlay.on_lbutton_up();
             LRESULT(0)
@@ -73,6 +81,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let delta = ((wparam.0 >> 16) & 0xFFFF) as u16 as i16; // ±120 单位
             // 字体面板上的滚轮用于滚动列表（EDT-4）；取色面板上滚轮不调节字号
             let (ox, oy) = (sx - overlay.capture.origin_x, sy - overlay.capture.origin_y);
+            // 滚轮也是用户新动作，解除取消待命（OUT-3 / issue #120）
+            overlay.clear_cancel_arm();
             if !overlay.on_font_list_wheel(ox, oy, delta) && !overlay.over_color_panel(ox, oy) {
                 overlay.on_mouse_wheel(sx, sy, delta, ctrl_down());
             }
@@ -80,7 +90,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         }
         // 右键取消：与 Esc 共用分层回退，避免误触一次性丢失标注（OUT-3/ADR 0027）
         WM_RBUTTONUP => {
-            overlay.on_cancel();
+            overlay.on_cancel(cancel_hint::KEY_RBUTTON);
             LRESULT(0)
         }
         // 双击：命中对象 → 编辑文本/恢复直线（EDT-3/EDT-4）；
@@ -88,6 +98,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         WM_LBUTTONDBLCLK => {
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
+            overlay.clear_cancel_arm();
             let edited = overlay
                 .hit_object(x, y)
                 .map(|i| overlay.begin_edit_object(i))
@@ -159,6 +170,10 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             } else {
                 wparam.0 as u32
             };
+            // 除 Esc 外的按键都解除取消待命（Esc 本身走下面的取消分支）
+            if vk != 0x1B {
+                overlay.clear_cancel_arm();
+            }
             // 空格按下立即刷新光标：系统只在鼠标移动时发 WM_SETCURSOR，不能等它。
             // 贴图编辑模式（ADR 0028）下空格 = 完成（选区锁定，无需空格移动选区）。
             if vk == 0x20 {
@@ -171,7 +186,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             }
             match vk {
                 // Esc：与右键共用分层取消（先收面板 / 取消输入；有标注则二次确认，OUT-3/ADR 0027）
-                0x1B => overlay.on_cancel(),
+                0x1B => overlay.on_cancel(cancel_hint::KEY_ESCAPE),
                 0x0D => overlay.finish_output(), // Enter：普通=复制关闭，编辑=写回贴图（ADR 0028）
                 0x43 if ctrl_down() => overlay.on_copy(), // Ctrl+C
                 0x53 if ctrl_down() => overlay.on_save(), // Ctrl+S 保存（弹另存为对话框）
@@ -254,6 +269,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         }
         // 鼠标中键 / 侧键当热键（ADR 0019）：长截图键 / 贴选区 / 工具切换键绑到它们时直接生效
         WM_MBUTTONDOWN | WM_XBUTTONDOWN => {
+            overlay.clear_cancel_arm();
             if !overlay.is_editing_text()
                 && let Some(vk) = crate::app::mouse::message_vk(msg, wparam.0)
             {

@@ -82,6 +82,12 @@ impl Panel {
             return;
         }
         match id {
+            // 连按两次退出（OUT-3，issue #120）：下次截图生效
+            RowId::ConfirmCancel => {
+                self.end_capture();
+                self.config.confirm_cancel = !self.config.confirm_cancel;
+                self.config_dirty = true;
+            }
             RowId::Autostart => {
                 self.end_capture();
                 let next = !self.autostart_on;
