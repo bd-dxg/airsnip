@@ -38,8 +38,8 @@ impl App {
             // 贴图键（覆盖层内贴选区，默认 F3；ADR 0019：可改为鼠标键）
             pin_key: self.config.hotkey.pin_key,
             default_tool: crate::settings::last_tool(),
-            // 自定义标注色（EDT-7，issue #73）：未取过色时用默认色
-            custom_color: self.config.custom_color.unwrap_or(crate::editor::CUSTOM_DEFAULT),
+            // 色块颜色（EDT-7，issue #73 后续）：可逐个双击改写
+            colors: self.config.swatch_colors,
             // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名与初始位置
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,

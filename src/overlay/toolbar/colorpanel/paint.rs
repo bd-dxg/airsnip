@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 自定义颜色面板绘制（EDT-7，issue #73）：色相条（横向渐变）、饱和度 / 明度方块
+//! 取色面板绘制（EDT-7，issue #73）：色相条（横向渐变）、饱和度 / 明度方块
 //! （纯色 + 白色横向渐变 + 黑色纵向渐变叠加）、取样标记与快捷色块。纯 CPU 渲染。
 
 use tiny_skia::{Color, GradientStop, LinearGradient, PathBuilder, Pixmap, Rect, SpreadMode, Stroke, Transform};

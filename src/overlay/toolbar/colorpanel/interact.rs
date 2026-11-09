@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 自定义颜色面板的交互（EDT-7，issue #73）：展开 / 收起、取样拖动、快捷取色、悬停高亮。
+//! 取色面板的交互（EDT-7，issue #73）：双击色块展开、收起、取样拖动、快捷取色、悬停高亮。
+//! 面板改写的是当前色块（`color_index`）：面板打开期间任何工具栏点击都会先收起面板，
+//! 所以 `color_index` 在此期间不会变。
 //! 布局与命中见 `super`，绘制见 `paint`；颜色变更最终经 `style_selected` 落到选中对象。
 
-use crate::editor::{self, CUSTOM_INDEX, Kind};
+use crate::editor::{self, Kind};
 use crate::overlay::Overlay;
 use crate::overlay::geometry::{expand_rect, union_rect};
 use crate::overlay::toolbar::Action;
@@ -10,28 +12,24 @@ use crate::overlay::toolbar::Action;
 use super::{ColorPanel, Hit};
 
 impl Overlay {
-    /// 展开 / 收起取色面板（工具栏「自定义颜色」色块）。与字体面板互斥。
-    pub(in crate::overlay) fn toggle_color_panel(&mut self) {
-        if self.color_panel.is_some() {
-            self.close_color_panel();
-            return;
-        }
-        self.close_font_list();
+    /// 双击色块：选用该色并在其上方展开取色面板，返回是否命中色块。与字体面板互斥。
+    pub(in crate::overlay) fn on_swatch_dblclick(&mut self, x: i32, y: i32) -> bool {
         let Some(bar) = self.bar.as_ref() else {
-            return;
+            return false;
         };
-        let Some(anchor) = bar
-            .hits
-            .iter()
-            .find(|(_, a)| *a == Action::Color(CUSTOM_INDEX))
-            .map(|(r, _)| *r)
-        else {
-            return;
+        let Some((anchor, Action::Color(i))) = bar.hits.iter().find(|(r, _)| r.contains(x, y)).copied() else {
+            return false;
         };
-        let (bar_rect, color, ui) = (bar.rect, self.custom_color, self.ui);
+        let bar_rect = bar.rect;
+        self.close_font_list();
+        self.close_color_panel();
+        // 第一击已选用该色（`apply_action`），这里兜底一次
+        self.color_index = i;
+        let (color, ui) = (self.current_color(), self.ui);
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
         self.color_panel = Some(ColorPanel::open(anchor, bar_rect, color, vw, vh, ui));
         self.repaint_panel();
+        true
     }
 
     /// 收起取色面板（工具栏其它按钮、Esc、点击面板之外）。
@@ -70,13 +68,12 @@ impl Overlay {
             panel.press(hit, x, y);
         }
         if let Some(panel) = self.color_panel.as_ref() {
-            self.custom_color = panel.color();
-            self.color_index = CUSTOM_INDEX;
+            self.colors[self.color_index] = panel.color();
         }
         if slider {
             // 拖动滑块：开一次撤销快照，拖动中实时预览选中对象，松手归档
             self.begin_color_edit();
-            self.preview_color(self.custom_color);
+            self.preview_color(self.current_color());
             self.repaint_panel();
         } else {
             // 快捷色块：单击成型，直接进撤销栈
@@ -106,10 +103,9 @@ impl Overlay {
                 return true;
             }
             if let Some(panel) = self.color_panel.as_ref() {
-                self.custom_color = panel.color();
-                self.color_index = CUSTOM_INDEX;
+                self.colors[self.color_index] = panel.color();
             }
-            let color = self.custom_color;
+            let color = self.current_color();
             // 选中对象实时跟随；仅面板区域重绘（不重画整条工具栏，避免拖动卡顿）
             self.preview_color(color);
             self.repaint_panel();
@@ -133,7 +129,7 @@ impl Overlay {
         if let Some(panel) = self.color_panel.as_mut() {
             panel.end_drag();
         }
-        editor::custom_color_store(self.custom_color);
+        editor::colors_store(self.colors);
         self.finish_color_edit();
         // 拖动期间未更新工具栏色块：松手时补齐
         self.repaint_toolbar_chrome();
@@ -142,7 +138,7 @@ impl Overlay {
 
     /// 快捷色块：写回配置并把当前色作用于选中对象（走常规撤销路径）。
     fn commit_custom_color(&mut self) {
-        editor::custom_color_store(self.custom_color);
+        editor::colors_store(self.colors);
         self.style_selected();
     }
 

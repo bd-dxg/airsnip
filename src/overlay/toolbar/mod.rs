@@ -43,8 +43,8 @@ const PAD_BASE: f32 = 5.0;
 pub struct State {
     pub tool: Tool,
     pub color: usize,
-    /// 自定义色（EDT-7）：绘制自定义色块用。
-    pub custom_color: [u8; 4],
+    /// 色块颜色（EDT-7）：绘制色块用。
+    pub colors: [[u8; 4]; SWATCH_COUNT],
     /// 矩形是否填充（EDT-1）。
     pub filled: bool,
     pub can_undo: bool,
@@ -381,23 +381,19 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 26);
+        assert_eq!(actions.len(), 25);
         assert_eq!(actions[..7], Tool::ALL.map(Action::Tool));
-        // 色块：预设 5 + 自定义 1（末尾，见 issue #73）
-        assert_eq!(actions[7], Action::Color(0));
+        // 色块：5 个，均可双击改色（issue #73 后续，不再有单独的自定义槽）
+        assert_eq!(actions[7..12], [0, 1, 2, 3, 4].map(Action::Color));
+        assert_eq!(actions[12], Action::ToggleFill);
+        assert_eq!(actions[13], Action::Undo);
+        assert_eq!(actions[14], Action::Redo);
+        assert_eq!(actions[15], Action::Pin);
+        assert_eq!(actions[16], Action::Longshot);
+        assert_eq!(actions[17], Action::Copy);
+        assert_eq!(actions[18], Action::Save);
         assert_eq!(
-            actions[7 + crate::editor::CUSTOM_INDEX],
-            Action::Color(crate::editor::CUSTOM_INDEX)
-        );
-        assert_eq!(actions[13], Action::ToggleFill);
-        assert_eq!(actions[14], Action::Undo);
-        assert_eq!(actions[15], Action::Redo);
-        assert_eq!(actions[16], Action::Pin);
-        assert_eq!(actions[17], Action::Longshot);
-        assert_eq!(actions[18], Action::Copy);
-        assert_eq!(actions[19], Action::Save);
-        assert_eq!(
-            actions[20..],
+            actions[19..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -415,7 +411,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false, false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 20);
+        assert_eq!(bar.hits.len(), 19);
     }
 
     /// OCR 按钮（OCR-3）：功能开启时紧跟长截图出现，关闭时完全不出现（OCR-1）。
@@ -423,16 +419,16 @@ mod tests {
     fn ocr_button_only_when_enabled() {
         let s = sel(100, 100, 400, 300);
         let off = layout(s, 2560, 1440, false, false, base());
-        assert_eq!(off.hits.len(), 20, "关闭时不应有 OCR 按钮");
+        assert_eq!(off.hits.len(), 19, "关闭时不应有 OCR 按钮");
         assert!(!off.hits.iter().any(|(_, a)| *a == Action::Ocr));
 
         let on = layout(s, 2560, 1440, false, true, base());
-        assert_eq!(on.hits.len(), 21);
+        assert_eq!(on.hits.len(), 20);
         let actions: Vec<Action> = on.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions[17], Action::Longshot);
-        assert_eq!(actions[18], Action::Ocr, "OCR 按钮应紧跟长截图");
-        assert_eq!(actions[19], Action::Copy);
-        assert_eq!(actions[20], Action::Save);
+        assert_eq!(actions[16], Action::Longshot);
+        assert_eq!(actions[17], Action::Ocr, "OCR 按钮应紧跟长截图");
+        assert_eq!(actions[18], Action::Copy);
+        assert_eq!(actions[19], Action::Save);
         // 多一个按钮后仍不能与信息文字重叠、不能越出屏幕
         for ui in [base(), Ui::from_dpi(192)] {
             let bar = layout(s, 2560, 1440, false, true, ui);
