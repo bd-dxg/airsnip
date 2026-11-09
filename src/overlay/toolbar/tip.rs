@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 控件悬浮提示（EDT-10）：鼠标悬停工具栏按钮或圆角控制柄约 400ms 后，
 //! 在其外侧弹出小气泡显示「名称 · 快捷键」；悬停立即给按钮底色，按下鼠标即隐藏。
+//! 色块显示「#RRGGBB · 双击改色」（第一段色值、第二段操作方式，issue #122 / #123）。
 //! 决策与取舍（不加开关、一次性定时器）见 `docs/adr/0020-control-tooltips.md`。
 //! 气泡几何与绘制见 `paint` 子模块。
 
@@ -58,7 +59,7 @@ impl Tip {
 }
 
 /// 按钮名称；返回 None 表示该控件不提示（第二行字体控件，ADR 0020）。
-/// 色块例外：双击改色不直观，悬停时提示操作方式（issue #73 后续）。
+/// 色块例外：提示由 `hintable` 单独开启，文案见 `color_tip_text`（issue #122 / #123）。
 fn action_label(action: Action) -> Option<&'static str> {
     match action {
         Action::Tool(Tool::Rect) => Some("矩形工具"),
@@ -77,9 +78,20 @@ fn action_label(action: Action) -> Option<&'static str> {
         Action::Ocr => Some("OCR"),
         Action::Copy => Some("复制"),
         Action::Save => Some("保存"),
-        Action::Color(_) => Some("单击使用 · 双击改色"),
         _ => None,
     }
+}
+
+/// 控件是否显示悬停提示：`None` 表示不提示（第二行字体控件，ADR 0020）。
+/// 色块也提示——双击改色不直观，显示色值 + 操作方式（issue #122 / #123）。
+fn hintable(action: Action) -> bool {
+    matches!(action, Action::Color(_)) || action_label(action).is_some()
+}
+
+/// 色块气泡文案：第一段为色块当前颜色的十六进制色值，第二段提示双击改色。
+/// 色值取 `colors[i]`（与色块外观一致），改色后重新悬停即显示新值。
+fn color_tip_text(c: [u8; 4]) -> String {
+    format!("#{:02X}{:02X}{:02X} · 双击改色", c[0], c[1], c[2])
 }
 
 /// 气泡文案：「名称 · 快捷键」；无快捷键时只有名称。
@@ -185,9 +197,11 @@ impl Overlay {
         self.tip.bubble.take().map(|b| b.rect)
     }
 
-    /// 气泡文案：「名称 · 快捷键」；不提示的控件返回 None。
+    /// 气泡文案：「名称 · 快捷键」；不提示的控件返回 None。色块显示色值 + 双击改色。
     fn tip_text(&self, hit: Hit) -> Option<String> {
         match hit {
+            // 色块：显示该色块的十六进制色值（第一段）与操作方式（第二段），issue #122 / #123
+            Hit::Button(Action::Color(i)) => Some(color_tip_text(self.colors[i])),
             Hit::Button(a) => Some(compose(action_label(a)?, self.key_suffix(a).as_deref())),
             // 圆角控制柄（EDT-1/ADR 0010）没有快捷键
             Hit::Radius => Some("圆角 · 拖动调节".into()),
@@ -223,7 +237,7 @@ impl Overlay {
             && let Some(a) = bar.hit(x, y)
         {
             // 命中工具栏即定案：第二行控件返回 None（不提示）
-            return action_label(a).map(|_| Hit::Button(a));
+            return hintable(a).then(|| Hit::Button(a));
         }
         let obj = self.selected_object()?;
         let (hx, hy) = objedit::radius_handle_point(obj, self.ui)?;
@@ -298,7 +312,7 @@ mod tests {
             Action::Color(0),
         ]);
         for a in first_row {
-            assert!(action_label(a).is_some(), "{a:?} 应有提示名称");
+            assert!(hintable(a), "{a:?} 应有提示");
         }
         for a in [
             Action::FontPick,
@@ -316,6 +330,15 @@ mod tests {
     fn compose_appends_hotkey() {
         assert_eq!(compose("矩形工具", Some("1")), "矩形工具 · 1");
         assert_eq!(compose("填充", None), "填充");
+    }
+
+    /// 色块气泡：第一段为十六进制色值（与色块颜色一致），第二段为「双击改色」；
+    /// 改色后输入不同颜色，文案随之更新（issue #122 / #123）。
+    #[test]
+    fn color_tip_shows_hex_then_doubleclick_hint() {
+        assert_eq!(color_tip_text([255, 0, 0, 255]), "#FF0000 · 双击改色");
+        assert_eq!(color_tip_text([30, 136, 229, 255]), "#1E88E5 · 双击改色");
+        assert_eq!(color_tip_text([0, 0, 0, 255]), "#000000 · 双击改色");
     }
 
     /// 常规位置：气泡贴在工具栏下方、屏幕内，且不与工具栏重叠。
