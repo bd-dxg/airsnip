@@ -97,6 +97,8 @@ impl Overlay {
             ocr_key,
             ocr_enabled,
             confirm_cancel,
+            cancel_arm: None,
+            cancel_hint: None,
             pin_key,
             save,
             color_index: 1, // 默认红色

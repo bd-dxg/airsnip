@@ -430,7 +430,7 @@ mod tests {
         }
     }
 
-    /// 取消前确认（OUT-3，issue #120）：旧配置缺字段回退开启（保持 ADR 0027 行为），关闭能往返。
+    /// 连按两次退出（OUT-3，issue #120）：旧配置缺字段回退开启（保持 ADR 0027 行为），关闭能往返。
     #[test]
     fn confirm_cancel_defaults_and_roundtrip() {
         let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();

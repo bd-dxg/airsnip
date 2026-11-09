@@ -11,6 +11,7 @@
 //! > Ctrl + 对象 > 选中对象框边 > 对象内部（绘制）> 空白绘制。
 
 mod annotate;
+mod cancel_hint;
 mod control;
 mod cursor;
 mod font;
@@ -86,6 +87,10 @@ pub struct Overlay {
     ocr_enabled: bool,
     /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。
     confirm_cancel: bool,
+    /// 二次确认「待命」状态（OUT-3 / issue #120）：上次触发退出的键与时刻。
+    cancel_arm: Option<(u32, std::time::Instant)>,
+    /// 已弹出的二次确认提示（OUT-3 / issue #120）。
+    cancel_hint: Option<cancel_hint::CancelHint>,
     /// 贴图键（覆盖层内按下贴选区，默认 F3；设置面板可改，ADR 0019）。
     pin_key: u32,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。

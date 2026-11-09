@@ -82,7 +82,7 @@ impl Panel {
             return;
         }
         match id {
-            // 取消前确认（OUT-3，issue #120）：下次截图生效
+            // 连按两次退出（OUT-3，issue #120）：下次截图生效
             RowId::ConfirmCancel => {
                 self.end_capture();
                 self.config.confirm_cancel = !self.config.confirm_cancel;

@@ -77,7 +77,7 @@ impl Section {
 pub enum RowId {
     /// 开机自启开关。
     Autostart,
-    /// 取消前确认开关（OUT-3，issue #120）：有未保存标注时取消先弹确认框。
+    /// 连按两次退出开关（OUT-3，issue #120）：有未保存标注时，同一键连按两次才退出。
     ConfirmCancel,
     /// 语言展示（一期仅 zh-CN）。
     Lang,

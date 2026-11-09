@@ -82,6 +82,7 @@ impl super::Overlay {
         let _frame = crate::perf::frame();
         let r = self.expand_for_objects(r);
         let r = self.expand_for_selected(r);
+        let r = self.expand_for_hint(r);
         let (w, h) = (self.display.width() as i32, self.display.height() as i32);
         let x0 = r.x.clamp(0, w);
         let y0 = r.y.clamp(0, h);
@@ -205,7 +206,22 @@ impl super::Overlay {
         {
             tip::draw(&mut self.display, bubble, self.palette, self.ui);
         }
+        // 7b) 取消二次确认提示（OUT-3 / issue #120）：同样只在屏幕显示层
+        if let Some(hint) = &self.cancel_hint
+            && intersect_rect(expand_rect(hint.rect, 2), region).is_some()
+        {
+            super::cancel_hint::draw(&mut self.display, hint, self.ui);
+        }
         self.present_region(region);
+    }
+
+    /// 二次确认提示整条画进 `display`，脏区若只切过它一部分，未呈现的像素会在后续上屏时被重复合成；
+    /// 故与提示相交时把脏区扩到整条提示矩形（OUT-3 / issue #120）。
+    fn expand_for_hint(&self, r: SelRect) -> SelRect {
+        match &self.cancel_hint {
+            Some(h) if intersect_rect(h.rect, r).is_some() => union_rect(Some(r), Some(h.rect)).unwrap_or(r),
+            _ => r,
+        }
     }
 
     /// 选中对象的手柄画在包围盒之外，脏区需一并覆盖（否则手柄残缺或残留）。
