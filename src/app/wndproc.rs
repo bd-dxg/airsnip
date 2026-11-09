@@ -236,9 +236,9 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     app.config.last_save_dir = Some(dir);
                     changed = true;
                 }
-                // 本次取过自定义颜色的话，记住它（EDT-7，issue #73）
-                if let Some(color) = crate::editor::custom_color_take() {
-                    app.config.custom_color = Some(color);
+                // 本次改过色块颜色的话，记住它们（EDT-7，issue #73 后续）
+                if let Some(colors) = crate::editor::colors_take() {
+                    app.config.swatch_colors = colors;
                     changed = true;
                 }
                 if changed {

@@ -1,26 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 标注颜色调色板（EDT-7）：5 个预设色 + 1 个自定义色槽（issue #73）。
-//! 自定义色由工具栏「自定义颜色」色块展开的自绘取色面板选取（见 `overlay::toolbar::colorpanel`），
-//! 覆盖层线程写入 `custom_color_store`，主线程在截图结束时写回配置持久化。
+//! 标注颜色调色板（EDT-7）：5 个可编辑色块（issue #73 后续）。
+//! 单击色块即使用；双击展开自绘取色面板（见 `overlay::toolbar::colorpanel`）改写该色块。
+//! 覆盖层线程写入 `colors_store`，主线程在截图结束时写回配置持久化。
 //! 这里另提供 HSV↔RGB 与取色面板的快捷色常量 `QUICK`。
 
-/// 预设颜色调色板（RGBA）。透明度由工具栏后续提供，当前固定 255。
-pub const PALETTE: [[u8; 4]; 5] = [
+/// 色块数量。
+pub const SWATCH_COUNT: usize = 5;
+
+/// 色块默认颜色（RGBA）：用户未改过时使用。透明度当前固定 255。
+pub const DEFAULT_COLORS: [[u8; 4]; SWATCH_COUNT] = [
     [255, 255, 255, 255],
     [229, 57, 53, 255],
     [251, 140, 0, 255],
     [67, 160, 71, 255],
     [30, 136, 229, 255],
 ];
-
-/// 自定义色的色块下标（紧跟预设色之后）。
-pub const CUSTOM_INDEX: usize = PALETTE.len();
-
-/// 色块总数（预设 + 自定义）。
-pub const SWATCH_COUNT: usize = PALETTE.len() + 1;
-
-/// 自定义色默认值（Material 紫 600）：用户首次取色前工具栏展示的颜色。
-pub const CUSTOM_DEFAULT: [u8; 4] = [142, 36, 170, 255];
 
 /// 取色面板的快捷色块（2 行 × 6 列）：常用 Material 色 + 黑 / 白 / 灰。
 pub const QUICK: [[u8; 4]; 12] = [
@@ -37,11 +31,6 @@ pub const QUICK: [[u8; 4]; 12] = [
     [216, 27, 96, 255],
     [109, 76, 65, 255],
 ];
-
-/// 取第 `index` 个色块的颜色；`index` 为自定义槽（或越界）时返回 `custom`。
-pub fn swatch(index: usize, custom: [u8; 4]) -> [u8; 4] {
-    PALETTE.get(index).copied().unwrap_or(custom)
-}
 
 /// HSV → RGB：`h` 为色相角度（0..360，可取 360），`s`/`v` 为 0..1；输出 alpha 固定 255。
 pub fn hsv_to_rgb(h: f32, s: f32, v: f32) -> [u8; 4] {
@@ -82,35 +71,24 @@ pub fn rgb_to_hsv(c: [u8; 4]) -> (f32, f32, f32) {
     (h, s, max)
 }
 
-/// 覆盖层线程选定的自定义色：主线程在截图结束时取出并写回配置（同 `output::recent`）。
-static CUSTOM_COLOR: std::sync::Mutex<Option<[u8; 4]>> = std::sync::Mutex::new(None);
+/// 覆盖层线程改过的色块组：主线程在截图结束时取出并写回配置（同 `output::recent`）。
+static COLORS: std::sync::Mutex<Option<[[u8; 4]; SWATCH_COUNT]>> = std::sync::Mutex::new(None);
 
-/// 记录本次选定的自定义色（覆盖层线程调用）。
-pub fn custom_color_store(c: [u8; 4]) {
-    if let Ok(mut g) = CUSTOM_COLOR.lock() {
+/// 记录本次改过的色块组（覆盖层线程调用）。
+pub fn colors_store(c: [[u8; 4]; SWATCH_COUNT]) {
+    if let Ok(mut g) = COLORS.lock() {
         *g = Some(c);
     }
 }
 
-/// 取出并清空记录的自定义色（主线程写回配置用）。
-pub fn custom_color_take() -> Option<[u8; 4]> {
-    CUSTOM_COLOR.lock().ok().and_then(|mut g| g.take())
+/// 取出并清空记录的色块组（主线程写回配置用）。
+pub fn colors_take() -> Option<[[u8; 4]; SWATCH_COUNT]> {
+    COLORS.lock().ok().and_then(|mut g| g.take())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// 色块取值：预设返回预设，自定义槽与越界返回自定义色。
-    #[test]
-    fn swatch_maps_index() {
-        let custom = [1, 2, 3, 4];
-        for i in 0..PALETTE.len() {
-            assert_eq!(swatch(i, custom), PALETTE[i]);
-        }
-        assert_eq!(swatch(CUSTOM_INDEX, custom), custom);
-        assert_eq!(swatch(CUSTOM_INDEX + 5, custom), custom, "越界回退自定义色");
-    }
 
     /// HSV 往返：纯色与灰色的 RGB→HSV→RGB 能还原（量化误差 ≤1）。
     #[test]
@@ -145,10 +123,12 @@ mod tests {
 
     /// 运行时记忆：写入后能取出，取出即清空。
     #[test]
-    fn custom_color_memory_roundtrip() {
-        assert_eq!(custom_color_take(), None, "初始应为空");
-        custom_color_store([10, 20, 30, 255]);
-        assert_eq!(custom_color_take(), Some([10, 20, 30, 255]));
-        assert_eq!(custom_color_take(), None, "取出后应清空");
+    fn colors_memory_roundtrip() {
+        assert_eq!(colors_take(), None, "初始应为空");
+        let mut c = DEFAULT_COLORS;
+        c[2] = [10, 20, 30, 255];
+        colors_store(c);
+        assert_eq!(colors_take(), Some(c));
+        assert_eq!(colors_take(), None, "取出后应清空");
     }
 }

@@ -98,7 +98,12 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         WM_LBUTTONDBLCLK => {
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
+            // 双击也是用户新动作，解除取消待命（OUT-3 / issue #120）
             overlay.clear_cancel_arm();
+            // 双击色块：展开取色面板改写该色块（EDT-7，issue #73 后续）；第一击已选用该色
+            if overlay.on_swatch_dblclick(x, y) {
+                return LRESULT(0);
+            }
             let edited = overlay
                 .hit_object(x, y)
                 .map(|i| overlay.begin_edit_object(i))
