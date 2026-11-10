@@ -141,14 +141,14 @@
 ```powershell
 cargo run                 # 开发版（不提权，可调试）
 cargo build --release     # 发布版（manifest 要求管理员权限，单文件）
-cargo test                # 单测（320 项，另 15 项需 --ignored 手动触发）
+cargo test                # 单测（334 项，另 15 项需 --ignored 手动触发）
 cargo fmt --check         # 格式化检查
 cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
 pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip / .exe
 pwsh scripts/gen-latest-json.ps1 -Notes "说明"  # 生成并签名自动更新清单 latest.json
 ```
 
-技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.9.0。
+技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.10.0。
 
 ## 已知限制
 
