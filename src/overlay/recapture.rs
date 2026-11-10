@@ -10,6 +10,7 @@
 //! 快捷键由**覆盖层线程自己注册**：只在该窗口存活期间有效，覆盖层关闭 / 线程退出即失效；
 //! 主线程不必维护生命周期，也不用跨线程找窗口句柄。
 
+use tiny_skia::Pixmap;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey};
 use windows::Win32::UI::WindowsAndMessaging::KillTimer;
@@ -17,30 +18,27 @@ use windows::Win32::UI::WindowsAndMessaging::KillTimer;
 use super::geometry::SelRect;
 use super::interaction::Phase;
 use super::toolbar::tip;
-use super::{Overlay, OverlayOpts, cancel_hint, surface};
+use super::{Overlay, cancel_hint, surface};
 use crate::editor::Document;
 
-/// 热键 ID（覆盖层线程内唯一；与主窗口的 `app::ID_HOTKEY_*` 互不相干）。
+/// 热键 ID（覆盖层线程内的资源 id 空间：定时器占了 2 / 3，热键取 201；
+/// 与主窗口的 `app::ID_HOTKEY_*` 互不相干，两者按线程归属不会冲突）。
 pub(super) const HOTKEY_ID: i32 = 201;
 
 /// 注册「再次截图」键（默认 `Shift+F1`）。
 /// 失败静默：这只是截图期间的便利键，被别的程序占用时退化成「取消后重新按截图键」，
 /// 不该弹框打断正在进行的截图（`AIRSNIP_DEBUG=1` 时打印一行）。
-pub(super) fn register(hwnd: HWND, opts: &OverlayOpts) {
-    // 贴图编辑模式（ADR 0028）：选区锁死为贴图内容，不存在「重新框选」
-    if opts.pin_edit.is_some() {
-        return;
-    }
-    let (key, mods) = (opts.recapture_key, opts.recapture_modifiers);
+pub(super) fn register(hwnd: HWND, key: u32, modifiers: u32) {
     // 未绑定（0）与鼠标键（RegisterHotKey 不支持，ADR 0019）都不注册
     if key == crate::settings::UNBOUND || crate::app::mouse::is_mouse_key(key) {
         return;
     }
-    let ok = unsafe { RegisterHotKey(Some(hwnd), HOTKEY_ID, crate::app::hotkey::mod_flags(mods), key) }.is_ok();
+    let ok = unsafe { RegisterHotKey(Some(hwnd), HOTKEY_ID, crate::app::hotkey::mod_flags(modifiers), key) }.is_ok();
     if !ok && crate::app::mouse::debug_enabled() {
-        eprintln!("[airsnip] 再次截图键注册失败（{key:#x} + {mods}）：{}", unsafe {
-            windows::Win32::Foundation::GetLastError().0
-        });
+        eprintln!(
+            "[airsnip] 再次截图键注册失败（{key:#x} + {modifiers}）：{}",
+            unsafe { windows::Win32::Foundation::GetLastError().0 }
+        );
     }
 }
 
@@ -58,11 +56,7 @@ impl Overlay {
             return; // 贴图编辑模式（ADR 0028）：选区锁定
         }
         self.reset_interaction();
-        // 底图替换：三份缓冲原地复制（尺寸不变，不新分配全屏内存）
-        self.original.data_mut().copy_from_slice(self.display.data());
-        self.dimmed.data_mut().copy_from_slice(self.display.data());
-        surface::dim_pixmap(&mut self.dimmed, surface::DIM_K);
-        self.display.data_mut().copy_from_slice(self.dimmed.data());
+        rebase(&mut self.original, &mut self.dimmed, &mut self.display);
         // `display` 已是暗图，首帧不必再从 `dimmed` 回贴（与 `init` 的首帧同理）
         self.first_paint = true;
         let (w, h) = (self.display.width() as i32, self.display.height() as i32);
@@ -104,5 +98,63 @@ impl Overlay {
         self.phase = Phase::Adjusting;
         self.viewport = None;
         self.cancelled = false;
+    }
+}
+
+/// 把当前画面当作新底图：`original ← display`（当时的屏幕画面）、
+/// `dimmed = dim(original)`、`display ← dimmed`。
+/// 三份缓冲原地复制，不新分配全屏内存；抽成无窗口依赖的纯函数便于单测。
+fn rebase(original: &mut Pixmap, dimmed: &mut Pixmap, display: &mut Pixmap) {
+    // 三份 pixmap 由同一次抓屏尺寸初始化、没有任何 resize 路径，尺寸必须一致；
+    // 不齐时 copy_from_slice 会在窗口过程里 panic（= 进程 abort），故先断言。
+    debug_assert_eq!(
+        original.data().len(),
+        display.data().len(),
+        "再次截图：三份缓冲尺寸必须一致"
+    );
+    debug_assert_eq!(
+        dimmed.data().len(),
+        display.data().len(),
+        "再次截图：三份缓冲尺寸必须一致"
+    );
+    original.data_mut().copy_from_slice(display.data());
+    dimmed.data_mut().copy_from_slice(display.data());
+    surface::dim_pixmap(dimmed, surface::DIM_K);
+    display.data_mut().copy_from_slice(dimmed.data());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tiny_skia::Color;
+
+    fn solid(w: u32, h: u32, c: [u8; 4]) -> Pixmap {
+        let mut p = Pixmap::new(w, h).unwrap();
+        p.fill(Color::from_rgba8(c[0], c[1], c[2], c[3]));
+        p
+    }
+
+    /// 再次截图的核心语义：`original` 取「当时的屏幕画面」，`display` 变成它的暗图，
+    /// 而且**只暗一次**（重复暗化会让每次再次截图都越来越黑）。
+    #[test]
+    fn rebase_uses_current_frame_once_dimmed() {
+        let (w, h) = (4, 3);
+        let mut original = solid(w, h, [10, 20, 30, 255]);
+        let mut dimmed = solid(w, h, [0, 0, 0, 255]);
+        let mut display = solid(w, h, [200, 100, 50, 255]);
+
+        rebase(&mut original, &mut dimmed, &mut display);
+
+        assert_eq!(&original.data()[0..4], &[200, 100, 50, 255], "底图应取屏幕画面");
+        let k = surface::DIM_K;
+        let expect = [
+            ((200 * k) >> 8) as u8,
+            ((100 * k) >> 8) as u8,
+            ((50 * k) >> 8) as u8,
+            255,
+        ];
+        assert_eq!(&dimmed.data()[0..4], &expect, "暗图应为原图乘 {k}/256");
+        assert_eq!(display.data(), dimmed.data(), "display 必须等于暗图本身（只暗一次）");
+        assert_ne!(&display.data()[0..3], &original.data()[0..3], "非选区应确实变暗");
     }
 }

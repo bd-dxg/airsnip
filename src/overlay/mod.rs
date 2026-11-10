@@ -179,12 +179,16 @@ pub fn run(capture: CapturedScreen, opts: OverlayOpts, hinstance: HINSTANCE, mai
         }
     };
 
-    // 再次截图键（issue #118）：覆盖层线程自己注册，覆盖层关闭 / 线程退出即失效
-    recapture::register(hwnd, &opts);
+    // 再次截图键（issue #118）：覆盖层线程自己注册，覆盖层关闭 / 线程退出即失效。
+    // 贴图编辑模式（ADR 0028）选区锁死，没有「重新框选」这回事，不注册。
+    if opts.pin_edit.is_none() {
+        recapture::register(hwnd, opts.recapture_key, opts.recapture_modifiers);
+    }
 
     let mut overlay = match Overlay::new(capture, opts) {
         Ok(o) => o,
         Err(_) => {
+            recapture::unregister(hwnd);
             unsafe {
                 let _ = DestroyWindow(hwnd);
             }
