@@ -33,6 +33,10 @@ icon_table! {
     Blur => "toolbar/blur.svg",
     Glow => "toolbar/glow.svg",
     Number => "toolbar/number.svg",
+    // EDT-13/14/15 新增工具的图标（当前为占位几何形状，待替换为 Material Symbols）
+    Line => "toolbar/line.svg",
+    Ellipse => "toolbar/ellipse.svg",
+    Freehand => "toolbar/freehand.svg",
     Fill => "toolbar/fill.svg",
     Undo => "toolbar/undo.svg",
     Redo => "toolbar/redo.svg",

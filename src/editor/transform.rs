@@ -36,6 +36,22 @@ impl Kind {
                 *center = Point::new(center.x + dx, center.y + dy);
                 *tip = Point::new(tip.x + dx, tip.y + dy);
             }
+            // EDT-13 直线：两端点平移
+            Kind::Line { from, to } => {
+                *from = Point::new(from.x + dx, from.y + dy);
+                *to = Point::new(to.x + dx, to.y + dy);
+            }
+            // EDT-14 椭圆：对角两点平移
+            Kind::Ellipse { a, b, .. } => {
+                *a = Point::new(a.x + dx, a.y + dy);
+                *b = Point::new(b.x + dx, b.y + dy);
+            }
+            // EDT-15 手绘：逐点平移（点列 `Arc` 共享，改动时才拷贝一份，历史快照不受影响）
+            Kind::Freehand { pts } => {
+                for p in std::sync::Arc::make_mut(pts) {
+                    *p = Point::new(p.x + dx, p.y + dy);
+                }
+            }
         }
     }
 
@@ -119,6 +135,22 @@ impl Kind {
                 *center = map(*center);
                 *tip = map(*tip);
                 *font_size = (*font_size * sy).clamp(FONT_RANGE.0, FONT_RANGE.1);
+            }
+            // EDT-13 直线：两端点各自映射
+            Kind::Line { from, to } => {
+                *from = map(*from);
+                *to = map(*to);
+            }
+            // EDT-14 椭圆：对角两点各自映射（两点顺序自然保留）
+            Kind::Ellipse { a, b, .. } => {
+                *a = map(*a);
+                *b = map(*b);
+            }
+            // EDT-15 手绘：逐点按包围盒映射
+            Kind::Freehand { pts } => {
+                for p in std::sync::Arc::make_mut(pts) {
+                    *p = map(*p);
+                }
             }
         }
     }

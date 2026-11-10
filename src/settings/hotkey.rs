@@ -69,6 +69,12 @@ pub struct ToolKeys {
     pub glow: ToolKey,
     /// EDT-12 序号标记。
     pub number: ToolKey,
+    /// EDT-13 直线。
+    pub line: ToolKey,
+    /// EDT-14 椭圆。
+    pub ellipse: ToolKey,
+    /// EDT-15 手绘自由笔画。
+    pub freehand: ToolKey,
 }
 
 /// 修饰键位掩码（与 `HotkeyConfig` 的 `*_modifiers` 一致）。
@@ -153,6 +159,40 @@ impl Default for ToolKeys {
             highlight: 0x35, // 5
             glow: 0x36,      // 6
             number: 0x37,    // 7
+            line: 0x38,      // 8
+            ellipse: 0x39,   // 9
+            freehand: 0x30,  // 0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 新增的三个工具默认键延续 1-7 数字序列：8（直线）/ 9（椭圆）/ 0（手绘）。
+    #[test]
+    fn new_tool_keys_default_to_8_9_0() {
+        let k = ToolKeys::default();
+        assert_eq!(k.line, 0x38, "直线默认键应为 8");
+        assert_eq!(k.ellipse, 0x39, "椭圆默认键应为 9");
+        assert_eq!(k.freehand, 0x30, "手绘默认键应为 0");
+        // 与已有工具键互不重复
+        let all = [
+            k.rect,
+            k.arrow,
+            k.text,
+            k.blur,
+            k.highlight,
+            k.glow,
+            k.number,
+            k.line,
+            k.ellipse,
+            k.freehand,
+        ];
+        let mut uniq = all.to_vec();
+        uniq.sort_unstable();
+        uniq.dedup();
+        assert_eq!(uniq.len(), all.len(), "工具键默认值不应重复：{all:?}");
     }
 }

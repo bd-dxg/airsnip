@@ -88,8 +88,10 @@ fn obj_shape(h: ObjHandle) -> Shape {
         ObjHandle::E | ObjHandle::W => Shape::WE,
         ObjHandle::NW | ObjHandle::SE => Shape::NWSE,
         ObjHandle::NE | ObjHandle::SW => Shape::NESW,
-        // 箭头端点：拖动即拉长 / 改向；圆角控制柄：自绘圆弧光标
-        ObjHandle::ArrowFrom | ObjHandle::ArrowTo | ObjHandle::Move => Shape::Move,
+        // 箭头端点：拖动即拉长 / 改向；直线端点同理；圆角控制柄：自绘圆弧光标
+        ObjHandle::ArrowFrom | ObjHandle::ArrowTo | ObjHandle::LineFrom | ObjHandle::LineTo | ObjHandle::Move => {
+            Shape::Move
+        }
         ObjHandle::Radius => Shape::Radius,
     }
 }
@@ -176,6 +178,8 @@ mod tests {
             (ObjHandle::Move, Shape::Move),
             (ObjHandle::ArrowFrom, Shape::Move),
             (ObjHandle::ArrowTo, Shape::Move),
+            (ObjHandle::LineFrom, Shape::Move),
+            (ObjHandle::LineTo, Shape::Move),
             (ObjHandle::Radius, Shape::Radius),
         ] {
             assert_eq!(obj_shape(h), s, "对象手柄 {h:?} 光标映射错误");

@@ -8,7 +8,16 @@ use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
 
 use super::{geometry::SelRect, toolbar};
-use crate::editor::Style;
+use crate::editor::{Kind, Object, Style};
+
+/// 填充开关是否可用（EDT-1/EDT-14）：当前工具能画可填充形状，
+/// **或**选中对象本身就是矩形 / 椭圆（此时按钮仍需能改它的填充）。
+/// 绘制置灰（`toolbar::draw` 读 `State::fill_enabled`）与动作副作用（`apply_action`）
+/// 共用这一判据，不会各自演化。
+fn fill_enabled_for(tool: crate::editor::Tool, selected: Option<&Object>) -> bool {
+    matches!(tool, crate::editor::Tool::Rect | crate::editor::Tool::Ellipse)
+        || selected.is_some_and(|o| matches!(o.kind, Kind::Rect { .. } | Kind::Ellipse { .. }))
+}
 
 impl super::Overlay {
     /// 当前标注色（EDT-7）：当前色块的颜色。
@@ -38,6 +47,12 @@ impl super::Overlay {
             Some(crate::editor::Tool::Glow)
         } else if vk == k.number {
             Some(crate::editor::Tool::Number)
+        } else if vk == k.line {
+            Some(crate::editor::Tool::Line)
+        } else if vk == k.ellipse {
+            Some(crate::editor::Tool::Ellipse)
+        } else if vk == k.freehand {
+            Some(crate::editor::Tool::Freehand)
         } else {
             None
         }
@@ -71,6 +86,7 @@ impl super::Overlay {
             color: self.color_index,
             colors: self.colors,
             filled: self.filled,
+            fill_enabled: fill_enabled_for(self.tool, self.selected_object()),
             can_undo: self.doc.can_undo(),
             can_redo: self.doc.can_redo(),
             font_family,
@@ -95,8 +111,8 @@ impl super::Overlay {
                 self.style_selected();
             }
             toolbar::Action::ToggleFill => {
-                // 文本 / 序号工具无背景功能：填充开关仅对矩形有效，这两类下忽略
-                if !matches!(self.tool, crate::editor::Tool::Text | crate::editor::Tool::Number) {
+                // 填充仅对矩形 / 椭圆有意义：文本、序号、直线、手绘无背景，忽略
+                if fill_enabled_for(self.tool, self.selected_object()) {
                     self.filled = !self.filled;
                     self.style_selected();
                 }
@@ -246,5 +262,61 @@ mod tests {
         assert_eq!(cancel_step(false, false, false, false), CancelStep::Exit);
         // 有标注不会绕过前面的层
         assert_eq!(cancel_step(false, true, false, true), CancelStep::FontPanel);
+    }
+
+    fn obj(kind: Kind) -> Object {
+        Object {
+            kind,
+            style: Style::new([255, 0, 0, 255], 4.0),
+        }
+    }
+
+    /// 填充开关可用性（EDT-1/EDT-14）：当前工具或选中对象任一是矩形 / 椭圆即可用。
+    /// 重点守住「工具是箭头、但选中的是矩形」——这里曾经只能看工具，导致按钮置灰、
+    /// 选中的矩形改不了填充。
+    #[test]
+    fn fill_enabled_for_tool_or_selection() {
+        use crate::editor::{Point, Tool};
+        let rect = obj(Kind::Rect {
+            a: Point::new(0.0, 0.0),
+            b: Point::new(10.0, 10.0),
+            radius: 0.0,
+            filled: false,
+        });
+        let ellipse = obj(Kind::Ellipse {
+            a: Point::new(0.0, 0.0),
+            b: Point::new(10.0, 10.0),
+            filled: false,
+        });
+        let text = obj(Kind::Text {
+            pos: Point::new(0.0, 0.0),
+            text: "a".into(),
+            size: (8.0, 8.0),
+            font_size: 16.0,
+            font_family: "x".into(),
+            bold: false,
+            italic: false,
+        });
+
+        // 工具本身可填充
+        assert!(fill_enabled_for(Tool::Rect, None));
+        assert!(fill_enabled_for(Tool::Ellipse, None));
+        // 无填充概念的工具（未选中任何对象）
+        for t in [
+            Tool::Arrow,
+            Tool::Text,
+            Tool::Highlight,
+            Tool::Number,
+            Tool::Line,
+            Tool::Freehand,
+        ] {
+            assert!(!fill_enabled_for(t, None), "{t:?} 无填充概念");
+        }
+        // 工具不是矩形 / 椭圆，但选中了可填充对象：仍应可用（否则选中的对象没法改填充）
+        assert!(fill_enabled_for(Tool::Arrow, Some(&rect)), "选中矩形时填充应可用");
+        assert!(fill_enabled_for(Tool::Line, Some(&ellipse)), "选中椭圆时填充应可用");
+        assert!(fill_enabled_for(Tool::Highlight, Some(&rect)));
+        // 选中对象不可填充时仍返回不可用
+        assert!(!fill_enabled_for(Tool::Arrow, Some(&text)));
     }
 }

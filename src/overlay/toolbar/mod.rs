@@ -45,8 +45,11 @@ pub struct State {
     pub color: usize,
     /// 色块颜色（EDT-7）：绘制色块用。
     pub colors: [[u8; 4]; SWATCH_COUNT],
-    /// 矩形是否填充（EDT-1）。
+    /// 矩形 / 椭圆是否填充（EDT-1/EDT-14）。
     pub filled: bool,
+    /// 填充开关是否可用（EDT-1/EDT-14）：当前工具能画可填充形状，或选中对象是矩形 / 椭圆。
+    /// 由此处统一裁决，绘制侧不再自己判一遍（见 `Overlay::fill_available`）。
+    pub fill_enabled: bool,
     pub can_undo: bool,
     pub can_redo: bool,
     /// 第二行（EDT-4）：当前字体族、粗体/斜体、字号与字体面板是否展开。
@@ -284,6 +287,31 @@ mod tests {
         SelRect { x, y, w, h }
     }
 
+    /// 窄屏 / 高缩放下的越界回归（EDT-7）：工具栏从 19 个按钮长到 22 个后更宽，
+    /// 必须仍完整落在屏幕内（不得被右侧裁掉，也不得顶出上 / 下边）。
+    #[test]
+    fn bar_stays_on_screen_on_narrow_displays() {
+        for (vw, vh, dpi) in [(1024, 768, 96), (1280, 800, 120), (1920, 1080, 192), (2560, 1440, 192)] {
+            let ui = Ui::from_dpi(dpi);
+            for text_row in [false, true] {
+                // 小选区 + 贴右下角：工具栏既宽又无处可翻，最容易越界
+                for s in [sel(60, 60, 40, 40), sel(vw - 120, vh - 120, 60, 60)] {
+                    let bar = layout(s, vw, vh, text_row, true, ui);
+                    assert!(bar.rect.x >= 0, "{vw}x{vh}@{dpi} 左越界：{bar:?}");
+                    assert!(
+                        bar.rect.x + bar.rect.w <= vw,
+                        "{vw}x{vh}@{dpi} 右越界（选区 {s:?}）：{bar:?}"
+                    );
+                    assert!(bar.rect.y >= 0, "{vw}x{vh}@{dpi} 上越界：{bar:?}");
+                    assert!(
+                        bar.rect.y + bar.rect.h <= vh,
+                        "{vw}x{vh}@{dpi} 下越界（选区 {s:?}）：{bar:?}"
+                    );
+                }
+            }
+        }
+    }
+
     /// 工具栏默认贴在选区下方（上下都有空间时不能跑到上方）。
     #[test]
     fn toolbar_defaults_below_selection() {
@@ -381,19 +409,19 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 25);
-        assert_eq!(actions[..7], Tool::ALL.map(Action::Tool));
+        assert_eq!(actions.len(), 28);
+        assert_eq!(actions[..10], Tool::ALL.map(Action::Tool));
         // 色块：5 个，均可双击改色（issue #73 后续，不再有单独的自定义槽）
-        assert_eq!(actions[7..12], [0, 1, 2, 3, 4].map(Action::Color));
-        assert_eq!(actions[12], Action::ToggleFill);
-        assert_eq!(actions[13], Action::Undo);
-        assert_eq!(actions[14], Action::Redo);
-        assert_eq!(actions[15], Action::Pin);
-        assert_eq!(actions[16], Action::Longshot);
-        assert_eq!(actions[17], Action::Copy);
-        assert_eq!(actions[18], Action::Save);
+        assert_eq!(actions[10..15], [0, 1, 2, 3, 4].map(Action::Color));
+        assert_eq!(actions[15], Action::ToggleFill);
+        assert_eq!(actions[16], Action::Undo);
+        assert_eq!(actions[17], Action::Redo);
+        assert_eq!(actions[18], Action::Pin);
+        assert_eq!(actions[19], Action::Longshot);
+        assert_eq!(actions[20], Action::Copy);
+        assert_eq!(actions[21], Action::Save);
         assert_eq!(
-            actions[19..],
+            actions[22..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -411,7 +439,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false, false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 19);
+        assert_eq!(bar.hits.len(), 22);
     }
 
     /// OCR 按钮（OCR-3）：功能开启时紧跟长截图出现，关闭时完全不出现（OCR-1）。
@@ -419,16 +447,16 @@ mod tests {
     fn ocr_button_only_when_enabled() {
         let s = sel(100, 100, 400, 300);
         let off = layout(s, 2560, 1440, false, false, base());
-        assert_eq!(off.hits.len(), 19, "关闭时不应有 OCR 按钮");
+        assert_eq!(off.hits.len(), 22, "关闭时不应有 OCR 按钮");
         assert!(!off.hits.iter().any(|(_, a)| *a == Action::Ocr));
 
         let on = layout(s, 2560, 1440, false, true, base());
-        assert_eq!(on.hits.len(), 20);
+        assert_eq!(on.hits.len(), 23);
         let actions: Vec<Action> = on.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions[16], Action::Longshot);
-        assert_eq!(actions[17], Action::Ocr, "OCR 按钮应紧跟长截图");
-        assert_eq!(actions[18], Action::Copy);
-        assert_eq!(actions[19], Action::Save);
+        assert_eq!(actions[19], Action::Longshot);
+        assert_eq!(actions[20], Action::Ocr, "OCR 按钮应紧跟长截图");
+        assert_eq!(actions[21], Action::Copy);
+        assert_eq!(actions[22], Action::Save);
         // 多一个按钮后仍不能与信息文字重叠、不能越出屏幕
         for ui in [base(), Ui::from_dpi(192)] {
             let bar = layout(s, 2560, 1440, false, true, ui);

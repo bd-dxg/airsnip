@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 选中对象的编辑手柄绘制（EDT-7）：箭头为两端点方柄，其余对象为虚线包围框 + 八向手柄。
+//! 选中对象的编辑手柄绘制（EDT-7）：箭头 / 直线为两端点方柄，其余对象为虚线包围框 + 八向手柄。
 //! 仅屏幕显示，不进导出烘焙；手柄位置与命中判定共用 `super::handle_point` / `super::frame_of`。
 //! 尺寸基准为 100% DPI，经 `Ui` 缩放（CAP-5）。
 
@@ -22,10 +22,17 @@ const ACCENT: [u8; 4] = [26, 115, 232, 255];
 /// 画选中对象的编辑手柄。
 /// 箭头（EDT-2/EDT-3）：不画包围框，只在头尾给两个方形端点手柄（拖动拉长 / 改向），
 /// 曲率控制点由 `pick::draw_curve_handles` 的 1/3、2/3 圆点负责；
+/// 直线（EDT-13）：同样只在头尾给两个方形端点手柄（拖动改向 / 拉伸），不画包围框；
 /// 其余对象：虚线包围框 + 八向缩放手柄。
 pub(in crate::overlay) fn draw_frame(pixmap: &mut Pixmap, obj: &Object, ui: Ui) {
     let handle = ui.f(HANDLE_BASE);
     if let Kind::Arrow { from, to, .. } = &obj.kind {
+        for p in [*from, *to] {
+            square_handle(pixmap, p, handle, ui);
+        }
+        return;
+    }
+    if let Kind::Line { from, to } = &obj.kind {
         for p in [*from, *to] {
             square_handle(pixmap, p, handle, ui);
         }

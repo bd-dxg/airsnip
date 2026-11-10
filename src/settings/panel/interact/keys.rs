@@ -63,6 +63,9 @@ impl Panel {
                     RowId::ToolHighlight => self.config.tool_keys.highlight = vk,
                     RowId::ToolGlow => self.config.tool_keys.glow = vk,
                     RowId::ToolNumber => self.config.tool_keys.number = vk,
+                    RowId::ToolLine => self.config.tool_keys.line = vk,
+                    RowId::ToolEllipse => self.config.tool_keys.ellipse = vk,
+                    RowId::ToolFreehand => self.config.tool_keys.freehand = vk,
                     _ => {}
                 }
                 self.end_capture();

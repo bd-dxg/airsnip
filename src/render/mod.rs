@@ -2,12 +2,11 @@
 //! 矢量渲染（PRD 6.3.2/6.3.3）：把标注对象绘制到 tiny-skia 像素图上。
 //! 只负责「对象 → 像素」，不含上屏与脏区逻辑（见 `crate::overlay`）。
 
-use tiny_skia::{FillRule, LineCap, Paint, Path, PathBuilder, Pixmap, Rect, Stroke, Transform};
-
 use crate::editor::{
     Bounds, Kind, Object, Point, Style, arrow_head_len, end_tangent, flatten, head_entry_t, polyline_len, split_left,
     t_at_arc_from_end,
 };
+use tiny_skia::{FillRule, LineCap, Paint, Path, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 mod bake;
 pub use bake::bake_objects;
@@ -16,6 +15,7 @@ pub mod fonts;
 pub mod icon;
 pub(crate) mod mask;
 mod region;
+mod stroke;
 pub mod text;
 mod text_bitmap;
 
@@ -71,6 +71,12 @@ pub fn draw_object_with(pixmap: &mut Pixmap, obj: &Object, transform: Transform)
         Kind::Glow { .. } => {}
         // EDT-12 序号标记：徽标圆 + 引线箭头 + 反白数字
         Kind::Number { .. } => draw_number(pixmap, obj, transform),
+        // EDT-13 直线：无箭头纯线段（圆端帽）
+        Kind::Line { from, to } => stroke::draw_line(pixmap, *from, *to, &obj.style, transform),
+        // EDT-14 椭圆：描边 + 可选填充（与矩形同套路）
+        Kind::Ellipse { a, b, filled } => stroke::draw_ellipse(pixmap, *a, *b, *filled, &obj.style, transform),
+        // EDT-15 手绘：中点细分 + 二次贝塞尔平滑描边
+        Kind::Freehand { pts } => stroke::draw_freehand(pixmap, pts.as_slice(), &obj.style, transform),
     }
 }
 
@@ -493,6 +499,86 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// EDT-13/14/15：直线、椭圆（描边 / 填充）、手绘的像素覆盖。
+    #[test]
+    fn new_tools_paint_expected_pixels() {
+        // 直线：线身中间有像素，线上方无像素
+        let mut p = new_pixmap(200, 60);
+        let line = Object {
+            kind: Kind::Line {
+                from: Point::new(10.0, 30.0),
+                to: Point::new(180.0, 30.0),
+            },
+            style: Style::new([255, 0, 0, 255], 4.0),
+        };
+        draw_object(&mut p, &line);
+        assert!(alpha_at(&p, 90, 30) > 150, "直线中心应有像素");
+        assert_eq!(alpha_at(&p, 90, 5), 0, "直线外应保持透明");
+
+        // 椭圆描边：右端与上端有像素，中心透明
+        let mut e = new_pixmap(200, 120);
+        let outline = Object {
+            kind: Kind::Ellipse {
+                a: Point::new(10.0, 10.0),
+                b: Point::new(190.0, 110.0),
+                filled: false,
+            },
+            style: Style::new([0, 0, 255, 255], 3.0),
+        };
+        draw_object(&mut e, &outline);
+        assert!(alpha_at(&e, 190, 60) > 80, "椭圆右端应有像素");
+        assert!(alpha_at(&e, 100, 11) > 80, "椭圆上端应有像素");
+        assert_eq!(alpha_at(&e, 100, 60), 0, "未填充椭圆中心应透明");
+
+        // 椭圆填充：中心不透明
+        let mut ef = new_pixmap(200, 120);
+        let filled = Object {
+            kind: Kind::Ellipse {
+                a: Point::new(10.0, 10.0),
+                b: Point::new(190.0, 110.0),
+                filled: true,
+            },
+            style: Style::new([0, 200, 0, 255], 2.0),
+        };
+        draw_object(&mut ef, &filled);
+        assert!(alpha_at(&ef, 100, 60) > 150, "填充椭圆中心应有颜色");
+
+        // 手绘：经顶点与折线中点，远离处透明
+        let mut f = new_pixmap(200, 120);
+        let stroke = Object {
+            kind: Kind::Freehand {
+                pts: std::sync::Arc::new(vec![
+                    Point::new(20.0, 100.0),
+                    Point::new(100.0, 20.0),
+                    Point::new(180.0, 100.0),
+                ]),
+            },
+            style: Style::new([255, 0, 0, 255], 4.0),
+        };
+        draw_object(&mut f, &stroke);
+        // 中点平滑：首段直线到 (60,60)（必经过），二次曲线顶点在 (100,40)（非控制点 (100,20)）
+        assert!(alpha_at(&f, 60, 60) > 40, "手绘首段中点附近应有像素");
+        assert!(alpha_at(&f, 100, 40) > 40, "手绘曲线顶点附近应有像素");
+        assert_eq!(alpha_at(&f, 100, 100), 0, "手绘下方应保持透明");
+    }
+
+    /// EDT-13/14/15：烘焙导出时坐标正确平移。
+    #[test]
+    fn new_tools_bake_with_translate() {
+        let mut p = new_pixmap(100, 100);
+        let line = Object {
+            kind: Kind::Line {
+                from: Point::new(20.0, 50.0),
+                to: Point::new(80.0, 50.0),
+            },
+            style: Style::new([255, 0, 0, 255], 3.0),
+        };
+        // 裁剪原点 (10,10) → 线身落在裁剪图 (10,40)-(70,40)
+        bake_objects(&mut p, &[line], (10, 10));
+        assert!(alpha_at(&p, 40, 40) > 100, "平移后的线身应有像素");
+        assert_eq!(alpha_at(&p, 60, 10), 0, "原坐标处不应有像素");
     }
 
     /// 读取像素 RGBA。

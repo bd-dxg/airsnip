@@ -34,6 +34,10 @@ pub(super) enum ObjHandle {
     ArrowFrom,
     /// 箭头终点（尖端）。
     ArrowTo,
+    /// 直线起点（EDT-13）：拖动改向 / 拉伸。
+    LineFrom,
+    /// 直线终点（EDT-13）。
+    LineTo,
     /// 圆角控制柄（EDT-1）：拖拽改变矩形类对象的圆角半径。
     Radius,
 }
@@ -90,7 +94,9 @@ fn handle_point(f: SelRect, h: ObjHandle) -> (f32, f32) {
         ObjHandle::SW => (x0, y1),
         ObjHandle::SE => (x1, y1),
         // 箭头端点手柄不基于包围框（见 `frame::draw_frame` 的早退分支），不参与此处布局
-        ObjHandle::ArrowFrom | ObjHandle::ArrowTo | ObjHandle::Radius => (cx, cy),
+        ObjHandle::ArrowFrom | ObjHandle::ArrowTo | ObjHandle::Radius | ObjHandle::LineFrom | ObjHandle::LineTo => {
+            (cx, cy)
+        }
     }
 }
 
@@ -120,6 +126,15 @@ pub(in crate::overlay) fn hit_handle(obj: &Object, x: i32, y: i32, ui: Ui) -> Op
     let pick = pick_radius(ui) as f32;
     if let Kind::Arrow { from, to, .. } = &obj.kind {
         for (h, p) in [(ObjHandle::ArrowFrom, from), (ObjHandle::ArrowTo, to)] {
+            if (p.x - x as f32).abs() <= pick && (p.y - y as f32).abs() <= pick {
+                return Some(h);
+            }
+        }
+        return None;
+    }
+    // EDT-13 直线：只有头尾两个端点手柄（与箭头一致，不做包围框缩放）
+    if let Kind::Line { from, to } = &obj.kind {
+        for (h, p) in [(ObjHandle::LineFrom, from), (ObjHandle::LineTo, to)] {
             if (p.x - x as f32).abs() <= pick && (p.y - y as f32).abs() <= pick {
                 return Some(h);
             }
@@ -416,6 +431,30 @@ mod tests {
         // 包围框角上不应有手柄（箭头不画包围框）
         let f = frame_of(&arrow);
         assert_eq!(hit_handle(&arrow, f.x, f.y, base()), None, "箭头不应有包围框手柄");
+    }
+
+    /// EDT-13 直线：只有头尾两个端点手柄（不是八向包围框手柄）。
+    #[test]
+    fn line_handles_are_endpoints_only() {
+        let line = Object {
+            kind: Kind::Line {
+                from: Point::new(40.0, 200.0),
+                to: Point::new(200.0, 60.0),
+            },
+            style: Style::new([255, 0, 0, 255], 4.0),
+        };
+        // 头尾端点命中
+        assert_eq!(hit_handle(&line, 40, 200, base()), Some(ObjHandle::LineFrom));
+        assert_eq!(hit_handle(&line, 200, 60, base()), Some(ObjHandle::LineTo));
+        // 包围框角上不应有手柄（直线不画包围框）
+        let f = frame_of(&line);
+        assert_eq!(hit_handle(&line, f.x, f.y, base()), None, "直线不应有包围框手柄");
+        // 中间位置也不是手柄
+        assert_eq!(
+            hit_handle(&line, (40 + 200) / 2, (200 + 60) / 2, base()),
+            None,
+            "直线中段不应有手柄"
+        );
     }
 
     #[test]
