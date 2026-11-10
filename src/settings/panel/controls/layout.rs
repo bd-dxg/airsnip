@@ -5,8 +5,8 @@
 use crate::overlay::geometry::SelRect;
 
 use super::{
-    CELLPAD, CLEAR_BTN, CONTENT_HEADER_H, GRID_GAP, H, HOVER_PAD, Item, Layout, NAV_H, NAV_W, PAD, QR_ROW_H, ROW_H,
-    Row, RowId, RowKind, Section, W, ui_scale_row,
+    CELLPAD, CLEAR_BTN, CONTENT_HEADER_H, GRID_GAP, H, HOVER_PAD, Item, KEY_ROWS, Layout, NAV_H, NAV_W, PAD, QR_ROW_H,
+    ROW_H, Row, RowId, RowKind, Section, W, ui_scale_row,
 };
 
 /// 内容区 [left, right] 外扩 `HOVER_PAD` 得到悬停高亮矩形（四周留出内边距）。
@@ -131,32 +131,15 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             // 单元格左缘让出 CELLPAD，使单元格内标签与整行标签（NAV_W+PAD）对齐
             let cell_x0 = nav_w + pad - cellpad;
             let cell_w = (w - pad + cellpad - cell_x0 - gap) / 2;
-            let cells = [
-                (RowId::HotkeyShot, "截图"),
-                (RowId::HotkeyRecapture, "再次截图"),
-                (RowId::HotkeyPin, "贴图"),
-                (RowId::HotkeyBorder, "贴图边框"),
-                (RowId::HotkeyLongshot, "长截图"),
-                (RowId::HotkeyOcr, "OCR"),
-                (RowId::ToolRect, "工具·矩形"),
-                (RowId::ToolArrow, "工具·箭头"),
-                (RowId::ToolText, "工具·文本"),
-                (RowId::ToolBlur, "工具·模糊"),
-                (RowId::ToolHighlight, "工具·荧光笔"),
-                (RowId::ToolGlow, "工具·聚光灯"),
-                (RowId::ToolNumber, "工具·序号"),
-                (RowId::ToolLine, "工具·直线"),
-                (RowId::ToolEllipse, "工具·椭圆"),
-                (RowId::ToolFreehand, "工具·手绘"),
-            ];
-            for (i, (id, label)) in cells.iter().enumerate() {
+            // 键帽行来自元数据表（`keyrows`）：顺序与标签都以表为准，新增一行只改表
+            for (i, spec) in KEY_ROWS.iter().enumerate() {
                 let col = i % 2;
                 let row = i / 2;
                 let x = cell_x0 + col as i32 * (cell_w + gap);
                 let y = y0 + row as i32 * row_h;
-                items.push(Item::Row(mk_cell(*id, label, x, y, cell_w, s)));
+                items.push(Item::Row(mk_cell(spec.id, spec.label, x, y, cell_w, s)));
             }
-            y += cells.len().div_ceil(2) as i32 * row_h;
+            y += KEY_ROWS.len().div_ceil(2) as i32 * row_h;
             // 「恢复默认」做成右侧真正的按钮（标签留空，文案在按钮上）
             push(RowId::ResetKeys, RowKind::Button, "", &mut y, items);
             push(RowId::Widenote, RowKind::Readonly, "提示", &mut y, items);

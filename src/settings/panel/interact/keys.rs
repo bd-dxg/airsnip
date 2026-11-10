@@ -9,7 +9,7 @@ use windows::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK};
 use crate::app::message_box;
 
 use super::super::Panel;
-use super::super::controls::{MOD_ALT_BIT, MOD_CTRL_BIT, MOD_SHIFT_BIT, MOD_WIN_BIT, RowId, conflict_for};
+use super::super::controls::{MOD_ALT_BIT, MOD_CTRL_BIT, MOD_SHIFT_BIT, MOD_WIN_BIT, RowId, conflict_for, spec};
 
 impl Panel {
     /// 热键捕获键盘输入。
@@ -29,7 +29,7 @@ impl Panel {
                     held_modifiers()
                 };
                 // 与其它已配置键冲突则拒绝（M3）：热键看键+修饰，工具键按虚拟键匹配
-                if let Some(name) = conflict_for(&self.config.hotkey, &self.config.tool_keys, id, vk, mods) {
+                if let Some(name) = conflict_for(&self.config, id, vk, mods) {
                     message_box(
                         None,
                         &format!("按键 {name} 已被其他快捷键使用，请换一个。"),
@@ -38,39 +38,9 @@ impl Panel {
                     self.end_capture();
                     return;
                 }
-                match id {
-                    RowId::HotkeyShot => {
-                        self.config.hotkey.screenshot_key = vk;
-                        self.config.hotkey.screenshot_modifiers = mods;
-                    }
-                    RowId::HotkeyRecapture => {
-                        self.config.hotkey.recapture_key = vk;
-                        self.config.hotkey.recapture_modifiers = mods;
-                    }
-                    RowId::HotkeyPin => {
-                        self.config.hotkey.pin_key = vk;
-                        self.config.hotkey.pin_modifiers = mods;
-                    }
-                    RowId::HotkeyBorder => {
-                        self.config.hotkey.border_key = vk;
-                        self.config.hotkey.border_modifiers = mods;
-                    }
-                    // 长截图键：覆盖层内按下即触发，不区分修饰键（与工具切换键同组）
-                    RowId::HotkeyLongshot => self.config.hotkey.longshot_key = vk,
-                    // OCR 键（OCR-3）：同上，覆盖层内无修饰键
-                    RowId::HotkeyOcr => self.config.hotkey.ocr_key = vk,
-                    // 工具切换键：仅绑定虚拟键（覆盖层内按下即切工具，无需修饰键）
-                    RowId::ToolRect => self.config.tool_keys.rect = vk,
-                    RowId::ToolArrow => self.config.tool_keys.arrow = vk,
-                    RowId::ToolText => self.config.tool_keys.text = vk,
-                    RowId::ToolBlur => self.config.tool_keys.blur = vk,
-                    RowId::ToolHighlight => self.config.tool_keys.highlight = vk,
-                    RowId::ToolGlow => self.config.tool_keys.glow = vk,
-                    RowId::ToolNumber => self.config.tool_keys.number = vk,
-                    RowId::ToolLine => self.config.tool_keys.line = vk,
-                    RowId::ToolEllipse => self.config.tool_keys.ellipse = vk,
-                    RowId::ToolFreehand => self.config.tool_keys.freehand = vk,
-                    _ => {}
+                // 写回字段由元数据表决定（热键记键+修饰，覆盖层内键 / 工具键只记虚拟键）
+                if let Some(key) = spec(id) {
+                    key.apply(&mut self.config, vk, mods);
                 }
                 self.end_capture();
                 self.config_dirty = true;
