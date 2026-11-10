@@ -34,6 +34,7 @@ impl super::Overlay {
         };
         self.text_edit = Some(edit);
         self.set_ime_enabled(true);
+        self.sync_ime_window_pos(); // 候选框先锚到首光标（issue #139）
         self.repaint_text_edit();
     }
 
@@ -72,6 +73,7 @@ impl super::Overlay {
             number: false,
         });
         self.set_ime_enabled(true);
+        self.sync_ime_window_pos(); // 再编辑从对象末尾的光标起（issue #139）
         // 原对象隐藏、输入框登场，立即重绘
         self.repaint_text_edit();
         true
@@ -183,7 +185,9 @@ impl super::Overlay {
             false
         };
         if changed {
+            // 组合串变长会让光标右移，候选框跟着走（issue #139）
             self.repaint_text_edit();
+            self.sync_ime_window_pos();
         }
     }
 
