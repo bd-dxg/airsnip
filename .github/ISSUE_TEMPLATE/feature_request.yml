@@ -1,0 +1,80 @@
+name: ✨ 功能建议
+description: 希望新增或改动一个功能
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        AirSnip 的卖点是**够轻、平时几乎不占资源、按下热键立刻就能用**。所以提「加功能」时请先想一下：这个功能会不会让它在平时待机时变重（多占内存、多耗 CPU、后台一直跑着）？
+        如果确实躲不掉（比如必须一直在后台盯着某个事件，或者要额外引入第三方库），在这里先说清楚原因，能大幅提高被采纳的概率。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已搜索过已有 issue，没有重复
+          required: true
+        - label: 我看过 README 的功能列表，确认现在确实没有
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 你正在用的版本
+      description: 设置 → 关于 页里显示的版本号
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 你现在遇到的问题
+      description: 描述具体场景，不要只写「希望加个 XX」——知道你卡在哪，才可能给出比你想的更合适的方案
+      placeholder: |
+        我在……的时候，需要……，但 AirSnip 现在……
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你期望的做法
+      description: 交互流程、放在哪个界面、默认键位等
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 其它工具怎么做的 / 你现在的替代做法
+      description: 有对比参考更好（Snipaste、PixPin、ShareX、系统截图工具等，可附截图）
+
+  - type: dropdown
+    id: cost
+    attributes:
+      label: 平时待机时，这个功能需要一直在后台跑吗
+      description: 这决定了它会让 AirSnip 变重多少
+      options:
+        - 不需要：只在截图、贴图等操作时才干活
+        - 需要：平时也得在后台一直跑着（请在下方说明为什么躲不掉）
+        - 不确定
+    validations:
+      required: true
+
+  - type: dropdown
+    id: help
+    attributes:
+      label: 你愿意参与吗
+      options:
+        - 可以帮忙测试
+        - 可以帮忙测试并提 PR
+        - 只是提建议
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 补充信息

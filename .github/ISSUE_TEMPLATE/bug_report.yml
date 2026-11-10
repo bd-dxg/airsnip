@@ -1,0 +1,93 @@
+name: 🐞 问题反馈
+description: 出现了不符合预期的行为（崩溃、显示异常、热键不响应、截图结果不对等）
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **先做三件事，能省掉一整轮来回：**
+        1. 确认用的是**最新正式版**（[Release 页](https://github.com/bd-dxg/airsnip/releases/latest) 顶上的那一版），旧版上的问题可能已经修了；
+        2. 用下面的「版本」字段填上确切版本号，不要写「最新版」；
+        3. 截图类问题请把**复现步骤写到能照着做**，最好附一张表现异常的截图。
+
+        有些「问题」是刻意的设计取舍（只支持 Windows 10 1607+ / Windows 11，长截图需手动滚动，OCR 需装语言包等），提交前请先扫一眼 [README 的「已知限制」](https://github.com/bd-dxg/airsnip#已知限制)。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已在最新正式版上复现过这个问题
+          required: true
+        - label: 我已搜索过已有 issue（含已关闭的），没有重复
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: AirSnip 版本
+      description: 设置 → 关于 页里显示的版本号；自己编译的请附上 commit 或分支
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 从启动程序开始写，一步一行；「偶尔出现」也请写清楚出现频率
+      placeholder: |
+        1. 启动 AirSnip，热键为默认 F1
+        2. 按 F1 框选一块区域
+        3. 按 T 触发 OCR
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+      description: 发生了什么、你期望的是什么；报错原文请照抄，不要转述，能录屏/截图最好附上
+      placeholder: |
+        实际：……
+        期望：……
+    validations:
+      required: true
+
+  - type: dropdown
+    id: channel
+    attributes:
+      label: 程序来源
+      description: 选填，自编译或魔改版的问题排查方式不同
+      options:
+        - Release 页下载的 zip
+        - 自动更新升级上来的
+        - 自己编译（cargo build --release）
+        - 其它（在下方「日志与补充信息」里说明）
+
+  - type: checkboxes
+    id: environment
+    attributes:
+      label: 运行环境（多选，选填）
+      description: 勾上所有涉及项，与显示相关的 bug 往往只在这些条件下出现
+      options:
+        - label: 系统是精简 / 定制版（Ghost、LTSC 魔改、移除了商店应用或系统「截图工具」等）
+        - label: 多显示器（请在下方补充数量、分辨率、是否为同一缩放）
+        - label: 系统缩放不是 100%
+        - label: HDR 已开启
+        - label: 以管理员身份运行
+        - label: 设置了开机自启
+        - label: 同时挂着其它截图工具（Snipaste / PixPin / 微信 / QQ / 系统截图工具等）
+        - label: 使用了输入法（请在下方补充输入法名称）
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 日志与补充信息
+      description: |
+        选填，但涉及崩溃、显示异常、热键失灵时基本是必看项。
+        1. 设置环境变量 `AIRSNIP_DEBUG=1` 后启动程序（`cmd` 里执行 `set AIRSNIP_DEBUG=1` 再运行 `airsnip.exe`），复现一次，把输出贴上来（崩溃类问题请顺便说一句是 Win10 还是 Win11）；
+        2. 配置文件在 `%APPDATA%\airsnip\config.toml`，涉及热键/偏好设置的问题请贴内容（里面没有账号类信息）；
+        3. 上面勾选项要求补充的细节，或任何你认为相关的内容。
+      render: shell

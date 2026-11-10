@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 下载最新正式版
+    url: https://github.com/bd-dxg/airsnip/releases/latest
+    about: 报问题前先确认用的是最新正式版——不少问题在上一版已修。
+  - name: 系统要求与已知限制
+    url: https://github.com/bd-dxg/airsnip#已知限制
+    about: 有些「问题」是刻意的设计取舍（Win10 以下不支持、长截图需手动滚动等），先看这里。
