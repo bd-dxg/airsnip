@@ -12,7 +12,7 @@ use crate::settings::ThemeSetting;
 use crate::theme::{self};
 
 use super::Panel;
-use super::controls::{Item, NAV_H, RowId, Section};
+use super::controls::{Item, NAV_H, RowId, RowKind, Section};
 use super::keycap::Zone;
 
 impl Panel {
@@ -32,6 +32,11 @@ impl Panel {
         for item in &layout.items {
             if let Item::Row(r) = item {
                 if in_rect(r.rect, x, y) {
+                    // 按钮行只有按钮本身可点：点在「恢复默认 / 版本更新」按钮外的同一行算点空白
+                    // （绘制上该行也不高亮），否则按钮外一大片区域都会触发它。
+                    if r.kind == RowKind::Button && !in_rect(super::link::button_rect(self, r), x, y) {
+                        return None;
+                    }
                     // 清除按钮在控件区内部，必须先判，否则会被当成键帽进捕获（SYS-2）
                     let zone = if in_rect(r.clear, x, y) {
                         Zone::Clear

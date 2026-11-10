@@ -13,7 +13,7 @@ use crate::render::icon::{self, Icon};
 use crate::render::text as dwrite;
 
 use super::Panel;
-use super::controls::{CLEAR_GAP, Row, RowId};
+use super::controls::{CLEAR_GAP, KEY_ROWS, Row, RowId, spec};
 use super::draw::draw_text;
 
 /// 行内命中区域：键帽区与清除按钮区分开，点击行为不同。
@@ -27,28 +27,10 @@ pub(super) enum Zone {
     Clear,
 }
 
-/// 是否为快捷键行（热键 + 工具切换键，共 16 行）。
+/// 是否为快捷键行（热键 + 工具切换键，名单见 `controls::KEY_ROWS`）。
 /// 这些行共用「点键帽捕获 / 点清除按钮清空」的交互。
 pub(super) fn is_key_row(id: RowId) -> bool {
-    matches!(
-        id,
-        RowId::HotkeyShot
-            | RowId::HotkeyRecapture
-            | RowId::HotkeyPin
-            | RowId::HotkeyBorder
-            | RowId::HotkeyLongshot
-            | RowId::HotkeyOcr
-            | RowId::ToolRect
-            | RowId::ToolArrow
-            | RowId::ToolText
-            | RowId::ToolBlur
-            | RowId::ToolHighlight
-            | RowId::ToolGlow
-            | RowId::ToolNumber
-            | RowId::ToolLine
-            | RowId::ToolEllipse
-            | RowId::ToolFreehand
-    )
+    spec(id).is_some()
 }
 
 /// 绘制键帽与清除按钮。`hovered`：鼠标悬停该行时（或该行处于捕获态时）才显现清除按钮，
@@ -107,27 +89,7 @@ pub(super) fn draw(pixmap: &mut Pixmap, panel: &Panel, row: &Row, hovered: bool)
 
 /// 该行当前的虚拟键码（未绑定返回 `UNBOUND`）。
 fn row_key(panel: &Panel, id: RowId) -> u32 {
-    let hk = &panel.config.hotkey;
-    let tk = &panel.config.tool_keys;
-    match id {
-        RowId::HotkeyShot => hk.screenshot_key,
-        RowId::HotkeyRecapture => hk.recapture_key,
-        RowId::HotkeyPin => hk.pin_key,
-        RowId::HotkeyBorder => hk.border_key,
-        RowId::HotkeyLongshot => hk.longshot_key,
-        RowId::HotkeyOcr => hk.ocr_key,
-        RowId::ToolRect => tk.rect,
-        RowId::ToolArrow => tk.arrow,
-        RowId::ToolText => tk.text,
-        RowId::ToolBlur => tk.blur,
-        RowId::ToolHighlight => tk.highlight,
-        RowId::ToolGlow => tk.glow,
-        RowId::ToolNumber => tk.number,
-        RowId::ToolLine => tk.line,
-        RowId::ToolEllipse => tk.ellipse,
-        RowId::ToolFreehand => tk.freehand,
-        _ => crate::settings::UNBOUND,
-    }
+    spec(id).map_or(crate::settings::UNBOUND, |s| s.current(&panel.config).0)
 }
 
 /// 热键按钮文本。
@@ -136,27 +98,9 @@ fn keycap_text(panel: &Panel, id: RowId) -> String {
         // 两列排布后键帽较窄，捕获提示保持简短
         return "按下新键…".into();
     }
-    let hk = &panel.config.hotkey;
-    let tk = &panel.config.tool_keys;
-    match id {
-        RowId::HotkeyShot => super::controls::key_name(hk.screenshot_key, hk.screenshot_modifiers),
-        RowId::HotkeyRecapture => super::controls::key_name(hk.recapture_key, hk.recapture_modifiers),
-        RowId::HotkeyPin => super::controls::key_name(hk.pin_key, hk.pin_modifiers),
-        RowId::HotkeyBorder => super::controls::key_name(hk.border_key, hk.border_modifiers),
-        RowId::HotkeyLongshot => super::controls::key_name(hk.longshot_key, 0),
-        RowId::HotkeyOcr => super::controls::key_name(hk.ocr_key, 0),
-        RowId::ToolRect => super::controls::key_name(tk.rect, 0),
-        RowId::ToolArrow => super::controls::key_name(tk.arrow, 0),
-        RowId::ToolText => super::controls::key_name(tk.text, 0),
-        RowId::ToolBlur => super::controls::key_name(tk.blur, 0),
-        RowId::ToolHighlight => super::controls::key_name(tk.highlight, 0),
-        RowId::ToolGlow => super::controls::key_name(tk.glow, 0),
-        RowId::ToolNumber => super::controls::key_name(tk.number, 0),
-        RowId::ToolLine => super::controls::key_name(tk.line, 0),
-        RowId::ToolEllipse => super::controls::key_name(tk.ellipse, 0),
-        RowId::ToolFreehand => super::controls::key_name(tk.freehand, 0),
-        _ => String::new(),
-    }
+    let Some(key) = spec(id) else { return String::new() };
+    let (vk, mods) = key.current(&panel.config);
+    super::controls::key_name(vk, mods)
 }
 
 impl Panel {
@@ -164,63 +108,30 @@ impl Panel {
     /// 已清空的项直接返回（清除按钮此时置灰，连点无副作用）。
     pub(super) fn clear_key(&mut self, id: RowId) {
         self.end_capture();
-        if row_key(self, id) == crate::settings::UNBOUND {
+        let Some(key) = spec(id) else { return };
+        if key.current(&self.config).0 == crate::settings::UNBOUND {
             return;
         }
         // 两个全局热键是唯一入口时先说清楚：清空后只能从托盘菜单触发
-        if let Some(name) = match id {
-            RowId::HotkeyShot => Some("截图"),
-            RowId::HotkeyPin => Some("贴图"),
-            _ => None,
-        } {
+        if key.confirm_clear {
+            let name = key.label;
             let text = format!("清除「{name}」热键后，只能从托盘菜单触发{name}。\n确定清除吗？");
             if !confirm(self.hwnd, &text) {
                 return;
             }
         }
-        let hk = &mut self.config.hotkey;
-        let tk = &mut self.config.tool_keys;
-        match id {
-            RowId::HotkeyShot => {
-                hk.screenshot_key = crate::settings::UNBOUND;
-                hk.screenshot_modifiers = 0;
-            }
-            RowId::HotkeyRecapture => {
-                hk.recapture_key = crate::settings::UNBOUND;
-                hk.recapture_modifiers = 0;
-            }
-            RowId::HotkeyPin => {
-                hk.pin_key = crate::settings::UNBOUND;
-                hk.pin_modifiers = 0;
-            }
-            RowId::HotkeyBorder => {
-                hk.border_key = crate::settings::UNBOUND;
-                hk.border_modifiers = 0;
-            }
-            RowId::HotkeyLongshot => hk.longshot_key = crate::settings::UNBOUND,
-            RowId::HotkeyOcr => hk.ocr_key = crate::settings::UNBOUND,
-            RowId::ToolRect => tk.rect = crate::settings::UNBOUND,
-            RowId::ToolArrow => tk.arrow = crate::settings::UNBOUND,
-            RowId::ToolText => tk.text = crate::settings::UNBOUND,
-            RowId::ToolBlur => tk.blur = crate::settings::UNBOUND,
-            RowId::ToolHighlight => tk.highlight = crate::settings::UNBOUND,
-            RowId::ToolGlow => tk.glow = crate::settings::UNBOUND,
-            RowId::ToolNumber => tk.number = crate::settings::UNBOUND,
-            RowId::ToolLine => tk.line = crate::settings::UNBOUND,
-            RowId::ToolEllipse => tk.ellipse = crate::settings::UNBOUND,
-            RowId::ToolFreehand => tk.freehand = crate::settings::UNBOUND,
-            _ => return,
-        }
+        key.apply(&mut self.config, crate::settings::UNBOUND, 0);
         self.config_dirty = true;
     }
 
-    /// 一键恢复默认快捷键（16 项全部还原，含已清空的项）。
+    /// 一键恢复默认快捷键（全部键帽行还原，含已清空的项）。
     pub(super) fn reset_keys(&mut self) {
         self.end_capture();
-        if !confirm(
-            self.hwnd,
-            "恢复默认会覆盖当前全部 16 项快捷键设置（包括已清空的项）。\n确定恢复吗？",
-        ) {
+        let text = format!(
+            "恢复默认会覆盖当前全部 {} 项快捷键设置（包括已清空的项）。\n确定恢复吗？",
+            KEY_ROWS.len()
+        );
+        if !confirm(self.hwnd, &text) {
             return;
         }
         self.config.hotkey = crate::settings::HotkeyConfig::default();

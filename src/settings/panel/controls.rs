@@ -3,9 +3,11 @@
 
 use crate::overlay::geometry::SelRect;
 
+mod keyrows;
 mod keys;
 mod layout;
 mod scale;
+pub use keyrows::*;
 pub use keys::*;
 pub use layout::*;
 pub use scale::*;
@@ -288,7 +290,7 @@ mod tests {
                     *ys.entry(r.rect.y).or_insert(0) += 1;
                 }
             }
-            assert_eq!(n, 16, "@{s}x 快捷键键帽行应仍为 16 项");
+            assert_eq!(n, KEY_ROWS.len(), "@{s}x 快捷键键帽行应仍为 {} 项", KEY_ROWS.len());
             assert!(ys.values().all(|&c| c <= 2), "@{s}x 同一行不应超过两项");
             assert!(ys.len() <= 9, "@{s}x 两列排布后行数应受控：{}", ys.len());
         }
@@ -380,7 +382,7 @@ mod tests {
                 assert_eq!(r.clear.w, 0, "{:?} 非键帽行不应有清除按钮", r.id);
             }
         }
-        assert_eq!(caps, 16, "快捷键页应有 16 个键帽行");
+        assert_eq!(caps, KEY_ROWS.len(), "快捷键页应有 {} 个键帽行", KEY_ROWS.len());
     }
 
     /// 任意缩放下键帽仍有足够宽度显示组合键文本。
