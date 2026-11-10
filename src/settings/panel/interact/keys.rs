@@ -43,6 +43,10 @@ impl Panel {
                         self.config.hotkey.screenshot_key = vk;
                         self.config.hotkey.screenshot_modifiers = mods;
                     }
+                    RowId::HotkeyRecapture => {
+                        self.config.hotkey.recapture_key = vk;
+                        self.config.hotkey.recapture_modifiers = mods;
+                    }
                     RowId::HotkeyPin => {
                         self.config.hotkey.pin_key = vk;
                         self.config.hotkey.pin_modifiers = mods;

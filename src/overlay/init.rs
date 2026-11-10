@@ -25,6 +25,9 @@ impl Overlay {
             ocr_enabled,
             confirm_cancel,
             pin_key,
+            // 再次截图键只用于 `run` 里注册热键（`recapture::register`），覆盖层自身不保存
+            recapture_key: _,
+            recapture_modifiers: _,
             default_tool,
             colors,
             save,
@@ -44,7 +47,7 @@ impl Overlay {
         // 暗化（CAP-3：预生成暗图）：覆盖黑色 alpha=120，多线程分块整数乘法。
         // 贴图编辑模式（ADR 0028）不暗化：窗口外桌面不受影响，窗口内只多出一点余量。
         if pin_edit.is_none() {
-            surface::dim_pixmap(&mut dimmed, 255 - 120);
+            surface::dim_pixmap(&mut dimmed, surface::DIM_K);
         }
         let t_dim = t_init.elapsed();
         let mut display = dimmed.clone();

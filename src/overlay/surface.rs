@@ -16,6 +16,10 @@ use super::ui::Ui;
 use crate::editor::Point;
 use crate::render::text::{self as dwrite, FontSpec};
 
+/// 暗化系数（CAP-3）：暗图 = 原图 × `DIM_K` / 256（即叠加一层黑色 alpha=120）。
+/// 初始化与「再次截图」共用，避免两边各写一份数值而走形。
+pub(super) const DIM_K: u32 = 255 - 120;
+
 impl Drop for super::Overlay {
     /// 释放上屏用 GDI 资源（DIB section 位图 + 内存 DC）。
     fn drop(&mut self) {

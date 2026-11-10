@@ -211,6 +211,33 @@ impl super::super::Overlay {
         self.set_selection(new);
     }
 
+    /// 双击（EDT-3 / EDT-4 / M3）：命中对象 → 编辑文本 / 恢复直线；命中色块 → 改色面板；
+    /// 否则选区空白内双击 = 完成截图（复制，替代回车）。
+    pub(in crate::overlay) fn on_lbutton_dblclick(&mut self, x: i32, y: i32) {
+        // 双击也是用户新动作，解除取消待命（OUT-3 / issue #120）
+        self.clear_cancel_arm();
+        // 双击色块：展开取色面板改写该色块（EDT-7，issue #73 后续）；第一击已选用该色
+        if self.on_swatch_dblclick(x, y) {
+            return;
+        }
+        let edited = self
+            .hit_object(x, y)
+            .map(|i| self.begin_edit_object(i))
+            .unwrap_or(false);
+        let handled = if edited { true } else { self.reset_curve_at(x, y) };
+        if handled {
+            return;
+        }
+        // 双击第一击在选区内空白处按下（start_draw），作废草稿并完成截图
+        if let Some(sel) = self.selection
+            && sel.contains(x, y)
+            && self.down_started_draw
+        {
+            self.draft = None;
+            self.finish_output();
+        }
+    }
+
     /// 开始新的框选（返回初始 1px 选区）。
     fn begin_select(&mut self, x: i32, y: i32) -> SelRect {
         let sel = SelRect { x, y, w: 1, h: 1 };

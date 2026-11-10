@@ -80,6 +80,9 @@ impl App {
             ocr_enabled: self.config.ocr.enabled,
             confirm_cancel: self.config.confirm_cancel,
             pin_key: self.config.hotkey.pin_key,
+            // 再次截图键（issue #118）：贴图编辑模式不注册（选区锁定，无「重新框选」）
+            recapture_key: self.config.hotkey.recapture_key,
+            recapture_modifiers: self.config.hotkey.recapture_modifiers,
             default_tool: crate::settings::last_tool(),
             colors: self.config.swatch_colors,
             save: crate::settings::SavePrefs {

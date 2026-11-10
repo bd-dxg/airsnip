@@ -27,12 +27,13 @@ pub(super) enum Zone {
     Clear,
 }
 
-/// 是否为快捷键行（热键 + 工具切换键，共 15 行）。
+/// 是否为快捷键行（热键 + 工具切换键，共 16 行）。
 /// 这些行共用「点键帽捕获 / 点清除按钮清空」的交互。
 pub(super) fn is_key_row(id: RowId) -> bool {
     matches!(
         id,
         RowId::HotkeyShot
+            | RowId::HotkeyRecapture
             | RowId::HotkeyPin
             | RowId::HotkeyBorder
             | RowId::HotkeyLongshot
@@ -110,6 +111,7 @@ fn row_key(panel: &Panel, id: RowId) -> u32 {
     let tk = &panel.config.tool_keys;
     match id {
         RowId::HotkeyShot => hk.screenshot_key,
+        RowId::HotkeyRecapture => hk.recapture_key,
         RowId::HotkeyPin => hk.pin_key,
         RowId::HotkeyBorder => hk.border_key,
         RowId::HotkeyLongshot => hk.longshot_key,
@@ -138,6 +140,7 @@ fn keycap_text(panel: &Panel, id: RowId) -> String {
     let tk = &panel.config.tool_keys;
     match id {
         RowId::HotkeyShot => super::controls::key_name(hk.screenshot_key, hk.screenshot_modifiers),
+        RowId::HotkeyRecapture => super::controls::key_name(hk.recapture_key, hk.recapture_modifiers),
         RowId::HotkeyPin => super::controls::key_name(hk.pin_key, hk.pin_modifiers),
         RowId::HotkeyBorder => super::controls::key_name(hk.border_key, hk.border_modifiers),
         RowId::HotkeyLongshot => super::controls::key_name(hk.longshot_key, 0),
@@ -182,6 +185,10 @@ impl Panel {
                 hk.screenshot_key = crate::settings::UNBOUND;
                 hk.screenshot_modifiers = 0;
             }
+            RowId::HotkeyRecapture => {
+                hk.recapture_key = crate::settings::UNBOUND;
+                hk.recapture_modifiers = 0;
+            }
             RowId::HotkeyPin => {
                 hk.pin_key = crate::settings::UNBOUND;
                 hk.pin_modifiers = 0;
@@ -207,12 +214,12 @@ impl Panel {
         self.config_dirty = true;
     }
 
-    /// 一键恢复默认快捷键（15 项全部还原，含已清空的项）。
+    /// 一键恢复默认快捷键（16 项全部还原，含已清空的项）。
     pub(super) fn reset_keys(&mut self) {
         self.end_capture();
         if !confirm(
             self.hwnd,
-            "恢复默认会覆盖当前全部 15 项快捷键设置（包括已清空的项）。\n确定恢复吗？",
+            "恢复默认会覆盖当前全部 16 项快捷键设置（包括已清空的项）。\n确定恢复吗？",
         ) {
             return;
         }
