@@ -95,7 +95,7 @@ pub(crate) fn arrow_step(vk: u32, shift: bool) -> Option<(i32, i32)> {
 }
 
 /// 组装热键修饰键位标志。
-fn mod_flags(modifiers: u32) -> HOT_KEY_MODIFIERS {
+pub(crate) fn mod_flags(modifiers: u32) -> HOT_KEY_MODIFIERS {
     let mut m = HOT_KEY_MODIFIERS(0);
     if modifiers & MOD_ALT.0 != 0 {
         m |= MOD_ALT;
@@ -116,6 +116,22 @@ fn mod_flags(modifiers: u32) -> HOT_KEY_MODIFIERS {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 配置里的修饰位（`settings::MOD_*_BIT`）与 Win32 `MOD_*` 同值：映射后应一一对应，
+    /// 且一律带 `MOD_NOREPEAT`（按住不连发）。再次截图键（issue #118）走同一套映射。
+    #[test]
+    fn mod_flags_map_config_bits() {
+        use crate::settings::hotkey::{MOD_ALT_BIT, MOD_CTRL_BIT, MOD_SHIFT_BIT, MOD_WIN_BIT};
+        let shift = mod_flags(MOD_SHIFT_BIT);
+        assert_eq!(shift & MOD_SHIFT, MOD_SHIFT);
+        assert_eq!(shift & MOD_CONTROL, HOT_KEY_MODIFIERS(0));
+        assert_eq!(shift & MOD_NOREPEAT, MOD_NOREPEAT, "应带 MOD_NOREPEAT");
+        let all = mod_flags(MOD_ALT_BIT | MOD_CTRL_BIT | MOD_SHIFT_BIT | MOD_WIN_BIT);
+        for m in [MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, MOD_NOREPEAT] {
+            assert_eq!(all & m, m, "{m:?} 未被映射");
+        }
+        assert_eq!(mod_flags(0) & MOD_NOREPEAT, MOD_NOREPEAT, "无修饰键也应带 NOREPEAT");
+    }
 
     #[test]
     fn arrow_step_uses_one_pixel_or_five_with_shift() {

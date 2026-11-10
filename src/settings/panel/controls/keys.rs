@@ -19,6 +19,7 @@ pub fn conflict_for(
     // (当前项自值，用于跳过自身)
     let (self_vk, self_mods) = match id {
         RowId::HotkeyShot => (hk.screenshot_key, hk.screenshot_modifiers),
+        RowId::HotkeyRecapture => (hk.recapture_key, hk.recapture_modifiers),
         RowId::HotkeyPin => (hk.pin_key, hk.pin_modifiers),
         RowId::HotkeyBorder => (hk.border_key, hk.border_modifiers),
         RowId::HotkeyLongshot => (hk.longshot_key, 0),
@@ -36,8 +37,9 @@ pub fn conflict_for(
         _ => (u32::MAX, u32::MAX),
     };
     // 已配置键位：热键按「键+修饰」比较，工具键按「虚拟键」比较
-    let pairs: [(&str, u32, u32, bool); 15] = [
+    let pairs: [(&str, u32, u32, bool); 16] = [
         ("截图", hk.screenshot_key, hk.screenshot_modifiers, true),
+        ("再次截图", hk.recapture_key, hk.recapture_modifiers, true),
         ("贴图", hk.pin_key, hk.pin_modifiers, true),
         ("贴图边框", hk.border_key, hk.border_modifiers, true),
         // 长截图键在覆盖层内无修饰键，与工具键同组
@@ -124,6 +126,32 @@ mod tests {
         assert_eq!(conflict_for(&hk, &tk, RowId::HotkeyLongshot, 0x70, 0), Some("截图"));
         // 反向：工具键改为 S 时也应被长截图键拦下
         assert_eq!(conflict_for(&hk, &tk, RowId::ToolRect, 0x53, 0), Some("长截图"));
+    }
+
+    /// 再次截图键（issue #118）：默认 Shift+F1 与截图 F1 不冲突；改成截图键的同组合应报冲突。
+    #[test]
+    fn recapture_key_conflicts() {
+        let hk = crate::settings::HotkeyConfig::default();
+        let tk = crate::settings::ToolKeys::default();
+        assert_eq!(
+            conflict_for(
+                &hk,
+                &tk,
+                RowId::HotkeyRecapture,
+                hk.recapture_key,
+                hk.recapture_modifiers
+            ),
+            None
+        );
+        // 与截图键同键同修饰、或与贴图键同键同修饰都应拦下
+        assert_eq!(
+            conflict_for(&hk, &tk, RowId::HotkeyRecapture, hk.screenshot_key, 0),
+            Some("截图")
+        );
+        assert_eq!(
+            conflict_for(&hk, &tk, RowId::HotkeyPin, hk.recapture_key, hk.recapture_modifiers),
+            Some("再次截图")
+        );
     }
 
     /// OCR 键（OCR-3）：默认 T 不冲突；与长截图 / 工具键同键位应报冲突。

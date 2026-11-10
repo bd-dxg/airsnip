@@ -6,7 +6,7 @@
 //! 文件分工：`wndproc` 消息分发、`setup` 窗口创建、`geometry` 矩形运算、`surface` 像素缓冲与上屏、
 //! `cursor` 光标、`selection` 脏区重绘、`interaction` 鼠标交互、`pick` 对象选中与控制柄、
 //! `objedit` 对象手柄与拖动缩放、`wheel` 滚轮调属性、`font` 字体设置与字体面板、`annotate` 标注与输出、
-//! `toolbar` 工具栏、`ui` 按显示器 DPI 的界面缩放。
+//! `toolbar` 工具栏、`ui` 按显示器 DPI 的界面缩放、`opts` 启动参数、`recapture` 再次截图（issue #118）。
 //! 按下优先级（ADR 0023）见 `pick::pick_target`：手柄 > 曲线控制柄 > 选区手柄 > 空格移动选区
 //! > Ctrl + 对象 > 选中对象框边 > 对象内部（绘制）> 空白绘制。
 
@@ -21,8 +21,10 @@ mod init;
 mod interaction;
 mod number_edit;
 mod objedit;
+mod opts;
 mod pick;
 mod pin_edit;
+mod recapture;
 mod selection;
 mod setup;
 pub(crate) mod shape;
@@ -159,42 +161,8 @@ pub struct Overlay {
     dib_bits: *mut u8,
 }
 
-/// 覆盖层启动参数（SYS-2 / CAP-5 / OUT-2）：均为配置快照，
-/// 打包传入覆盖层线程，避开 `new` / `run` 的长参数列表。
-pub struct OverlayOpts {
-    pub palette: &'static Palette,
-    pub tool_keys: crate::settings::ToolKeys,
-    /// 长截图键（默认 S，设置面板可改）。
-    pub longshot_key: u32,
-    /// OCR 键（默认 T，设置面板可改，OCR-3）。
-    pub ocr_key: u32,
-    /// OCR 是否开启（OCR-1）：关闭时工具栏不出现 OCR 按钮、OCR 键不生效。
-    pub ocr_enabled: bool,
-    /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。
-    pub confirm_cancel: bool,
-    /// 贴图键（默认 F3，设置面板可改；ADR 0019：可为鼠标键）。
-    pub pin_key: u32,
-    /// 本次会话的默认工具（记住上次使用，M3）。
-    pub default_tool: Tool,
-    /// 色块颜色（EDT-7，issue #73 后续）：来自配置，缺省为 `DEFAULT_COLORS`。
-    pub colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
-    /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
-    pub save: crate::settings::SavePrefs,
-    /// 界面缩放（CAP-5）。
-    pub ui_scale: crate::settings::UiScale,
-    /// 贴图编辑模式（ADR 0028）：以贴图显示像素为底图、选区锁定为内容矩形，完成写回贴图。
-    pub pin_edit: Option<PinEdit>,
-}
-
-/// 贴图编辑模式的启动参数（ADR 0028）。
-pub struct PinEdit {
-    /// 贴图内容在覆盖层坐标中的矩形（= 屏幕矩形 − 抓屏原点）。
-    pub rect: (i32, i32, u32, u32),
-    /// 贴图当前显示像素（straight RGBA，`PinWindow::export_content` 产出）。
-    pub pixels: Pixmap,
-    /// 目标贴图窗口句柄（跨线程传原生值；完成消息回带给主线程）。
-    pub target: usize,
-}
+/// 覆盖层启动参数（SYS-2 / CAP-5 / OUT-2）：见 `opts`。
+pub use opts::{OverlayOpts, PinEdit};
 
 /// 显示覆盖层并阻塞运行，直到截图完成、取消或触发长截图。
 /// 返回类型区分三种结果（普通截图 / 取消 / 长截图视口选取）。
@@ -211,9 +179,16 @@ pub fn run(capture: CapturedScreen, opts: OverlayOpts, hinstance: HINSTANCE, mai
         }
     };
 
+    // 再次截图键（issue #118）：覆盖层线程自己注册，覆盖层关闭 / 线程退出即失效。
+    // 贴图编辑模式（ADR 0028）选区锁死，没有「重新框选」这回事，不注册。
+    if opts.pin_edit.is_none() {
+        recapture::register(hwnd, opts.recapture_key, opts.recapture_modifiers);
+    }
+
     let mut overlay = match Overlay::new(capture, opts) {
         Ok(o) => o,
         Err(_) => {
+            recapture::unregister(hwnd);
             unsafe {
                 let _ = DestroyWindow(hwnd);
             }
@@ -288,6 +263,7 @@ pub fn run(capture: CapturedScreen, opts: OverlayOpts, hinstance: HINSTANCE, mai
 
     let cancelled = unsafe { (*raw).cancelled };
     let viewport = unsafe { (*raw).viewport };
+    recapture::unregister(hwnd);
     unsafe {
         let _ = Box::from_raw(raw);
         let _ = DestroyWindow(hwnd);

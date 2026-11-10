@@ -133,6 +133,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             let cell_w = (w - pad + cellpad - cell_x0 - gap) / 2;
             let cells = [
                 (RowId::HotkeyShot, "截图"),
+                (RowId::HotkeyRecapture, "再次截图"),
                 (RowId::HotkeyPin, "贴图"),
                 (RowId::HotkeyBorder, "贴图边框"),
                 (RowId::HotkeyLongshot, "长截图"),

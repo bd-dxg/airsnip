@@ -37,6 +37,9 @@ impl App {
             confirm_cancel: self.config.confirm_cancel,
             // 贴图键（覆盖层内贴选区，默认 F3；ADR 0019：可改为鼠标键）
             pin_key: self.config.hotkey.pin_key,
+            // 再次截图键（issue #118，默认 Shift+F1）：截图期间当前画面作新底图
+            recapture_key: self.config.hotkey.recapture_key,
+            recapture_modifiers: self.config.hotkey.recapture_modifiers,
             default_tool: crate::settings::last_tool(),
             // 色块颜色（EDT-7，issue #73 后续）：可逐个双击改写
             colors: self.config.swatch_colors,

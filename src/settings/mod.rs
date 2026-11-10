@@ -317,6 +317,33 @@ mod tests {
         assert!(!text.contains("legacy_modifiers"), "遗留字段不应写入配置：{text}");
     }
 
+    /// 再次截图键（issue #118）：默认 Shift+F1；旧配置缺字段时回退默认值，新值能往返。
+    #[test]
+    fn recapture_key_defaults_and_roundtrip() {
+        let d = HotkeyConfig::default();
+        assert_eq!(d.recapture_key, 0x70, "默认再次截图键应为 F1");
+        assert_eq!(d.recapture_modifiers, 1 << 2, "默认应带 Shift（= Shift+F1）");
+        assert_ne!(
+            (d.screenshot_key, d.screenshot_modifiers),
+            (d.recapture_key, d.recapture_modifiers),
+            "默认值不应与截图热键撞成同一个组合"
+        );
+
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.hotkey.recapture_modifiers, 1 << 2, "旧配置应回退默认修饰键");
+
+        let cfg = Config {
+            hotkey: HotkeyConfig {
+                recapture_key: 0x71, // F2
+                recapture_modifiers: 0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!((back.hotkey.recapture_key, back.hotkey.recapture_modifiers), (0x71, 0));
+    }
+
     /// 命名模板（OUT-2）：旧配置缺字段时回退默认值，新值能往返。
     #[test]
     fn name_style_roundtrip_and_defaults() {

@@ -93,31 +93,16 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             overlay.on_cancel(cancel_hint::KEY_RBUTTON);
             LRESULT(0)
         }
-        // 双击：命中对象 → 编辑文本/恢复直线（EDT-3/EDT-4）；
-        // 否则选区空白内双击 = 完成截图（复制，M3，替代回车）
+        // 双击：命中对象 → 编辑文本 / 恢复直线（EDT-3/EDT-4）；否则选区空白内双击 = 完成截图
         WM_LBUTTONDBLCLK => {
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
-            // 双击也是用户新动作，解除取消待命（OUT-3 / issue #120）
-            overlay.clear_cancel_arm();
-            // 双击色块：展开取色面板改写该色块（EDT-7，issue #73 后续）；第一击已选用该色
-            if overlay.on_swatch_dblclick(x, y) {
-                return LRESULT(0);
-            }
-            let edited = overlay
-                .hit_object(x, y)
-                .map(|i| overlay.begin_edit_object(i))
-                .unwrap_or(false);
-            let handled = if edited { true } else { overlay.reset_curve_at(x, y) };
-            if !handled {
-                // 双击第一击在选区内空白处按下（start_draw），作废草稿并完成截图
-                if let Some(sel) = overlay.selection {
-                    if sel.contains(x, y) && overlay.down_started_draw {
-                        overlay.draft = None;
-                        overlay.finish_output();
-                    }
-                }
-            }
+            overlay.on_lbutton_dblclick(x, y);
+            LRESULT(0)
+        }
+        // 再次截图（issue #118）：本线程只注册了这一个全局热键（`recapture::register`）
+        WM_HOTKEY => {
+            overlay.on_recapture();
             LRESULT(0)
         }
         // 主动绘制，不靠系统擦除；只重绘无效区域

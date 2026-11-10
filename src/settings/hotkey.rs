@@ -24,6 +24,12 @@ pub struct HotkeyConfig {
     pub pin_key: u32,
     /// 贴图热键修饰键位标志
     pub pin_modifiers: u32,
+    /// 再次截图键（默认 Shift+F1 = 0x70 + Shift，issue #118）：**只在截图覆盖层内生效**，
+    /// 把当前画面（含工具栏 / 选区 / 标注）当作新底图重新框选，用于截取本软件自己的界面。
+    /// 由覆盖层线程临时注册（`overlay::recapture`），覆盖层关闭即失效；`UNBOUND` = 未启用。
+    pub recapture_key: u32,
+    /// 再次截图键修饰键位标志
+    pub recapture_modifiers: u32,
     /// 贴图边框开关热键（默认 Ctrl+F3；`UNBOUND` = 未启用）
     pub border_key: u32,
     /// 贴图边框开关热键修饰键位标志
@@ -46,10 +52,12 @@ impl Default for HotkeyConfig {
             screenshot_modifiers: 0,
             pin_key: 0x72,
             pin_modifiers: 0,
-            border_key: 0x72,    // Ctrl+F3
-            border_modifiers: 2, // MOD_CONTROL
-            longshot_key: 0x53,  // S
-            ocr_key: 0x54,       // T
+            recapture_key: 0x70,         // Shift+F1
+            recapture_modifiers: 1 << 2, // Shift
+            border_key: 0x72,            // Ctrl+F3
+            border_modifiers: 2,         // MOD_CONTROL
+            longshot_key: 0x53,          // S
+            ocr_key: 0x54,               // T
             legacy_modifiers: 0,
         }
     }

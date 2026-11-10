@@ -85,6 +85,8 @@ pub enum RowId {
     HotkeyShot,
     /// 贴图热键。
     HotkeyPin,
+    /// 再次截图键（覆盖层内按下，默认 Shift+F1，issue #118）：当前画面作为新底图重新框选。
+    HotkeyRecapture,
     /// 贴图边框切换热键（M2b，默认 Ctrl+F3）。
     HotkeyBorder,
     /// 长截图键（覆盖层内按下，默认 S）。
@@ -286,7 +288,7 @@ mod tests {
                     *ys.entry(r.rect.y).or_insert(0) += 1;
                 }
             }
-            assert_eq!(n, 15, "@{s}x 快捷键键帽行应仍为 15 项");
+            assert_eq!(n, 16, "@{s}x 快捷键键帽行应仍为 16 项");
             assert!(ys.values().all(|&c| c <= 2), "@{s}x 同一行不应超过两项");
             assert!(ys.len() <= 9, "@{s}x 两列排布后行数应受控：{}", ys.len());
         }
@@ -314,6 +316,7 @@ mod tests {
                 ],
                 Section::Hotkeys => vec![
                     RowId::HotkeyShot,
+                    RowId::HotkeyRecapture,
                     RowId::HotkeyPin,
                     RowId::HotkeyBorder,
                     RowId::HotkeyLongshot,
@@ -377,7 +380,7 @@ mod tests {
                 assert_eq!(r.clear.w, 0, "{:?} 非键帽行不应有清除按钮", r.id);
             }
         }
-        assert_eq!(caps, 15, "快捷键页应有 15 个键帽行");
+        assert_eq!(caps, 16, "快捷键页应有 16 个键帽行");
     }
 
     /// 任意缩放下键帽仍有足够宽度显示组合键文本。
