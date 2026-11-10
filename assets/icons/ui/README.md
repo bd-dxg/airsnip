@@ -7,7 +7,7 @@
 
 ```
 ui/
-  toolbar/   # 覆盖层工具栏 19 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
+  toolbar/   # 覆盖层工具栏 22 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
   status/    # 长截图状态条
   panel/     # 设置面板行内按钮（快捷键行的清除按钮）
 ```
@@ -42,6 +42,10 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 它的 outlined 版笔身是细线框，在 26px / 浅色主题下几乎消失（实测 20px 下只剩底线），
 填充变体才是可读的。其他图标保持 outlined。
 
+> **待办：`line` / `ellipse` 目前是占位图标**（手写几何路径，仅满足下方文件规格与墨水率区间），
+> 尚未取自 Material Symbols。issue #134 先交付功能，图标待后续替换为同套素材，并同步更新本表。
+> `freehand` 已用 Material Symbols 的 `draw`（笔 + 手绘轨迹）。
+
 | 文件 | Material Symbols |
 |---|---|
 | `toolbar/rect.svg` | `crop_free` |
@@ -51,6 +55,9 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | `toolbar/blur.svg` | `blur_on` |
 | `toolbar/glow.svg` | `flashlight_on` |
 | `toolbar/number.svg` | `counter_1` |
+| `toolbar/line.svg` | **占位**（待替换） |
+| `toolbar/ellipse.svg` | **占位**（待替换） |
+| `toolbar/freehand.svg` | `draw`（笔 + 手绘轨迹，Material Symbols） |
 | `toolbar/fill.svg` | `format_color_fill` |
 | `toolbar/undo.svg` / `redo.svg` | `undo` / `redo` |
 | `toolbar/pin.svg` | `push_pin` |
@@ -80,13 +87,18 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | highlight | 29.0 | italic | 25.4 |
 | blur | 23.1 | minus | 11.8 |
 | glow | 21.0 | plus | 21.3 |
-| fill | 27.2 | check | 14.2 |
-| cross | 25.4 | pin | 14.8 |
-| undo / redo | 27.2 | longshot | 12.4 |
-| delete | 29.0 | ocr | 30.2 |
-| number | 29.9 | | |
+| number | 29.9 | check | 14.2 |
+| line | 18.0 | cross | 25.4 |
+| ellipse | 25.1 | pin | 14.8 |
+| freehand | 16.1 | longshot | 12.4 |
+| fill | 27.2 | ocr | 30.2 |
+| undo / redo | 27.2 | | |
+| delete | 29.0 | | |
 
-全组落在 11.8%～37.6%，均在测试区间（5%～48%）内。个别图标用
+全组落在 11.8%～37.6%，均在测试区间（5%～48%）内。三个新增工具里 `freehand`（16.1%）
+明显轻于邻居（它是 Material 的 `draw`，笔身细），但仍在 `pin` / `check` / `longshot` 一带，
+未做 `optical_scale` 调整；`line` / `ellipse` 是占位几何，换成 Material Symbols 的
+`straighten` / `circle` 后需重新测量并更新本表。个别图标用
 `render::icon::optical_scale` 微调：`save` 0.92（软盘 bbox 偏大）、
 `delete` 0.85（垃圾桶盖 + 桶身 + 两条竖线结构密集，不缩会明显重于邻居）、
 `ocr` 0.9（扫描框 + 三行文字，未缩时 36.4%，比相邻的 pin / longshot 重得多）。

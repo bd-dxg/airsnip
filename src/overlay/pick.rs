@@ -89,9 +89,9 @@ pub(super) enum PickTarget {
 
 /// 包围框边缘环带命中（ADR 0023 §2）：`frame_of` 外扩 / 内缩 `pick_radius` 的框线，
 /// 宽或高 ≤ 2×`pick_radius` 时退化整块（否则极小对象抓不到边、无法拖动）。
-/// 箭头不画包围框（只有两端点手柄），故不参与。
+/// 箭头与直线不画包围框（只有两端点手柄），故不参与。
 pub(in crate::overlay) fn hit_frame_edge(obj: &Object, x: i32, y: i32, ui: Ui) -> bool {
-    if matches!(obj.kind, Kind::Arrow { .. }) {
+    if matches!(obj.kind, Kind::Arrow { .. } | Kind::Line { .. }) {
         return false;
     }
     let f = objedit::frame_of(obj);
@@ -128,6 +128,20 @@ pub(super) fn is_degenerate(obj: &Object) -> bool {
         Kind::Text { .. } => false,
         // 序号标记（EDT-12）：只点一下不拖也是有效对象（只有徽标、无引线）
         Kind::Number { .. } => false,
+        // EDT-13 直线：两端点过近视为误触（同箭头判据）
+        Kind::Line { from, to } => (from.x - to.x).abs() < 2.0 && (from.y - to.y).abs() < 2.0,
+        // EDT-14 椭圆：**任一轴**退化即视为误触。与矩形不同（矩形退化后仍可命中、可删），
+        // 椭圆在任一轴 < 1px 时 `draw_ellipse` 不画、`hit_ellipse` 不命中，留着只能靠撤销清掉。
+        Kind::Ellipse { a, b, .. } => (a.x - b.x).abs() < 2.0 || (a.y - b.y).abs() < 2.0,
+        // EDT-15 手绘：点数 < 2 或总路径长度过短视为误触
+        Kind::Freehand { pts } => {
+            let len: f32 = pts
+                .as_slice()
+                .windows(2)
+                .map(|w| ((w[1].x - w[0].x).powi(2) + (w[1].y - w[0].y).powi(2)).sqrt())
+                .sum();
+            pts.len() < 2 || len < 2.0
+        }
     }
 }
 
@@ -373,6 +387,80 @@ mod tests {
     fn arrow_has_no_frame_edge() {
         let obj = rect_like(Kind::arrow(Point::new(0.0, 0.0), Point::new(100.0, 100.0)));
         assert!(!hit_frame_edge(&obj, 0, 0, base()), "箭头不应有框边命中");
+    }
+
+    /// EDT-13 直线与箭头一致：只有两端点手柄，不画包围框，不参与框边命中。
+    #[test]
+    fn line_has_no_frame_edge() {
+        let obj = rect_like(Kind::Line {
+            from: Point::new(0.0, 0.0),
+            to: Point::new(100.0, 100.0),
+        });
+        assert!(!hit_frame_edge(&obj, 0, 0, base()), "直线不应有框边命中");
+        let f = objedit::frame_of(&obj);
+        assert!(
+            !hit_frame_edge(&obj, f.x + f.w / 2, f.y, base()),
+            "直线上边中点不应可拖框"
+        );
+    }
+
+    /// EDT-13/14/15：新工具的误触判定（过小直线 / 过小椭圆 / 点太少或路径过短的手绘）。
+    #[test]
+    fn new_tools_degenerate_detection() {
+        let tiny_line = rect_like(Kind::Line {
+            from: Point::new(10.0, 10.0),
+            to: Point::new(11.0, 11.0),
+        });
+        assert!(is_degenerate(&tiny_line), "过短直线应视为误触");
+        let line = rect_like(Kind::Line {
+            from: Point::new(10.0, 10.0),
+            to: Point::new(90.0, 10.0),
+        });
+        assert!(!is_degenerate(&line), "正常直线不应丢弃");
+
+        let tiny_ellipse = rect_like(Kind::Ellipse {
+            a: Point::new(10.0, 10.0),
+            b: Point::new(11.0, 11.0),
+            filled: false,
+        });
+        assert!(is_degenerate(&tiny_ellipse), "过小椭圆应视为误触");
+        // 单轴退化：横向拖得再长也画不出东西（`draw_ellipse` / `hit_ellipse` 都退），
+        // 必须按误触丢弃，否则会留下既看不见、也选不中的幽灵对象。
+        for flat in [
+            (Point::new(10.0, 10.0), Point::new(300.0, 10.0)), // 高度 0
+            (Point::new(10.0, 10.0), Point::new(10.0, 300.0)), // 宽度 0
+            (Point::new(10.0, 10.0), Point::new(300.0, 10.5)), // 高度不足 1px（渲染退化）
+        ] {
+            let obj = rect_like(Kind::Ellipse {
+                a: flat.0,
+                b: flat.1,
+                filled: false,
+            });
+            assert!(is_degenerate(&obj), "单轴退化椭圆应视为误触：{:?}", flat);
+        }
+        let ellipse = rect_like(Kind::Ellipse {
+            a: Point::new(10.0, 10.0),
+            b: Point::new(90.0, 60.0),
+            filled: false,
+        });
+        assert!(!is_degenerate(&ellipse), "正常椭圆不应丢弃");
+
+        let single = rect_like(Kind::Freehand {
+            pts: std::sync::Arc::new(vec![Point::new(10.0, 10.0)]),
+        });
+        assert!(is_degenerate(&single), "单点手绘应视为误触");
+        let short = rect_like(Kind::Freehand {
+            pts: std::sync::Arc::new(vec![Point::new(10.0, 10.0), Point::new(10.5, 10.5)]),
+        });
+        assert!(is_degenerate(&short), "路径过短的手绘应视为误触");
+        let hand = rect_like(Kind::Freehand {
+            pts: std::sync::Arc::new(vec![
+                Point::new(10.0, 10.0),
+                Point::new(30.0, 20.0),
+                Point::new(60.0, 50.0),
+            ]),
+        });
+        assert!(!is_degenerate(&hand), "正常手绘不应丢弃");
     }
 
     /// 命中半径随界面缩放放大（CAP-5）：100% 下 8px 外不命中，200% 下命中。

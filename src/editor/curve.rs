@@ -150,7 +150,8 @@ fn dist(a: Point, b: Point) -> f32 {
     ((b.x - a.x).powi(2) + (b.y - a.y).powi(2)).sqrt()
 }
 
-fn dist_to_segment(q: Point, a: Point, b: Point) -> f32 {
+/// 点到线段距离（`super::hit` 的椭圆命中逐段调用，故对父模块可见）。
+pub(super) fn dist_to_segment(q: Point, a: Point, b: Point) -> f32 {
     let (dx, dy) = (b.x - a.x, b.y - a.y);
     let len2 = dx * dx + dy * dy;
     let t = if len2 > 1e-6 {

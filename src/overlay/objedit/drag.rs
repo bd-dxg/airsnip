@@ -57,6 +57,22 @@ impl super::super::Overlay {
                     }
                     obj.kind.move_arrow_end(end, clamp_point(sel, target));
                 }
+                // EDT-13 直线端点：拖动头 / 尾端点改向 / 拉伸（与箭头端点同款，Shift 吸附）
+                ObjHandle::LineFrom | ObjHandle::LineTo => {
+                    let mut target = Point::new(x as f32, y as f32);
+                    if shift && let Kind::Line { from, to } = &obj.kind {
+                        let anchor = if handle == ObjHandle::LineFrom { *to } else { *from };
+                        target = crate::editor::snap_direction(anchor, target);
+                    }
+                    let target = clamp_point(sel, target);
+                    if let Kind::Line { from, to } = &mut obj.kind {
+                        if handle == ObjHandle::LineFrom {
+                            *from = target;
+                        } else {
+                            *to = target;
+                        }
+                    }
+                }
                 // 整体移动：整框跟随鼠标增量，并限制在选区内（标注不出选区，CAP-2 约定）
                 ObjHandle::Move => {
                     let (dx, dy) = (x - px, y - py);
@@ -151,11 +167,12 @@ impl super::super::Overlay {
                 obj.style.color = [color[0], color[1], color[2], obj.style.color[3]];
                 changed = true;
             }
-            if let Kind::Rect { filled: f, .. } = &mut obj.kind {
-                if *f != filled {
-                    *f = filled;
-                    changed = true;
-                }
+            // 填充开关：矩形与椭圆共用（EDT-1/EDT-14），其余类型无填充概念
+            if let Kind::Rect { filled: f, .. } | Kind::Ellipse { filled: f, .. } = &mut obj.kind
+                && *f != filled
+            {
+                *f = filled;
+                changed = true;
             }
             changed
         };

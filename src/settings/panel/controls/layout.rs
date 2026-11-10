@@ -144,6 +144,9 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
                 (RowId::ToolHighlight, "工具·荧光笔"),
                 (RowId::ToolGlow, "工具·聚光灯"),
                 (RowId::ToolNumber, "工具·序号"),
+                (RowId::ToolLine, "工具·直线"),
+                (RowId::ToolEllipse, "工具·椭圆"),
+                (RowId::ToolFreehand, "工具·手绘"),
             ];
             for (i, (id, label)) in cells.iter().enumerate() {
                 let col = i % 2;

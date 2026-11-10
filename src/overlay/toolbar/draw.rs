@@ -101,9 +101,9 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                 }
                 rounded_rect(pixmap, swatch, ui.f(4.0), color, Some(p.swatch_border));
             }
-            // 文本 / 序号工具无背景功能：填充开关置灰禁用
+            // 填充开关：仅当前工具或选中对象是矩形 / 椭圆时可用，否则置灰禁用
             Action::ToggleFill => {
-                let enabled = !matches!(state.tool, Tool::Text | Tool::Number);
+                let enabled = state.fill_enabled;
                 if enabled && state.filled {
                     rounded_rect(pixmap, *r, ui.f(5.0), p.accent_soft, None);
                 }
@@ -170,6 +170,9 @@ fn tool_icon(tool: Tool) -> Icon {
         Tool::Blur => Icon::Blur,
         Tool::Glow => Icon::Glow,
         Tool::Number => Icon::Number,
+        Tool::Line => Icon::Line,
+        Tool::Ellipse => Icon::Ellipse,
+        Tool::Freehand => Icon::Freehand,
     }
 }
 

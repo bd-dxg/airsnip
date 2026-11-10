@@ -27,7 +27,12 @@ impl super::Overlay {
         } else {
             // 空白处滚动：只改默认值，供下一次绘制沿用
             match self.tool {
-                crate::editor::Tool::Rect | crate::editor::Tool::Arrow => {
+                // 描边类工具（含直线 / 椭圆 / 手绘，EDT-13/14/15）：线宽连续可调
+                crate::editor::Tool::Rect
+                | crate::editor::Tool::Arrow
+                | crate::editor::Tool::Line
+                | crate::editor::Tool::Ellipse
+                | crate::editor::Tool::Freehand => {
                     self.line_width = (self.line_width + step).clamp(1.0, 32.0);
                 }
                 crate::editor::Tool::Text => {
@@ -51,7 +56,12 @@ impl super::Overlay {
         let changed = {
             let obj = &mut self.doc.objects_mut()[i];
             let changed = match &mut obj.kind {
-                Kind::Rect { .. } | Kind::Arrow { .. } => {
+                // 描边类工具（含直线 / 椭圆 / 手绘，EDT-13/14/15）：线宽连续可调
+                Kind::Rect { .. }
+                | Kind::Arrow { .. }
+                | Kind::Line { .. }
+                | Kind::Ellipse { .. }
+                | Kind::Freehand { .. } => {
                     let w = (obj.style.width + step).clamp(1.0, 32.0);
                     let changed = (w - obj.style.width).abs() > 0.01;
                     if changed {
