@@ -28,22 +28,12 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
     let first_h = bar.first.h;
     rounded_rect(pixmap, bar.rect, ui.f(7.0), p.bg, Some(p.border));
 
-    // 组分隔线：画在每个组首个元素左侧的空白处
-    // 组划分：工具 / 颜色 / 填充 / 撤销 / 贴图·长截图·OCR / 复制·保存。
-    // 按动作查位置（而不是写死下标）：新增按钮时不会错位
-    for anchor in [
-        Action::Color(0),
-        Action::ToggleFill,
-        Action::Undo,
-        Action::Pin,
-        Action::Copy,
-    ] {
-        let Some((first, _)) = bar.hits.iter().find(|(_, a)| *a == anchor) else {
-            continue;
-        };
+    // 组分隔线（EDT-16）：位置由布局按**可见元素**算出（整组隐藏时该线也不画），
+    // 不再用写死的动作锚点查位置——那种写法在用户隐藏元素后要么锚点消失、要么位置错位。
+    for x in &bar.dividers {
         divider(
             pixmap,
-            first.x - gap / 2 - 1,
+            x - gap / 2 - 1,
             bar.first.y + ui.px(7.0),
             first_h - ui.px(14.0),
             p,

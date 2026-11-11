@@ -22,7 +22,7 @@ impl Overlay {
             tool_keys,
             longshot_key,
             ocr_key,
-            ocr_enabled,
+            visibility,
             confirm_cancel,
             pin_key,
             // 再次截图键只用于 `run` 里注册热键（`recapture::register`），覆盖层自身不保存
@@ -81,6 +81,11 @@ impl Overlay {
             );
         }
 
+        // 开局回落（EDT-16 R5）：新会话开始时，隐藏的工具 / 色块换成第一个可见项；
+        // 会话内快捷键仍可切到隐藏项（隐藏只是不画，不夺能力）。
+        let start_tool = visibility.settle_tool(default_tool);
+        let start_color = visibility.settle_color(1); // 默认红色
+
         Ok(Self {
             capture,
             original,
@@ -94,17 +99,18 @@ impl Overlay {
             phase: Phase::Adjusting,
             drag: None,
             doc: Document::new(),
-            tool: default_tool, // 记住上次工具（M3），首次为矩形
+            // 开局回落（EDT-16 R5）：上次工具 / 默认色块被隐藏时落到第一个可见项
+            tool: start_tool,
             tool_keys,
             longshot_key,
             ocr_key,
-            ocr_enabled,
+            visibility,
             confirm_cancel,
             cancel_arm: None,
             cancel_hint: None,
             pin_key,
             save,
-            color_index: 1, // 默认红色
+            color_index: start_color, // 默认红色；被隐藏时落到第一个可见色块
             colors,
             line_width: editor::DEFAULT_LINE_WIDTH,
             blur_radius: editor::DEFAULT_BLUR_RADIUS,

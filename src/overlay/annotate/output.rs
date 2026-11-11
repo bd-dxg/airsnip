@@ -80,10 +80,8 @@ impl super::super::Overlay {
 
     /// OCR-3/OCR-4：OCR——把选区**原图**（不含标注）交给主线程识别，并关闭覆盖层。
     /// 载荷与贴图同格式：[u32 w][u32 h][i32 x][i32 y][RGBA]，主线程负责 OCR 与气泡窗口。
+    /// OCR 常开（issue #143）：没有总开关，是否显示按钮由工具栏可见性决定。
     pub(in crate::overlay) fn on_ocr(&mut self) {
-        if !self.ocr_enabled {
-            return;
-        }
         let Some(sel) = self.selection else {
             return;
         };

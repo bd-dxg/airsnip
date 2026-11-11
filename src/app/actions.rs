@@ -31,9 +31,9 @@ impl App {
             palette: crate::theme::palette(crate::theme::resolve(self.config.theme)),
             tool_keys: self.config.tool_keys.clone(),
             longshot_key: self.config.hotkey.longshot_key,
-            // OCR 键与开关（OCR-1/OCR-3）：关闭时覆盖层不出现 OCR 入口
+            // OCR 键（OCR-3）：OCR 常开，是否出现按钮由工具栏可见性决定（EDT-16）
             ocr_key: self.config.hotkey.ocr_key,
-            ocr_enabled: self.config.ocr.enabled,
+            visibility: self.config.toolbar.clone(),
             confirm_cancel: self.config.confirm_cancel,
             // 贴图键（覆盖层内贴选区，默认 F3；ADR 0019：可改为鼠标键）
             pin_key: self.config.hotkey.pin_key,

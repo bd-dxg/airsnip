@@ -13,6 +13,7 @@ mod link;
 mod ocr;
 mod reward;
 mod theme_watch;
+mod toolbar_page;
 mod update;
 mod window;
 

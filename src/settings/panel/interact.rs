@@ -8,7 +8,7 @@ use windows::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK};
 
 use crate::app::message_box;
 use crate::overlay::geometry::in_rect;
-use crate::settings::ThemeSetting;
+use crate::settings::{GroupState, ThemeSetting};
 use crate::theme::{self};
 
 use super::Panel;
@@ -180,10 +180,18 @@ impl Panel {
                 self.config.auto_check_update = !self.config.auto_check_update;
                 self.config_dirty = true;
             }
-            // OCR 总开关（OCR-1）：默认关，关时覆盖层不出现 OCR 入口
-            RowId::OcrToggle => {
+            // 工具栏元素显隐（EDT-16）：纯视觉偏好，只影响绘制，不动快捷键与输出
+            RowId::Toolbar(slot) => {
                 self.end_capture();
-                self.config.ocr.enabled = !self.config.ocr.enabled;
+                let on = !self.config.toolbar.visible(slot);
+                self.config.toolbar.set_visible(slot, on);
+                self.config_dirty = true;
+            }
+            // 组头（EDT-16）：部分可见或全隐 → 全显；已全显 → 全隐
+            RowId::ToolbarGroup(group) => {
+                self.end_capture();
+                let on = self.config.toolbar.group_state(group) != GroupState::All;
+                self.config.toolbar.set_group_visible(group, on);
                 self.config_dirty = true;
             }
             // 识别后自动复制（OCR-10）：与 OCR 卡片里的开关是同一个配置项

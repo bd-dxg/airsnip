@@ -2,6 +2,7 @@
 //! 设置面板控件模型与布局（M3）：左侧分类导航 + 右侧内容区。
 
 use crate::overlay::geometry::SelRect;
+use crate::settings::{ToolbarGroup, ToolbarSlot};
 
 mod keyrows;
 mod keys;
@@ -36,6 +37,12 @@ pub const CELLPAD: i32 = 16;
 pub const HOVER_PAD: i32 = 8;
 /// 支持项目行高度（文案 + 赞赏码，高于标准行）。
 pub const QR_ROW_H: i32 = 200;
+/// 「工具栏」页的组头行高度（比标准行矮，五组标题不占太多竖向空间）。
+pub const GROUP_H: i32 = 26;
+/// 「工具栏」页单元格的水平内边距（多列布局，比整行小）。
+pub const CELL_PAD: i32 = 6;
+/// 开关胶囊宽度（绘制与命中共用，避免两处各写一份）。
+pub const TOGGLE_W: i32 = 36;
 /// 快捷键行右侧清除按钮边长（与键帽同高，视觉上齐平）。
 pub const CLEAR_BTN: i32 = 30;
 /// 键帽与清除按钮之间的间隔。
@@ -45,6 +52,8 @@ pub const CLEAR_GAP: i32 = 8;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Section {
     General,
+    /// 工具栏可见性（EDT-16，issue #143）：逐元素显隐 + 组头全显 / 全隐。
+    Toolbar,
     Hotkeys,
     Save,
     Appearance,
@@ -53,8 +62,9 @@ pub enum Section {
 }
 
 impl Section {
-    pub const ALL: [Section; 6] = [
+    pub const ALL: [Section; 7] = [
         Section::General,
+        Section::Toolbar,
         Section::Hotkeys,
         Section::Save,
         Section::Appearance,
@@ -65,6 +75,7 @@ impl Section {
     pub fn title(self) -> &'static str {
         match self {
             Section::General => "通用",
+            Section::Toolbar => "工具栏",
             Section::Hotkeys => "快捷键",
             Section::Save => "保存",
             Section::Appearance => "外观",
@@ -154,8 +165,10 @@ pub enum RowId {
     AutoCheckUpdate,
     /// 支持项目（关于页：文案 + 微信赞赏码）。
     Reward,
-    /// OCR 总开关（OCR-1，默认关）。
-    OcrToggle,
+    /// 工具栏元素显隐开关（EDT-16）：一个元素一行（多列排布）。
+    Toolbar(ToolbarSlot),
+    /// 工具栏组头（EDT-16）：整组全显 / 全隐，部分可见时半选。
+    ToolbarGroup(ToolbarGroup),
     /// 识别语言（点击循环切换，OCR-6）。
     OcrLang,
     /// 识别后自动复制到剪贴板（OCR-10，默认关）。
@@ -169,6 +182,8 @@ pub enum RowId {
 pub enum RowKind {
     /// 开关（整行可点）。
     Toggle,
+    /// 组头：组名 + 紧跟组名的三态勾选框（整组全显 / 全隐，EDT-16）。
+    Group,
     /// 热键捕获按钮（点右侧区域进入捕获）。
     KeyCap,
     /// 单选（整行可点）。
@@ -356,7 +371,16 @@ mod tests {
                     RowId::AutoCheckUpdate,
                     RowId::Reward,
                 ],
-                Section::Ocr => vec![RowId::OcrToggle, RowId::OcrAutoCopy, RowId::OcrLang, RowId::OcrNote],
+                Section::Toolbar => {
+                    // 组头 + 组内每个元素各一行（顺序即界面顺序，EDT-16）
+                    let mut rows = Vec::new();
+                    for g in ToolbarGroup::ALL {
+                        rows.push(RowId::ToolbarGroup(g));
+                        rows.extend(g.slots().iter().map(|s| RowId::Toolbar(*s)));
+                    }
+                    rows
+                }
+                Section::Ocr => vec![RowId::OcrAutoCopy, RowId::OcrLang, RowId::OcrNote],
             };
             assert_eq!(rows, expected, "节 {sec:?} 行集合错误");
         }
@@ -426,6 +450,37 @@ mod tests {
             .expect("关于页应有支持项目行");
         assert_eq!(reward.rect.h, QR_ROW_H, "赞赏码行高度应为 QR_ROW_H");
         assert_eq!(reward.control.h, QR_ROW_H, "控件区高度应与行一致");
+    }
+
+    /// 「工具栏」页单元格必须容得下「标签 + 开关」（5 列很窄，标签太长会压到开关上）。
+    /// 用真实字体量宽，改标签或改列数时能当场报错；每档缩放都查（单元格宽是整除，
+    /// 余数随缩放变化，1.0 下放得下不等于 1.5 下也放得下）。
+    #[test]
+    fn toolbar_cells_fit_label_and_toggle() {
+        let total = crate::settings::ToolbarSlot::all().count();
+        for scale in [1.0f32, 1.25, 1.5, 2.0] {
+            let l = layout(Section::Toolbar, scale);
+            let mut cells = 0;
+            for item in &l.items {
+                let Item::Row(r) = item else { continue };
+                let RowId::Toolbar(slot) = r.id else { continue };
+                cells += 1;
+                let spec = crate::render::text::FontSpec::new(16.0 * scale);
+                let (label_w, _) = crate::render::text::measure(slot.label(), &spec);
+                let avail = (r.control.x - (r.rect.x + r.label_pad)) as f32;
+                assert!(
+                    label_w <= avail,
+                    "@{scale}x 「{}」宽 {label_w}px，超过单元格可用宽度 {avail}px",
+                    slot.label()
+                );
+                assert!(
+                    r.control.x + r.control.w <= r.rect.x + r.rect.w,
+                    "@{scale}x 「{}」的开关超出单元格",
+                    slot.label()
+                );
+            }
+            assert_eq!(cells, total, "@{scale}x 每个元素都应有开关单元格");
+        }
     }
 
     #[test]
