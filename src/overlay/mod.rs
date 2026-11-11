@@ -6,7 +6,7 @@
 //! 文件分工：`wndproc` 消息分发、`setup` 窗口创建、`geometry` 矩形运算、`surface` 像素缓冲与上屏、
 //! `cursor` 光标、`selection` 脏区重绘、`interaction` 鼠标交互、`pick` 对象选中与控制柄、
 //! `objedit` 对象手柄与拖动缩放、`wheel` 滚轮调属性、`font` 字体设置与字体面板、`annotate` 标注与输出、
-//! `toolbar` 工具栏、`ui` 按显示器 DPI 的界面缩放、`opts` 启动参数、`recapture` 再次截图（issue #118）。
+//! `delete` 选中对象的单独删除、`toolbar` 工具栏、`ui` 按显示器 DPI 的界面缩放、`opts` 启动参数、`recapture` 再次截图（issue #118）。
 //! 按下优先级（ADR 0023）见 `pick::pick_target`：手柄 > 曲线控制柄 > 选区手柄 > 空格移动选区
 //! > Ctrl + 对象 > 选中对象框边 > 对象内部（绘制）> 空白绘制。
 
@@ -14,6 +14,7 @@ mod annotate;
 mod cancel_hint;
 mod control;
 mod cursor;
+mod delete;
 mod font;
 pub(crate) mod geometry;
 mod ime;

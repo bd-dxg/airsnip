@@ -195,6 +195,10 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                     }
                 }
                 0x59 if ctrl_down() => overlay.on_redo(), // Ctrl+Y
+                // 删除选中对象（issue #71 / ADR 0032）：`Del` 与 `Backspace` 硬编码。
+                // 仅在真的删掉时消费按键，否则落到下面的工具切换——
+                // 这两个键可被用户绑成工具键（不在冲突检测表里，没选中对象时照旧生效）。
+                0x2E | 0x08 if overlay.on_delete_selected() => {}
                 _ => {
                     // 方向键微调（EDT-7 / CAP-2）：1px，Shift 5px；优先于工具切换键
                     if let Some((dx, dy)) = crate::app::hotkey::arrow_step(vk, shift_down()) {
