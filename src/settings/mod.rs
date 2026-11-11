@@ -3,11 +3,13 @@
 
 pub mod hotkey;
 pub mod panel;
+pub mod toolbar;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub use hotkey::{HotkeyConfig, ToolKeys, UNBOUND};
+pub use toolbar::{GroupState, ToolbarConfig, ToolbarGroup, ToolbarSlot};
 
 use crate::editor::Tool;
 
@@ -130,13 +132,12 @@ impl UiScale {
     }
 }
 
-/// OCR 与翻译（OCR-1，ADR 0022）：可选能力，总开关默认关闭。
-/// 关闭时不初始化 WinRT、不注册 OCR 键、覆盖层不出现 OCR 入口——不是灰掉，是不出现。
+/// OCR 与翻译（OCR-1，ADR 0022）：可选能力。
+/// OCR **没有总开关**（issue #143）：常开、首次触发才初始化 WinRT，
+/// 界面上出不出现按钮交给「工具栏可见性」；不想用就把 OCR 键清空（ADR 0017）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OcrConfig {
-    /// 总开关（默认关）。
-    pub enabled: bool,
     /// 识别成功后自动写剪贴板（默认关，OCR-10）。
     pub auto_copy: bool,
     /// 识别语言：`auto` 跟随系统首选，否则为 BCP-47 标签（如 `zh-Hans-CN`）。
@@ -149,7 +150,6 @@ pub const OCR_LANG_AUTO: &str = "auto";
 impl Default for OcrConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
             auto_copy: false,
             language: OCR_LANG_AUTO.to_string(),
         }
@@ -200,6 +200,8 @@ pub struct Config {
     pub swatch_colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
     /// 有未保存标注时取消截图先弹确认框（OUT-3 / ADR 0027，默认开）；关闭后直接退出（issue #120）。
     pub confirm_cancel: bool,
+    /// 工具栏可见性（EDT-16，issue #143）：纯视觉偏好，只存隐藏集合、默认全可见。
+    pub toolbar: ToolbarConfig,
     /// 保存文件名模板（OUT-2）。
     pub name_style: NameStyle,
     /// 上次保存用的格式扩展名（OUT-2，运行时记忆）：保存对话框下次默认选中该格式。
@@ -212,7 +214,7 @@ pub struct Config {
     pub auto_check_update: bool,
     /// 用户选择「跳过此版本」的版本号（SYS-7）。
     pub skipped_version: Option<String>,
-    /// OCR 与翻译（OCR-1，默认关闭）。
+    /// OCR 与翻译（OCR-1；OCR 无总开关，见 `OcrConfig`）。
     pub ocr: OcrConfig,
 }
 
@@ -230,6 +232,7 @@ impl Default for Config {
             ui_scale: UiScale::Auto,
             swatch_colors: crate::editor::DEFAULT_COLORS,
             confirm_cancel: true,
+            toolbar: ToolbarConfig::default(),
             name_style: NameStyle::DateTime,
             last_save_ext: None,
             last_save_dir: None,
@@ -396,17 +399,15 @@ mod tests {
         assert_eq!(back.hotkey.ocr_key, 0x4F);
     }
 
-    /// OCR 总开关（OCR-1）：旧配置回退关闭，新值能往返。
+    /// OCR 配置（OCR-1/OCR-10）：无总开关字段（issue #143），旧配置的 `enabled` 被忽略。
     #[test]
     fn ocr_config_defaults_and_roundtrip() {
         let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
-        assert!(!old.ocr.enabled, "OCR 默认关闭");
         assert!(!old.ocr.auto_copy, "自动复制默认关闭");
         assert_eq!(old.ocr.language, OCR_LANG_AUTO, "默认跟随系统语言");
 
         let cfg = Config {
             ocr: OcrConfig {
-                enabled: true,
                 auto_copy: true,
                 language: "zh-Hans-CN".to_string(),
             },
@@ -414,10 +415,19 @@ mod tests {
         };
         let text = toml::to_string_pretty(&cfg).unwrap();
         assert!(text.contains("[ocr]"), "应写成独立的 [ocr] 段：{text}");
+        assert!(!text.contains("enabled"), "不应再写 enabled（OCR 常开）：{text}");
         let back: Config = toml::from_str(&text).unwrap();
-        assert!(back.ocr.enabled);
         assert!(back.ocr.auto_copy, "自动复制开关应能往返");
         assert_eq!(back.ocr.language, "zh-Hans-CN");
+    }
+
+    /// 旧配置里的 `[ocr] enabled = false` 不迁移、不报错：升级后 OCR 直接可用（issue #143）。
+    #[test]
+    fn legacy_ocr_enabled_is_ignored() {
+        let old: Config = toml::from_str("[ocr]\nenabled = false\nauto_copy = true\n").unwrap();
+        assert!(old.ocr.auto_copy, "同段其余字段照旧读入");
+        let text = toml::to_string_pretty(&old).unwrap();
+        assert!(!text.contains("enabled"), "再存盘时不应写回遗留字段：{text}");
     }
 
     /// 上次保存目录（OUT-2）：旧配置缺字段回退 None，新值能往返。

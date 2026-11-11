@@ -67,8 +67,8 @@ impl super::Overlay {
             self.on_pin(); // PIN-1：贴选区
         } else if outputs && vk == self.longshot_key {
             self.on_longshot();
-        } else if outputs && vk == self.ocr_key && self.ocr_enabled {
-            self.on_ocr(); // OCR-3：OCR（功能关闭时不吃这个键，留给工具切换）
+        } else if outputs && vk == self.ocr_key {
+            self.on_ocr(); // OCR-3：OCR 常开（EDT-16：隐藏按钮不关掉这个键）
         } else if let Some(t) = self.tool_by_key(vk) {
             self.switch_tool(t);
         }
@@ -99,6 +99,9 @@ impl super::Overlay {
     }
 
     /// 执行工具栏动作（EDT-7）。
+    /// **这里不得查「工具栏可见性」**（EDT-16）：隐藏只是不绘制，能力必须照旧——
+    /// 隐藏的工具仍可由工具切换键切过来，隐藏的按钮对应的快捷键也照旧生效。
+    /// （可见性只有 `overlay::toolbar::layout` 与设置面板两个消费方）
     pub(super) fn apply_action(&mut self, action: toolbar::Action) {
         // 任何工具栏动作都收起取色面板（EDT-7，issue #73）；
         // 双击色块时第一击走这里（选用该色），第二击经 WM_LBUTTONDBLCLK 再展开面板

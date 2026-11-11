@@ -26,6 +26,16 @@ impl super::Overlay {
         self.ui.px(DIRTY_PAD_BASE)
     }
 
+    /// 工具栏布局条件（EDT-16）：元素显隐来自设置，文本第二行的需求与贴图编辑模式叠加在其上。
+    /// 放在这里而不是 `font`：它描述的是**整个工具栏**的显隐条件，不是字体的事。
+    pub(super) fn toolbar_shown(&self) -> toolbar::Shown<'_> {
+        toolbar::Shown {
+            vis: &self.visibility,
+            text_row: self.text_row_visible(),
+            show_output: !self.locked_selection,
+        }
+    }
+
     /// 更新选区并做脏矩形增量重绘（PRD 6.3.2）：
     /// 只处理旧/新选区的装饰与工具栏区域，避免每次鼠标移动全屏重绘。
     pub(super) fn set_selection(&mut self, new: Option<SelRect>) {
@@ -41,17 +51,7 @@ impl super::Overlay {
         let old_chrome = self.chrome_rect();
         self.font_list = None;
         self.color_panel = None;
-        self.bar = new.map(|s| {
-            toolbar::layout_ex(
-                s,
-                vw,
-                vh,
-                self.text_row_visible(),
-                self.ocr_enabled,
-                !self.locked_selection,
-                self.ui,
-            )
-        });
+        self.bar = new.and_then(|s| toolbar::layout_ex(s, vw, vh, &self.toolbar_shown(), self.ui));
         let new_chrome = self.chrome_rect();
 
         let mut dirty: Option<SelRect> = None;

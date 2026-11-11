@@ -86,8 +86,8 @@ pub struct Overlay {
     longshot_key: u32,
     /// OCR 键（覆盖层内按下，默认 T；设置面板可改，OCR-3）。
     ocr_key: u32,
-    /// OCR 功能是否开启（OCR-1）：关闭时工具栏不出现 OCR 按钮、OCR 键不生效。
-    ocr_enabled: bool,
+    /// 工具栏可见性（EDT-16）：逐元素显隐；隐藏的工具 / 按钮不绘制，但快捷键与输出行为照旧。
+    visibility: crate::settings::ToolbarConfig,
     /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。
     confirm_cancel: bool,
     /// 二次确认「待命」状态（OUT-3 / issue #120）：上次触发退出的键与时刻。

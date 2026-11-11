@@ -77,7 +77,7 @@ fn action_label(action: Action) -> Option<&'static str> {
         Action::Redo => Some("重做"),
         Action::Pin => Some("贴图"),
         Action::Longshot => Some("长截图"),
-        // OCR-3：功能关闭时按钮根本不出现，所以不必再判 `ocr_enabled`
+        // OCR-3：OCR 常开，按钮只是可以被用户藏起来（EDT-16），提示文案与可用性无关
         Action::Ocr => Some("OCR"),
         Action::Copy => Some("复制"),
         Action::Save => Some("保存"),
@@ -297,7 +297,19 @@ mod tests {
     }
 
     fn bar_at(sel: SelRect, vw: i32, vh: i32) -> Toolbar {
-        super::super::layout(sel, vw, vh, false, false, base())
+        let vis = crate::settings::ToolbarConfig::default();
+        super::super::layout_ex(
+            sel,
+            vw,
+            vh,
+            &super::super::Shown {
+                vis: &vis,
+                text_row: false,
+                show_output: true,
+            },
+            base(),
+        )
+        .expect("元素未全隐藏时应有工具栏")
     }
 
     fn sel(x: i32, y: i32, w: i32, h: i32) -> SelRect {

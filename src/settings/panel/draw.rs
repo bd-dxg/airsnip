@@ -32,6 +32,8 @@ pub(super) fn render(pixmap: &mut Pixmap, panel: &Panel, layout: &Layout) {
         }
     }
     draw_content_header(pixmap, panel);
+    // 「工具栏」页脚注（文件组全隐时的提醒，EDT-16 R7）
+    super::toolbar_page::draw_hint(pixmap, panel, layout);
     // 导航与内容分隔线
     let h = layout.height;
     let nav_w = (NAV_W as f32 * panel.scale) as f32;
@@ -112,8 +114,8 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
     }
     let size = 16.0 * s;
     let lx = row.rect.x as f32 + row.label_pad as f32;
-    // 支持项目块的标签由 `reward::draw_block` 自己画（高行顶对齐），此处不重复绘制
-    if row.kind != RowKind::Qr {
+    // 支持项目块与组头的标签由各自的绘制函数负责，此处不重复绘制
+    if !matches!(row.kind, RowKind::Qr | RowKind::Group) {
         let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
         // 操作按钮行（如「恢复默认」）的标签用强调色，提示整行可点
         let color = if row.kind == RowKind::Action { p.accent } else { p.text };
@@ -121,6 +123,7 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
     }
     match row.kind {
         RowKind::Toggle => draw_toggle(pixmap, panel, row),
+        RowKind::Group => super::toolbar_page::draw_group(pixmap, panel, row, hovered),
         RowKind::KeyCap => super::keycap::draw(pixmap, panel, row, hovered),
         RowKind::Radio => draw_radio(pixmap, panel, row),
         RowKind::Readonly => draw_readonly(pixmap, panel, row),
@@ -140,12 +143,13 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::Autostart => panel.autostart_on,
         RowId::ConfirmCancel => panel.config.confirm_cancel,
         RowId::AutoCheckUpdate => panel.config.auto_check_update,
-        RowId::OcrToggle => panel.config.ocr.enabled,
         RowId::OcrAutoCopy => panel.config.ocr.auto_copy,
+        // 工具栏元素显隐（EDT-16）：纯视觉开关，默认全开
+        RowId::Toolbar(slot) => panel.config.toolbar.visible(slot),
         _ => false,
     };
     let c = &row.control;
-    let tw = (36.0 * s) as i32;
+    let tw = (super::controls::TOGGLE_W as f32 * s) as i32;
     let th = (18.0 * s) as i32;
     let tx = c.x + c.w - tw;
     let ty = c.y + (c.h - th) / 2;

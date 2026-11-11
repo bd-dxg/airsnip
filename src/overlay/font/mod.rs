@@ -78,6 +78,12 @@ impl super::Overlay {
                 .is_some_and(|o| matches!(o.kind, Kind::Text { .. }))
     }
 
+    /// 第二行**实际**是否出现：需求（文本工具 / 选中文本 / 正在输入）与工具栏显隐开关
+    /// 的交集（EDT-16：整行一个开关）。
+    pub(super) fn text_row_shown(&self) -> bool {
+        self.text_row_visible() && self.visibility.visible(crate::settings::ToolbarSlot::TextRow)
+    }
+
     /// 第二行展示的字体状态：输入态 > 选中文本对象 > 默认值。
     pub(super) fn font_state(&self) -> (Arc<str>, f32, bool, bool) {
         if let Some(edit) = &self.text_edit {
@@ -97,25 +103,21 @@ impl super::Overlay {
     }
 
     /// 第二行显隐可能与当前状态不符时重建布局（并合并旧/新脏区重绘）。
+    /// 元素显隐（EDT-16）只在设置面板改，而面板是模态的，覆盖层不会中途变配置，
+    /// 所以这里只需盯「第二行要不要出现」。
     pub(super) fn refresh_toolbar(&mut self) {
         let Some(sel) = self.selection else {
             return;
         };
-        let want = self.text_row_visible();
-        if self.bar.as_ref().is_some_and(|b| b.second.is_some() == want) {
+        let want = self.text_row_shown();
+        // 没有工具栏（元素全被隐藏）且不需要第二行 = 无事可做；
+        // 用 `map_or` 而不是 `is_some_and`，否则 `None` 会误判为「需要重建」（EDT-16）
+        if self.bar.as_ref().map_or(!want, |b| b.second.is_some() == want) {
             return;
         }
         let old = self.chrome_rect();
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
-        self.bar = Some(toolbar::layout_ex(
-            sel,
-            vw,
-            vh,
-            want,
-            self.ocr_enabled,
-            !self.locked_selection,
-            self.ui,
-        ));
+        self.bar = toolbar::layout_ex(sel, vw, vh, &self.toolbar_shown(), self.ui);
         // 第二行显隐会改变工具栏高度，面板位置随之失效
         self.font_list = None;
         self.color_panel = None;

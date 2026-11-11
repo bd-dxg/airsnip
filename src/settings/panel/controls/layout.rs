@@ -5,9 +5,10 @@
 use crate::overlay::geometry::SelRect;
 
 use super::{
-    CELLPAD, CLEAR_BTN, CONTENT_HEADER_H, GRID_GAP, H, HOVER_PAD, Item, KEY_ROWS, Layout, NAV_H, NAV_W, PAD, QR_ROW_H,
-    ROW_H, Row, RowId, RowKind, Section, W, ui_scale_row,
+    CELL_PAD, CELLPAD, CLEAR_BTN, CONTENT_HEADER_H, GRID_GAP, GROUP_H, H, HOVER_PAD, Item, KEY_ROWS, Layout, NAV_H,
+    NAV_W, PAD, QR_ROW_H, ROW_H, Row, RowId, RowKind, Section, TOGGLE_W, W, ui_scale_row,
 };
+use crate::settings::ToolbarGroup;
 
 /// 内容区 [left, right] 外扩 `HOVER_PAD` 得到悬停高亮矩形（四周留出内边距）。
 fn hover_rect(left: i32, right: i32, y: i32, h: i32, s: f32) -> SelRect {
@@ -96,13 +97,37 @@ fn mk_cell(id: RowId, label: &'static str, x: i32, y: i32, w: i32, s: f32) -> Ro
     }
 }
 
-/// 高行：高度按内容给（支持项目块），几何与标准行一致。
+/// 高行：高度按内容给（支持项目块 / 组头），几何与标准行一致。
 fn mk_row_tall(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32, h: i32) -> Row {
     let mut row = mk_row(id, kind, label, y, s);
     row.rect.h = h;
     row.control.h = h;
     row.hover.h = h;
     row
+}
+
+/// 「工具栏」页的开关单元格（EDT-16）：标签在左、开关靠右，控件区就是开关本身。
+fn mk_toggle_cell(id: RowId, label: &'static str, x: i32, y: i32, w: i32, s: f32) -> Row {
+    let h = (ROW_H as f32 * s) as i32;
+    let cellpad = (CELL_PAD as f32 * s) as i32;
+    let tw = (TOGGLE_W as f32 * s) as i32;
+    let (content_l, content_r) = (x + cellpad, x + w - cellpad);
+    Row {
+        id,
+        kind: RowKind::Toggle,
+        label,
+        label_pad: cellpad,
+        hover: hover_rect(content_l, content_r, y, h, s),
+        rect: SelRect { x, y, w, h },
+        control: SelRect {
+            x: content_r - tw,
+            y,
+            w: tw,
+            h,
+        },
+        // 只有键帽行带清除按钮；这里给零尺寸，命中测试永不命中
+        clear: SelRect { x: 0, y: 0, w: 0, h: 0 },
+    }
 }
 
 /// 指定分类的内容行。
@@ -119,6 +144,31 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             push(RowId::Lang, RowKind::Readonly, "语言", &mut y, items);
             push(RowId::PinPosOriginal, RowKind::Radio, "贴图位置·原位置", &mut y, items);
             push(RowId::PinPosCenter, RowKind::Radio, "贴图位置·屏幕中间", &mut y, items);
+        }
+        Section::Toolbar => {
+            // 多列紧凑排布（EDT-16）：面板没有滚动条，五组 + 组内元素必须落在固定高内。
+            // 高度：5 个组头（GROUP_H）+ 6 行元素（ROW_H）= 406，加节标题 40 → 446 < H。
+            let w = (W as f32 * s) as i32;
+            let nav_w = (NAV_W as f32 * s) as i32;
+            let pad = (PAD as f32 * s) as i32;
+            let gap = (GRID_GAP as f32 * s) as i32;
+            let row_h = (ROW_H as f32 * s) as i32;
+            let group_h = (GROUP_H as f32 * s) as i32;
+            let (left, right) = (nav_w + pad, w - pad);
+            for g in ToolbarGroup::ALL {
+                let head = mk_row_tall(RowId::ToolbarGroup(g), RowKind::Group, g.title(), y, s, group_h);
+                items.push(Item::Row(head));
+                y += group_h;
+                let cols = g.columns() as i32;
+                let cell_w = (right - left - gap * (cols - 1)) / cols;
+                for (i, slot) in g.slots().iter().enumerate() {
+                    let (col, line) = (i as i32 % cols, i as i32 / cols);
+                    let x = left + col * (cell_w + gap);
+                    let cell = mk_toggle_cell(RowId::Toolbar(*slot), slot.label(), x, y + line * row_h, cell_w, s);
+                    items.push(Item::Row(cell));
+                }
+                y += g.slots().len().div_ceil(cols as usize) as i32 * row_h;
+            }
         }
         Section::Hotkeys => {
             // 两列排布：快捷键不必每个独占一行，行数减半、不把窗口撑高（保持横向比例）
@@ -164,7 +214,6 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             }
         }
         Section::Ocr => {
-            push(RowId::OcrToggle, RowKind::Toggle, "OCR", &mut y, items);
             push(RowId::OcrAutoCopy, RowKind::Toggle, "识别后自动复制", &mut y, items);
             push(RowId::OcrLang, RowKind::Action, "识别语言", &mut y, items);
             push(RowId::OcrNote, RowKind::Readonly, "说明", &mut y, items);

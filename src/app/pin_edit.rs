@@ -33,14 +33,26 @@ impl App {
             w: cw as i32,
             h: ch as i32,
         };
-        let bar = crate::overlay::toolbar::layout_ex(probe, 1 << 20, 1 << 20, true, false, false, ui);
+        let bar = crate::overlay::toolbar::layout_ex(
+            probe,
+            1 << 20,
+            1 << 20,
+            &crate::overlay::toolbar::Shown {
+                vis: &self.config.toolbar,
+                text_row: true,
+                show_output: false,
+            },
+            ui,
+        );
         let (margin, offset) = (ui.px(4.0), ui.px(8.0));
         let (content_w, content_h) = (cw as i32, ch as i32);
-        let win_w = content_w.max(bar.rect.w) + margin * 2;
-        let content_off_x = margin + (bar.rect.w - content_w).max(0) / 2;
+        // 工具栏可见性（EDT-16）：元素全隐藏时根本没有工具栏，窗口只需包住贴图
+        let (bar_w, bar_h) = bar.as_ref().map(|b| (b.rect.w, b.rect.h)).unwrap_or((0, 0));
+        let win_w = content_w.max(bar_w) + margin * 2;
+        let content_off_x = margin + (bar_w - content_w).max(0) / 2;
         let content_off_y = margin;
         // 高度：内容 + 间隔 + 工具栏（两行）+ 边距（编辑模式不画尺寸提示）
-        let win_h = margin + content_h + offset + bar.rect.h + margin;
+        let win_h = margin + content_h + if bar_h > 0 { offset + bar_h } else { 0 } + margin;
         let (vx, vy, vw, vh) = virtual_screen();
         // 贴图过大、编辑窗口放不下整个屏幕：直接拒绝并提示（否则工具栏会跑到屏外，审查 P2）
         if win_w > vw || win_h > vh {
@@ -77,7 +89,7 @@ impl App {
             tool_keys: self.config.tool_keys.clone(),
             longshot_key: self.config.hotkey.longshot_key,
             ocr_key: self.config.hotkey.ocr_key,
-            ocr_enabled: self.config.ocr.enabled,
+            visibility: self.config.toolbar.clone(),
             confirm_cancel: self.config.confirm_cancel,
             pin_key: self.config.hotkey.pin_key,
             // 贴图编辑模式不注册「再次截图」键（选区锁定）：显式传未绑定，避免看着像生效

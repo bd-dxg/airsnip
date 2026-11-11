@@ -14,10 +14,10 @@ pub struct OverlayOpts {
     pub tool_keys: crate::settings::ToolKeys,
     /// 长截图键（默认 S，设置面板可改）。
     pub longshot_key: u32,
-    /// OCR 键（默认 T，设置面板可改，OCR-3）。
+    /// OCR 键（默认 T，设置面板可改，OCR-3）：OCR 常开，是否出现按钮由工具栏可见性管。
     pub ocr_key: u32,
-    /// OCR 是否开启（OCR-1）：关闭时工具栏不出现 OCR 按钮、OCR 键不生效。
-    pub ocr_enabled: bool,
+    /// 工具栏可见性（EDT-16，issue #143）：逐元素显隐，纯视觉偏好（隐藏 ≠ 禁用）。
+    pub visibility: crate::settings::ToolbarConfig,
     /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。
     pub confirm_cancel: bool,
     /// 贴图键（默认 F3，设置面板可改；ADR 0019：可为鼠标键）。

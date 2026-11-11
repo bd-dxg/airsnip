@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! OCR 设置（OCR-1/OCR-6）：总开关、识别语言循环切换、说明行。
+//! OCR 设置（OCR-6/OCR-10）：识别语言循环切换、自动复制、说明行。
+//! OCR 本身常开、没有总开关（issue #143）：按钮显隐归设置面板「工具栏」页。
 //!
 //! 语言不弹下拉框：系统通常只装 1～3 个 OCR 语言包，点一行循环切换足够，
 //! 且不需要为动态列表改造行模型（`Row::label` 是 `&'static str`）。
@@ -62,7 +63,6 @@ mod tests {
     fn auto_is_treated_as_follow_system() {
         for raw in ["auto", " AUTO ", ""] {
             let cfg = OcrConfig {
-                enabled: true,
                 language: raw.to_string(),
                 ..Default::default()
             };

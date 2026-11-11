@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 覆盖层工具栏（EDT-7）：布局与命中测试；绘制见 `draw` 子模块。
+//! 覆盖层工具栏（EDT-7 / EDT-16）：类型、命中测试与绘制入口；布局见 `layout`，绘制见 `draw`。
 //! 所有尺寸以 1080p / 100% DPI 为基准，经 `Ui` 按显示器 DPI 缩放（CAP-5）。
 
 pub(crate) mod colorpanel;
 mod draw;
 pub(crate) mod fontlist;
 mod label;
+mod layout;
 pub(crate) mod tip;
 
 use std::sync::Arc;
@@ -13,7 +14,7 @@ use std::sync::Arc;
 use tiny_skia::Pixmap;
 
 use crate::editor::{SWATCH_COUNT, Tool};
-use crate::overlay::geometry::{SelRect, info_offset, info_text_below, info_text_h};
+use crate::overlay::geometry::SelRect;
 use crate::overlay::ui::Ui;
 use crate::theme::Palette;
 
@@ -108,6 +109,8 @@ pub struct Toolbar {
     pub(crate) gap: i32,
     /// 命中区（draw 子模块读取所有元素）。
     pub(crate) hits: Vec<(SelRect, Action)>,
+    /// 组分隔线的 x（屏幕坐标）：每组首元素的位置，首个实际绘制的组不画（EDT-16）。
+    pub(crate) dividers: Vec<i32>,
 }
 
 impl Toolbar {
@@ -120,152 +123,7 @@ impl Toolbar {
     }
 }
 
-/// 布局游标：依次排布元素，返回元素左边界。
-struct Cursor {
-    x: i32,
-    gap: i32,
-    sep: i32,
-}
-
-impl Cursor {
-    fn next(&mut self, w: i32) -> i32 {
-        let x = self.x;
-        self.x += w + self.gap;
-        x
-    }
-
-    fn sep(&mut self) {
-        self.x += self.sep - self.gap;
-    }
-}
-
-/// 计算工具栏布局：优先放在选区下方，空间不足则放上方。
-/// `text_row` 为真时附上第二行（文本工具或选中文本对象，EDT-4）；
-/// `ocr` 为假时不出「OCR」按钮（OCR-1：关闭时界面与无此功能时完全一致）。
-/// 仅测试使用的便捷入口（输出组恒开）；生产代码用 [`layout_ex`]。
-#[cfg(test)]
-pub fn layout(sel: SelRect, screen_w: i32, screen_h: i32, text_row: bool, ocr: bool, ui: Ui) -> Toolbar {
-    layout_ex(sel, screen_w, screen_h, text_row, ocr, true, ui)
-}
-
-/// 同 [`layout`]，额外用 `show_output` 控制「非编辑专属」元素：
-/// 贴图编辑模式（ADR 0028）下选区锁定，输出组（贴图 / 长截图 / OCR）不出现，
-/// 也不再为「宽 × 高」信息文字预留/绘制空间（`show_output == false`）。
-pub fn layout_ex(
-    sel: SelRect,
-    screen_w: i32,
-    screen_h: i32,
-    text_row: bool,
-    ocr: bool,
-    show_output: bool,
-    ui: Ui,
-) -> Toolbar {
-    let (row_h, h2) = (ui.px(H_BASE), ui.px(H2_BASE));
-    let (btn, sw) = (ui.px(BTN_BASE), ui.px(SW_BASE));
-    let (gap, sep, pad) = (ui.px(GAP_BASE), ui.px(SEP_BASE), ui.px(PAD_BASE));
-    let row_gap = ui.px(ROW_GAP_BASE);
-    let margin = ui.px(4.0);
-
-    let mut c = Cursor { x: pad, gap, sep };
-    let mut hits: Vec<(SelRect, Action)> = Vec::new();
-    let mut item = |c: &mut Cursor, w: i32, item_h: i32, action: Action| {
-        let x = c.next(w);
-        let y = (row_h - item_h) / 2;
-        hits.push((SelRect { x, y, w, h: item_h }, action));
-    };
-
-    for tool in Tool::ALL {
-        item(&mut c, btn, btn, Action::Tool(tool));
-    }
-    c.sep();
-    for i in 0..SWATCH_COUNT {
-        item(&mut c, sw, sw, Action::Color(i));
-    }
-    c.sep();
-    item(&mut c, btn, btn, Action::ToggleFill);
-    c.sep();
-    item(&mut c, btn, btn, Action::Undo);
-    item(&mut c, btn, btn, Action::Redo);
-    if show_output {
-        c.sep();
-        item(&mut c, btn, btn, Action::Pin);
-        item(&mut c, btn, btn, Action::Longshot);
-        if ocr {
-            item(&mut c, btn, btn, Action::Ocr);
-        }
-    }
-    c.sep();
-    item(&mut c, btn, btn, Action::Copy);
-    item(&mut c, btn, btn, Action::Save);
-    let w1 = c.x - gap + pad;
-
-    // 第二行（EDT-4）：字体族按钮 + B / I + 字号 − 数值 +
-    let mut c2 = Cursor { x: pad, gap, sep };
-    let mut hits2: Vec<(SelRect, Action)> = Vec::new();
-    let mut item2 = |c: &mut Cursor, w: i32, action: Action| {
-        let x = c.next(w);
-        let y = (h2 - btn) / 2;
-        hits2.push((SelRect { x, y, w, h: btn }, action));
-    };
-    if text_row {
-        item2(&mut c2, ui.px(FONT_BTN_W_BASE), Action::FontPick);
-        c2.sep();
-        item2(&mut c2, btn, Action::ToggleBold);
-        item2(&mut c2, btn, Action::ToggleItalic);
-        c2.sep();
-        item2(&mut c2, btn, Action::FontSmaller);
-        item2(&mut c2, ui.px(SIZE_W_BASE), Action::FontSize);
-        item2(&mut c2, btn, Action::FontLarger);
-    }
-    let w2 = if text_row { c2.x - gap + pad } else { 0 };
-
-    let w = w1.max(w2);
-    let total_h = if text_row { row_h + row_gap + h2 } else { row_h };
-    let x = sel.x.clamp(margin, (screen_w - w - margin).max(margin));
-    // 信息文字占位（见 overlay::text_rect）：默认贴选区下方，与文字同侧时再让出一个文字高度；
-    // 下方塞不下就翻到上方，且避开文字块（见 geometry::info_text_below）。
-    // 贴图编辑模式（`show_output == false`）不画信息文字，也不为它预留空间。
-    let offset = info_offset(ui);
-    let text_below = show_output && info_text_below(sel, screen_h, total_h, ui);
-    let below = sel.y + sel.h + offset + if text_below { info_text_h(ui) } else { 0 };
-    let y = if below + total_h + margin <= screen_h {
-        below
-    } else if show_output && text_below {
-        (sel.y - offset - total_h).max(ui.px(2.0))
-    } else if show_output {
-        (sel.y - info_text_h(ui) - offset - offset - total_h).max(ui.px(2.0))
-    } else {
-        (sel.y - offset - total_h).max(ui.px(2.0))
-    };
-    let first = SelRect { x, y, w: w1, h: row_h };
-    let second = text_row.then(|| SelRect {
-        x,
-        y: y + row_h + row_gap,
-        w: w2,
-        h: h2,
-    });
-    let rect = SelRect { x, y, w, h: total_h };
-
-    // 相对坐标 → 屏幕坐标
-    let offset = |r: SelRect, dy: i32| SelRect {
-        x: r.x + x,
-        y: r.y + y + dy,
-        w: r.w,
-        h: r.h,
-    };
-    let hits = hits
-        .into_iter()
-        .map(|(r, a)| (offset(r, 0), a))
-        .chain(hits2.into_iter().map(|(r, a)| (offset(r, row_h + row_gap), a)));
-    Toolbar {
-        rect,
-        first,
-        second,
-        ui,
-        gap,
-        hits: hits.collect(),
-    }
-}
+pub(crate) use layout::{Shown, layout_ex};
 
 /// 把工具栏绘制到覆盖层像素图（委托给 draw 子模块）。
 pub fn draw(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, palette: &Palette) {
@@ -277,6 +135,7 @@ mod tests {
     use super::*;
 
     use crate::overlay::geometry::{intersect_rect, text_rect};
+    use crate::settings::{ToolbarConfig, ToolbarGroup, ToolbarSlot};
 
     /// 基准缩放（100% DPI）：尺寸与改动前的硬编码值一致。
     fn base() -> Ui {
@@ -287,26 +146,51 @@ mod tests {
         SelRect { x, y, w, h }
     }
 
-    /// 窄屏 / 高缩放下的越界回归（EDT-7）：工具栏从 19 个按钮长到 22 个后更宽，
+    /// 默认全可见（EDT-16）：`vis` 传 `ToolbarConfig::default()` 即得与加此功能前一致的布局。
+    fn shown<'a>(vis: &'a ToolbarConfig, text_row: bool) -> Shown<'a> {
+        Shown {
+            vis,
+            text_row,
+            show_output: true,
+        }
+    }
+
+    /// 普通截图场景的布局（工具栏必须存在）。
+    fn layout(s: SelRect, vw: i32, vh: i32, vis: &ToolbarConfig, text_row: bool, ui: Ui) -> Toolbar {
+        layout_ex(s, vw, vh, &shown(vis, text_row), ui).expect("元素未全隐藏时应有工具栏")
+    }
+
+    /// 全可见时的工具栏配置。
+    fn all() -> ToolbarConfig {
+        ToolbarConfig::default()
+    }
+
+    /// 窄屏 / 高缩放下的越界回归（EDT-7/EDT-16）：工具栏从 19 个按钮长到 23 个后更宽，
     /// 必须仍完整落在屏幕内（不得被右侧裁掉，也不得顶出上 / 下边）。
     #[test]
     fn bar_stays_on_screen_on_narrow_displays() {
+        let mut minimal = ToolbarConfig::default();
+        minimal.set_group_visible(ToolbarGroup::Tools, false);
+        minimal.set_group_visible(ToolbarGroup::Colors, false);
+        minimal.set_group_visible(ToolbarGroup::Edit, false);
         for (vw, vh, dpi) in [(1024, 768, 96), (1280, 800, 120), (1920, 1080, 192), (2560, 1440, 192)] {
             let ui = Ui::from_dpi(dpi);
-            for text_row in [false, true] {
-                // 小选区 + 贴右下角：工具栏既宽又无处可翻，最容易越界
-                for s in [sel(60, 60, 40, 40), sel(vw - 120, vh - 120, 60, 60)] {
-                    let bar = layout(s, vw, vh, text_row, true, ui);
-                    assert!(bar.rect.x >= 0, "{vw}x{vh}@{dpi} 左越界：{bar:?}");
-                    assert!(
-                        bar.rect.x + bar.rect.w <= vw,
-                        "{vw}x{vh}@{dpi} 右越界（选区 {s:?}）：{bar:?}"
-                    );
-                    assert!(bar.rect.y >= 0, "{vw}x{vh}@{dpi} 上越界：{bar:?}");
-                    assert!(
-                        bar.rect.y + bar.rect.h <= vh,
-                        "{vw}x{vh}@{dpi} 下越界（选区 {s:?}）：{bar:?}"
-                    );
+            for vis in [all(), minimal.clone()] {
+                for text_row in [false, true] {
+                    // 小选区 + 贴右下角：工具栏既宽又无处可翻，最容易越界
+                    for s in [sel(60, 60, 40, 40), sel(vw - 120, vh - 120, 60, 60)] {
+                        let bar = layout(s, vw, vh, &vis, text_row, ui);
+                        assert!(bar.rect.x >= 0, "{vw}x{vh}@{dpi} 左越界：{bar:?}");
+                        assert!(
+                            bar.rect.x + bar.rect.w <= vw,
+                            "{vw}x{vh}@{dpi} 右越界（选区 {s:?}）：{bar:?}"
+                        );
+                        assert!(bar.rect.y >= 0, "{vw}x{vh}@{dpi} 上越界：{bar:?}");
+                        assert!(
+                            bar.rect.y + bar.rect.h <= vh,
+                            "{vw}x{vh}@{dpi} 下越界（选区 {s:?}）：{bar:?}"
+                        );
+                    }
                 }
             }
         }
@@ -318,7 +202,7 @@ mod tests {
         let (vw, vh) = (2560, 1440);
         for text_row in [false, true] {
             for s in [sel(600, 500, 800, 400), sel(600, 60, 800, 400)] {
-                let bar = layout(s, vw, vh, text_row, false, base());
+                let bar = layout(s, vw, vh, &all(), text_row, base());
                 assert!(
                     bar.rect.y >= s.y + s.h,
                     "工具栏应在选区下方（text_row={text_row}, 选区 {s:?}）：{bar:?}"
@@ -340,7 +224,7 @@ mod tests {
         ];
         for ui in [base(), Ui::from_dpi(192)] {
             for s in cases {
-                let bar = layout(s, vw, vh, false, false, ui).rect;
+                let bar = layout(s, vw, vh, &all(), false, ui).rect;
                 let text = text_rect(s, vw, vh, bar.h, ui);
                 assert!(
                     intersect_rect(bar, text).is_none(),
@@ -355,17 +239,18 @@ mod tests {
     /// 第二行（EDT-4）同样不能与信息文字重叠，且两行不越出屏幕。
     #[test]
     fn text_row_stays_inside_screen() {
-        let (vw, vh) = (1366, 768);
-        let cases = [
-            sel(100, 100, 400, 300),
-            sel(100, 4, 400, 300),
-            sel(100, 100, 900, 600),
-            sel(100, 4, 900, 700),
-            sel(1000, 300, 300, 400),
-        ];
-        for ui in [base(), Ui::from_dpi(192)] {
+        // 200% 缩放下用 1080p 屏：OCR 按钮常驻（EDT-16）后工具栏更宽，
+        // 1366×768@200% 已放不下，那个组合由 `bar_wider_than_screen_starts_at_margin` 单独记录
+        for (vw, vh, ui) in [(1366, 768, base()), (1920, 1080, Ui::from_dpi(192))] {
+            let cases = [
+                sel(100, 100, 400, 300),
+                sel(100, 4, 400, 300),
+                sel(100, 100, 900, 600),
+                sel(100, 4, 900, 700),
+                sel(1000, 300, 300, 400),
+            ];
             for s in cases {
-                let bar = layout(s, vw, vh, true, false, ui);
+                let bar = layout(s, vw, vh, &all(), true, ui);
                 let text = text_rect(s, vw, vh, bar.rect.h, ui);
                 assert!(
                     intersect_rect(bar.rect, text).is_none(),
@@ -392,9 +277,42 @@ mod tests {
         }
     }
 
+    /// 已知限制（EDT-16）：工具栏比屏幕还宽时只能从左边距开始画，右侧被裁（**不**引入换行、
+    /// 也**不**改为右对齐）。这是「OCR 按钮默认出现」的副作用，已写入 README「已知限制」
+    /// 与 ADR 0033：用户的出路是隐藏不用的元素（见下一条测试）。
+    #[test]
+    fn bar_wider_than_screen_is_left_aligned() {
+        let (vw, vh) = (1366, 768);
+        let ui = Ui::from_dpi(192);
+        let bar = layout(sel(100, 100, 400, 300), vw, vh, &all(), true, ui);
+        assert!(bar.rect.w > vw, "该组合下工具栏确实比屏幕宽：{}", bar.rect.w);
+        assert_eq!(bar.rect.x, ui.px(4.0), "不得从负坐标开始画（右侧被裁而非左侧）");
+        assert!(
+            bar.rect.y >= 0 && bar.rect.y + bar.rect.h <= vh,
+            "纵向仍应完整落在屏幕内"
+        );
+    }
+
+    /// 同上的出路（EDT-16 R1）：隐藏整组后工具栏重新放得下，且仍不越出左边距。
+    #[test]
+    fn hiding_groups_fits_narrow_hidpi_screen() {
+        let (vw, vh) = (1366, 768);
+        let ui = Ui::from_dpi(192);
+        let s = sel(100, 100, 400, 300);
+        let mut vis = all();
+        vis.set_group_visible(ToolbarGroup::Colors, false);
+        vis.set_group_visible(ToolbarGroup::Output, false);
+        let thin = layout(s, vw, vh, &vis, true, ui);
+        assert!(thin.rect.w <= vw, "隐藏两组后应能放下：{}", thin.rect.w);
+        assert!(thin.rect.x >= ui.px(4.0) && thin.rect.x + thin.rect.w <= vw);
+        // 剩下的元素一个不少地仍在命中区里
+        assert!(thin.hits.iter().any(|(_, a)| *a == Action::Save));
+        assert!(!thin.hits.iter().any(|(_, a)| *a == Action::Ocr));
+    }
+
     #[test]
     fn toolbar_hit_maps_each_element() {
-        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, true, false, base());
+        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, &all(), true, base());
         // 每个元素的中心点必须命中它自己
         for (r, action) in &bar.hits {
             let (cx, cy) = (r.x + r.w / 2, r.y + r.h / 2);
@@ -407,9 +325,9 @@ mod tests {
                 assert!(w[0].0.x + w[0].0.w <= w[1].0.x, "元素重叠：{:?} / {:?}", w[0].0, w[1].0);
             }
         }
-        // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
+        // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行；OCR 常驻，EDT-16）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 28);
+        assert_eq!(actions.len(), 29);
         assert_eq!(actions[..10], Tool::ALL.map(Action::Tool));
         // 色块：5 个，均可双击改色（issue #73 后续，不再有单独的自定义槽）
         assert_eq!(actions[10..15], [0, 1, 2, 3, 4].map(Action::Color));
@@ -418,10 +336,11 @@ mod tests {
         assert_eq!(actions[17], Action::Redo);
         assert_eq!(actions[18], Action::Pin);
         assert_eq!(actions[19], Action::Longshot);
-        assert_eq!(actions[20], Action::Copy);
-        assert_eq!(actions[21], Action::Save);
+        assert_eq!(actions[20], Action::Ocr, "OCR 按钮应紧跟长截图");
+        assert_eq!(actions[21], Action::Copy);
+        assert_eq!(actions[22], Action::Save);
         assert_eq!(
-            actions[22..],
+            actions[23..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -436,50 +355,120 @@ mod tests {
     /// 非文本场景第二行不应出现（避免占地与多余命中区）。
     #[test]
     fn second_row_only_when_text_row_requested() {
-        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, false, false, base());
+        let bar = layout(sel(100, 100, 400, 300), 2560, 1440, &all(), false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 22);
+        assert_eq!(bar.hits.len(), 23);
     }
 
-    /// OCR 按钮（OCR-3）：功能开启时紧跟长截图出现，关闭时完全不出现（OCR-1）。
+    /// 隐藏的元素不再有命中区，工具栏宽度随之变窄（R1/R2）。
     #[test]
-    fn ocr_button_only_when_enabled() {
+    fn hidden_elements_drop_hits_and_shrink_width() {
         let s = sel(100, 100, 400, 300);
-        let off = layout(s, 2560, 1440, false, false, base());
-        assert_eq!(off.hits.len(), 22, "关闭时不应有 OCR 按钮");
-        assert!(!off.hits.iter().any(|(_, a)| *a == Action::Ocr));
-
-        let on = layout(s, 2560, 1440, false, true, base());
-        assert_eq!(on.hits.len(), 23);
-        let actions: Vec<Action> = on.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions[19], Action::Longshot);
-        assert_eq!(actions[20], Action::Ocr, "OCR 按钮应紧跟长截图");
-        assert_eq!(actions[21], Action::Copy);
-        assert_eq!(actions[22], Action::Save);
-        // 多一个按钮后仍不能与信息文字重叠、不能越出屏幕
-        for ui in [base(), Ui::from_dpi(192)] {
-            let bar = layout(s, 2560, 1440, false, true, ui);
-            let text = text_rect(s, 2560, 1440, bar.rect.h, ui);
+        let full = layout(s, 2560, 1440, &all(), false, base());
+        let mut vis = all();
+        vis.set_visible(ToolbarSlot::Tool(Tool::Ellipse), false);
+        vis.set_visible(ToolbarSlot::Color(0), false);
+        vis.set_visible(ToolbarSlot::Save, false);
+        let thin = layout(s, 2560, 1440, &vis, false, base());
+        for hidden in [Action::Tool(Tool::Ellipse), Action::Color(0), Action::Save] {
             assert!(
-                intersect_rect(bar.rect, text).is_none(),
-                "工具栏 {:?} 与信息文字 {text:?} 重叠",
-                bar.rect
+                !thin.hits.iter().any(|(_, a)| *a == hidden),
+                "隐藏后不应再有 {hidden:?} 的命中区"
             );
-            assert!(
-                bar.rect.x >= 0 && bar.rect.x + bar.rect.w <= 2560,
-                "工具栏越界：{:?}",
-                bar.rect
-            );
+            assert!(full.hits.iter().any(|(_, a)| *a == hidden), "全可见时应有 {hidden:?}");
         }
+        let btn = base().px(BTN_BASE);
+        let sw = base().px(SW_BASE);
+        let gap = base().px(GAP_BASE);
+        // 宽度 = Σ宽 + (n-1)·间距 + 分隔 + 2·内边距：去掉两个按钮 + 一个色块，连带它们的间距
+        assert_eq!(
+            thin.rect.w,
+            full.rect.w - (btn * 2 + sw + gap * 3),
+            "宽度应按可见项重算"
+        );
+        assert_eq!(thin.hits.len(), full.hits.len() - 3);
+    }
+
+    /// 全部元素隐藏 → 没有工具栏（R4）；只剩一个元素时仍照常布局。
+    #[test]
+    fn all_hidden_means_no_toolbar() {
+        let s = sel(100, 100, 400, 300);
+        let mut vis = all();
+        for g in ToolbarGroup::ALL {
+            vis.set_group_visible(g, false);
+        }
+        assert!(layout_ex(s, 2560, 1440, &shown(&vis, true), base()).is_none());
+
+        vis.set_visible(ToolbarSlot::Save, true);
+        let bar = layout(s, 2560, 1440, &vis, true, base());
+        assert_eq!(bar.hits.len(), 1);
+        assert_eq!(bar.rect.h, base().px(H_BASE));
+        assert_eq!(
+            bar.rect.w,
+            base().px(BTN_BASE) + base().px(PAD_BASE) * 2,
+            "只剩一个按钮的宽度"
+        );
+    }
+
+    /// 第二行整行一个开关（R1）：隐藏后即使文本工具激活也不出现，且不占高度。
+    #[test]
+    fn text_row_switch_hides_whole_row() {
+        let s = sel(100, 100, 400, 300);
+        let mut vis = all();
+        vis.set_visible(ToolbarSlot::TextRow, false);
+        let bar = layout(s, 2560, 1440, &vis, true, base());
+        assert!(bar.second.is_none(), "第二行开关隐藏后不应出现第二行");
+        assert_eq!(bar.rect.h, base().px(H_BASE), "不应为第二行留高度");
+        assert!(!bar.hits.iter().any(|(_, a)| *a == Action::FontLarger));
+    }
+
+    /// 组分隔线只画在实际绘制的组之间（整组隐藏时不留下孤立的竖线）。
+    #[test]
+    fn dividers_follow_drawn_groups() {
+        let s = sel(100, 100, 400, 300);
+        let full = layout(s, 2560, 1440, &all(), false, base());
+        assert_eq!(full.dividers.len(), ToolbarGroup::ALL.len() - 1, "5 组应有 4 条分隔线");
+        assert!(full.dividers.windows(2).all(|w| w[0] < w[1]), "分隔线应自左向右递增");
+        assert!(full.dividers.iter().all(|x| *x > full.rect.x));
+
+        let mut vis = all();
+        vis.set_group_visible(ToolbarGroup::Colors, false);
+        let no_colors = layout(s, 2560, 1440, &vis, false, base());
+        assert_eq!(
+            no_colors.dividers.len(),
+            ToolbarGroup::ALL.len() - 2,
+            "少一组就少一条线"
+        );
+    }
+
+    /// 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图 / OCR）整体不出现，复制/保存仍在。
+    #[test]
+    fn output_group_hidden_when_editing() {
+        let s = sel(100, 100, 400, 300);
+        let vis = all();
+        let full = layout_ex(s, 2560, 1440, &shown(&vis, false), base()).expect("应有工具栏");
+        let editing = Shown {
+            vis: &vis,
+            text_row: false,
+            show_output: false,
+        };
+        let edit = layout_ex(s, 2560, 1440, &editing, base()).expect("应有工具栏");
+        let is_output = |a: &Action| matches!(a, Action::Pin | Action::Longshot | Action::Ocr);
+        assert!(full.hits.iter().any(|(_, a)| *a == Action::Pin));
+        assert!(!edit.hits.iter().any(|(_, a)| is_output(a)), "编辑模式不应有输出组");
+        assert!(edit.hits.iter().any(|(_, a)| *a == Action::Copy));
+        assert!(edit.hits.iter().any(|(_, a)| *a == Action::Save));
+        // 少了三个按钮，工具栏更窄
+        assert!(edit.rect.w < full.rect.w);
     }
 
     /// 高 DPI（200%）下工具栏整体尺寸翻倍：4K 屏上控件不再只有一半大（CAP-5）。
     #[test]
     fn toolbar_scales_with_dpi() {
         let s = sel(600, 500, 800, 400);
-        let base_bar = layout(s, 2560, 1440, true, false, base());
-        let hidpi = layout(s, 3840, 2160, true, false, Ui::from_dpi(192));
+        let base_bar = layout(s, 2560, 1440, &all(), true, base());
+        let hidpi = layout(s, 3840, 2160, &all(), true, Ui::from_dpi(192));
         assert_eq!(hidpi.first.h, base_bar.first.h * 2, "第一行高度应翻倍");
         assert_eq!(hidpi.rect.h, base_bar.rect.h * 2, "整体高度应翻倍");
         assert_eq!(hidpi.rect.w, base_bar.rect.w * 2, "整体宽度应翻倍");
@@ -489,20 +478,5 @@ mod tests {
             assert_eq!(a.0.w * 2, b.0.w, "元素宽度应翻倍：{:?}", a.1);
             assert_eq!(a.0.h * 2, b.0.h, "元素高度应翻倍：{:?}", a.1);
         }
-    }
-
-    /// 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图 / OCR）整体不出现，复制/保存仍在。
-    #[test]
-    fn output_group_hidden_when_editing() {
-        let s = sel(100, 100, 400, 300);
-        let full = layout_ex(s, 2560, 1440, false, true, true, base());
-        let edit = layout_ex(s, 2560, 1440, false, true, false, base());
-        let is_output = |a: &Action| matches!(a, Action::Pin | Action::Longshot | Action::Ocr);
-        assert!(full.hits.iter().any(|(_, a)| *a == Action::Pin));
-        assert!(!edit.hits.iter().any(|(_, a)| is_output(a)), "编辑模式不应有输出组");
-        assert!(edit.hits.iter().any(|(_, a)| *a == Action::Copy));
-        assert!(edit.hits.iter().any(|(_, a)| *a == Action::Save));
-        // 少了三个按钮，工具栏更窄
-        assert!(edit.rect.w < full.rect.w);
     }
 }
