@@ -26,6 +26,30 @@ pub struct HdrOutput {
     pub color: DisplayColorState,
 }
 
+impl HdrOutput {
+    /// 为已连接输出建 D3D11 设备与抓帧上下文。
+    pub fn attach(out: &AttachedOutput) -> Result<Self, String> {
+        let (device, context) = create_context(&out.output)?;
+        Ok(Self {
+            output: out.output.clone(),
+            device,
+            context,
+            rect: out.rect,
+            color: out.color,
+        })
+    }
+}
+
+/// 一个已连接输出（**不区分 HDR / SDR**）的矩形与色彩状态。
+///
+/// 虚拟屏拼装需要逐个输出处理：HDR 走 DDA，SDR 走 BitBlt 补齐（issue #156）。
+pub struct AttachedOutput {
+    pub output: IDXGIOutput6,
+    /// 桌面矩形（物理像素，虚拟桌面坐标）。
+    pub rect: windows::Win32::Foundation::RECT,
+    pub color: DisplayColorState,
+}
+
 /// 单个输出的抓帧结果（RGBA8）。
 pub struct Frame {
     pub width: u32,
@@ -33,22 +57,19 @@ pub struct Frame {
     pub rgba: Vec<u8>,
 }
 
-/// 枚举全部 HDR 输出。
-pub fn all_hdr_outputs(states: &[(String, DisplayColorState)]) -> Result<Vec<HdrOutput>, String> {
+/// 枚举全部已连接输出（含 SDR，调用方自行决定谁走 DDA）。
+pub fn attached_outputs(states: &[(String, DisplayColorState)]) -> Result<Vec<AttachedOutput>, String> {
     let mut found = Vec::new();
     visit_attached_outputs(states, |output6, desc, color| {
-        let bounds = unsafe {
+        let rect = unsafe {
             output6
                 .GetDesc1()
                 .map(|d| d.DesktopCoordinates)
                 .unwrap_or(desc.DesktopCoordinates)
         };
-        let (device, context) = create_context(output6)?;
-        found.push(HdrOutput {
+        found.push(AttachedOutput {
             output: output6.clone(),
-            device,
-            context,
-            rect: bounds,
+            rect,
             color,
         });
         Ok(true)
@@ -72,6 +93,10 @@ pub fn hdr_output_intersecting(
     };
     let mut picked = None;
     let _ = visit_attached_outputs(states, |output6, desc, color| {
+        // 只有 HDR 输出才需要 DDA，SDR 区域交给 BitBlt 更快。
+        if !color.hdr_enabled {
+            return Ok(true);
+        }
         let r = desc.DesktopCoordinates;
         let disjoint =
             r.right <= target.left || r.left >= target.right || r.bottom <= target.top || r.top >= target.bottom;
@@ -134,10 +159,6 @@ where
                         .collect::<Vec<_>>(),
                 );
                 let color = state_for_device(states, &name);
-                // SDR 输出不需要 DDA：BitBlt 已正确且更快。
-                if !color.hdr_enabled {
-                    continue;
-                }
                 if !visit(&output6, &desc, color)? {
                     return Ok(());
                 }
