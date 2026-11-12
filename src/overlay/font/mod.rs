@@ -52,6 +52,18 @@ fn apply_fields(
     }
 }
 
+/// 工具栏布局是否需要重建：`None` = 还没建过布局，`Some(second)` = 现有布局的第二行是否存在。
+///
+/// **`None` 不等于「不需要工具栏」**：元素全被隐藏时布局确实是 `None`，但贴图编辑
+/// （ADR 0028）的选区是 seed 的、不走 `set_selection`，工具栏只能由 `refresh_toolbar`
+/// 建出来——把「`None` + 不需要第二行」当成「无事可做」会让整条工具栏永不出现（issue #152）。
+fn bar_stale(bar: Option<bool>, want_second: bool) -> bool {
+    match bar {
+        None => true,
+        Some(second) => second != want_second,
+    }
+}
+
 impl super::Overlay {
     /// 工具栏与弹出面板（字体列表 / 取色）的合并脏区（可能分离，重绘需一并覆盖）。
     pub(super) fn chrome_rect(&self) -> Option<SelRect> {
@@ -110,9 +122,7 @@ impl super::Overlay {
             return;
         };
         let want = self.text_row_shown();
-        // 没有工具栏（元素全被隐藏）且不需要第二行 = 无事可做；
-        // 用 `map_or` 而不是 `is_some_and`，否则 `None` 会误判为「需要重建」（EDT-16）
-        if self.bar.as_ref().map_or(!want, |b| b.second.is_some() == want) {
+        if !bar_stale(self.bar.as_ref().map(|b| b.second.is_some()), want) {
             return;
         }
         let old = self.chrome_rect();
@@ -240,6 +250,20 @@ mod tests {
     fn fields() -> (Arc<str>, f32, bool, bool) {
         (Arc::from(editor::DEFAULT_FONT_FAMILY), 24.0, false, false)
     }
+    /// 工具栏重建判据（issue #152）：没有布局必须重建，哪怕当前不需要第二行。
+    #[test]
+    fn bar_rebuilds_when_missing_even_without_second_row() {
+        // 贴图编辑的工具栏只能由 `refresh_toolbar` 建出来：`None + 不需要第二行` 必须重建，
+        // 否则整条工具栏永不出现（v0.11.0 回归）
+        assert!(bar_stale(None, false), "没建过布局就必须重建（贴图编辑路径）");
+        assert!(bar_stale(None, true), "需要第二行时同样要重建");
+        // 已有布局：只有「第二行要不要出现」变化时才重建
+        assert!(!bar_stale(Some(false), false), "单行且不需要第二行：无需重建");
+        assert!(!bar_stale(Some(true), true), "两行且需要第二行：无需重建");
+        assert!(bar_stale(Some(false), true), "需要第二行但当前是单行：重建");
+        assert!(bar_stale(Some(true), false), "不需要第二行但当前是两行：重建");
+    }
+
     #[test]
     fn family_change_detects_noop() {
         let (mut family, mut size, mut bold, mut italic) = fields();
