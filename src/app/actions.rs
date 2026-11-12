@@ -31,8 +31,6 @@ impl App {
             palette: crate::theme::palette(crate::theme::resolve(self.config.theme)),
             tool_keys: self.config.tool_keys.clone(),
             longshot_key: self.config.hotkey.longshot_key,
-            // OCR 键（OCR-3）：OCR 常开，是否出现按钮由工具栏可见性决定（EDT-16）
-            ocr_key: self.config.hotkey.ocr_key,
             visibility: self.config.toolbar.clone(),
             confirm_cancel: self.config.confirm_cancel,
             // 贴图键（覆盖层内贴选区，默认 F3；ADR 0019：可改为鼠标键）
@@ -75,21 +73,6 @@ impl App {
             // 通知主线程重注册贴图热键（截图已结束）
             let _ = unsafe { PostMessageW(Some(main_hwnd), WM_OVERLAY_DONE, WPARAM(0), LPARAM(0)) };
         });
-    }
-
-    /// 覆盖层送来的 OCR 请求（OCR-7）：弹气泡并在后台识别。
-    pub fn open_ocr_bubble(&self, hg: windows::Win32::Foundation::HGLOBAL) {
-        let language = self.config.ocr.language_tag().map(|t| t.to_string());
-        crate::app::bubble::on_request(
-            hg,
-            crate::app::bubble::Opts {
-                language,
-                auto_copy: self.config.ocr.auto_copy,
-                main_hwnd: self.hwnd,
-                palette: crate::theme::palette(crate::theme::resolve(self.config.theme)),
-                ui: crate::overlay::ui::Ui::resolve(self.config.ui_scale),
-            },
-        );
     }
 
     pub fn not_yet(&self, feature: &str, milestone: &str) {

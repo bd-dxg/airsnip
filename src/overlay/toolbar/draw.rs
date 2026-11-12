@@ -103,7 +103,6 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
             Action::Redo => draw_icon(pixmap, Icon::Redo, *r, if state.can_redo { p.icon } else { p.icon_dim }),
             Action::Pin => draw_icon(pixmap, Icon::Pin, *r, p.icon),
             Action::Longshot => draw_icon(pixmap, Icon::Longshot, *r, p.icon),
-            Action::Ocr => draw_icon(pixmap, Icon::Ocr, *r, p.icon),
             Action::Copy => draw_icon(pixmap, Icon::Copy, *r, p.icon),
             Action::Save => draw_icon(pixmap, Icon::Save, *r, p.icon),
             // EDT-4：字体族按钮（展开/收起字体列表），名字过长截断加省略号

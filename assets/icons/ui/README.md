@@ -62,7 +62,6 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | `toolbar/undo.svg` / `redo.svg` | `undo` / `redo` |
 | `toolbar/pin.svg` | `push_pin` |
 | `toolbar/longshot.svg` | `unfold_more` |
-| `toolbar/ocr.svg` | `document_scanner` |
 | `toolbar/copy.svg` | `content_copy` |
 | `toolbar/save.svg` | `save` |
 | `toolbar/bold.svg` / `italic.svg` | `format_bold` / `format_italic` |
@@ -91,7 +90,7 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | line | 18.0 | cross | 25.4 |
 | ellipse | 25.1 | pin | 14.8 |
 | freehand | 16.1 | longshot | 12.4 |
-| fill | 27.2 | ocr | 30.2 |
+| fill | 27.2 | | |
 | undo / redo | 27.2 | | |
 | delete | 29.0 | | |
 
@@ -100,8 +99,7 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 未做 `optical_scale` 调整；`line` / `ellipse` 是占位几何，换成 Material Symbols 的
 `straighten` / `circle` 后需重新测量并更新本表。个别图标用
 `render::icon::optical_scale` 微调：`save` 0.92（软盘 bbox 偏大）、
-`delete` 0.85（垃圾桶盖 + 桶身 + 两条竖线结构密集，不缩会明显重于邻居）、
-`ocr` 0.9（扫描框 + 三行文字，未缩时 36.4%，比相邻的 pin / longshot 重得多）。
+`delete` 0.85（垃圾桶盖 + 桶身 + 两条竖线结构密集，不缩会明显重于邻居）。
 
 **验收要同时看深色与浅色主题**：线框图标在浅底上会显得更淡（实测 `highlight` 的
 outlined 版就是因此换成 fill1）。新增/替换图标后请在两种底色下各看一眼 26px 渲染。

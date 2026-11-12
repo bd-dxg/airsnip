@@ -14,7 +14,7 @@ use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
 };
 use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
-use windows::Win32::System::Ole::{CF_DIB, CF_UNICODETEXT};
+use windows::Win32::System::Ole::CF_DIB;
 use windows::core::w;
 
 /// 复制到剪贴板：写入 CF_DIB（BGRA）与 "PNG" 注册格式（OUT-1）。
@@ -99,43 +99,6 @@ pub fn copy_to_clipboard(pixmap: &Pixmap) -> Result<(), String> {
         let _ = CloseClipboard();
         Ok(())
     }
-}
-
-/// 复制文本到剪贴板（OCR-10）：`CF_UNICODETEXT`，不改变任何图片格式。
-pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
-    let wide: Vec<u16> = text.encode_utf16().chain([0]).collect();
-    unsafe {
-        if OpenClipboard(None).is_err() {
-            return Err("OpenClipboard 失败".into());
-        }
-        if EmptyClipboard().is_err() {
-            let _ = CloseClipboard();
-            return Err("EmptyClipboard 失败".into());
-        }
-        let bytes = wide.len() * size_of::<u16>();
-        let hg = match GlobalAlloc(GMEM_MOVEABLE, bytes) {
-            Ok(h) => h,
-            Err(e) => {
-                let _ = CloseClipboard();
-                return Err(format!("GlobalAlloc 失败：{e}"));
-            }
-        };
-        let ptr = GlobalLock(hg);
-        if ptr.is_null() {
-            let _ = GlobalFree(Some(hg));
-            let _ = CloseClipboard();
-            return Err("GlobalLock 失败".into());
-        }
-        std::ptr::copy_nonoverlapping(wide.as_ptr(), ptr as *mut u16, wide.len());
-        let _ = GlobalUnlock(hg);
-        if SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(hg.0))).is_err() {
-            let _ = GlobalFree(Some(hg));
-            let _ = CloseClipboard();
-            return Err("SetClipboardData 失败".into());
-        }
-        let _ = CloseClipboard();
-    }
-    Ok(())
 }
 
 /// 保存像素为 PNG/JPEG/WebP（按扩展名决定格式，OUT-2/OUT-5）。

@@ -2,7 +2,7 @@
 //! 工具栏可见性（EDT-16，issue #143）：把工具栏收成用户自己常用的那一小块。
 //!
 //! 这是**纯视觉**偏好，不是功能开关：隐藏不改变任何能力 —— 快捷键照旧生效、
-//! 输出行为照旧、标注照旧用上次的颜色。关键词是「隐藏 ≠ 禁用」（见 `CONTEXT.md`）。
+//! 输出行为照旧、标注照旧用上次的颜色。关键词是「隐藏 ≠ 禁用」（见 ADR 0033）。
 //!
 //! 因此配置只存**隐藏集合**且用稳定字符串键（`[toolbar] hidden = ["tool.ellipse"]`）：
 //! - 默认全可见，用户不动设置时界面与没有这个功能时完全一致；
@@ -48,7 +48,7 @@ const EDIT_SLOTS: [ToolbarSlot; 4] = [
     ToolbarSlot::Redo,
     ToolbarSlot::TextRow,
 ];
-const OUTPUT_SLOTS: [ToolbarSlot; 3] = [ToolbarSlot::Pin, ToolbarSlot::Longshot, ToolbarSlot::Ocr];
+const OUTPUT_SLOTS: [ToolbarSlot; 2] = [ToolbarSlot::Pin, ToolbarSlot::Longshot];
 const FILE_SLOTS: [ToolbarSlot; 2] = [ToolbarSlot::Copy, ToolbarSlot::Save];
 
 impl ToolbarGroup {
@@ -106,7 +106,6 @@ pub enum ToolbarSlot {
     TextRow,
     Pin,
     Longshot,
-    Ocr,
     Copy,
     Save,
 }
@@ -143,7 +142,6 @@ impl ToolbarSlot {
             ToolbarSlot::TextRow => "edit.text_row",
             ToolbarSlot::Pin => "output.pin",
             ToolbarSlot::Longshot => "output.longshot",
-            ToolbarSlot::Ocr => "output.ocr",
             ToolbarSlot::Copy => "file.copy",
             ToolbarSlot::Save => "file.save",
         }
@@ -175,7 +173,6 @@ impl ToolbarSlot {
             ToolbarSlot::TextRow => "字体行",
             ToolbarSlot::Pin => "贴图",
             ToolbarSlot::Longshot => "长截图",
-            ToolbarSlot::Ocr => "OCR",
             ToolbarSlot::Copy => "复制",
             ToolbarSlot::Save => "保存",
         }
@@ -187,7 +184,7 @@ impl ToolbarSlot {
             ToolbarSlot::Tool(_) => ToolbarGroup::Tools,
             ToolbarSlot::Color(_) => ToolbarGroup::Colors,
             ToolbarSlot::Fill | ToolbarSlot::Undo | ToolbarSlot::Redo | ToolbarSlot::TextRow => ToolbarGroup::Edit,
-            ToolbarSlot::Pin | ToolbarSlot::Longshot | ToolbarSlot::Ocr => ToolbarGroup::Output,
+            ToolbarSlot::Pin | ToolbarSlot::Longshot => ToolbarGroup::Output,
             ToolbarSlot::Copy | ToolbarSlot::Save => ToolbarGroup::File,
         }
     }
@@ -319,7 +316,7 @@ mod tests {
         assert_eq!(ToolbarSlot::Tool(Tool::Rect).key(), "tool.rect");
         assert_eq!(ToolbarSlot::Color(0).key(), "color.1");
         assert_eq!(ToolbarSlot::TextRow.key(), "edit.text_row");
-        assert_eq!(ToolbarSlot::Ocr.key(), "output.ocr");
+        assert_eq!(ToolbarSlot::Longshot.key(), "output.longshot");
         assert_eq!(ToolbarSlot::Save.key(), "file.save");
     }
 
@@ -336,14 +333,14 @@ mod tests {
     #[test]
     fn single_toggle_and_group_state() {
         let mut cfg = ToolbarConfig::default();
-        cfg.set_visible(ToolbarSlot::Ocr, false);
-        cfg.set_visible(ToolbarSlot::Ocr, false);
+        cfg.set_visible(ToolbarSlot::Pin, false);
+        cfg.set_visible(ToolbarSlot::Pin, false);
         assert_eq!(cfg.hidden.len(), 1, "重复隐藏不应堆积重复键");
-        assert!(!cfg.visible(ToolbarSlot::Ocr));
+        assert!(!cfg.visible(ToolbarSlot::Pin));
         assert_eq!(cfg.group_state(ToolbarGroup::Output), GroupState::Partial);
 
-        cfg.set_visible(ToolbarSlot::Ocr, true);
-        cfg.set_visible(ToolbarSlot::Ocr, true);
+        cfg.set_visible(ToolbarSlot::Pin, true);
+        cfg.set_visible(ToolbarSlot::Pin, true);
         assert!(cfg.hidden.is_empty(), "全显后不应残留键");
         assert_eq!(cfg.group_state(ToolbarGroup::Output), GroupState::All);
     }

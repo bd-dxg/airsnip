@@ -84,8 +84,6 @@ pub struct Overlay {
     tool_keys: crate::settings::ToolKeys,
     /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
     longshot_key: u32,
-    /// OCR 键（覆盖层内按下，默认 T；设置面板可改，OCR-3）。
-    ocr_key: u32,
     /// 工具栏可见性（EDT-16）：逐元素显隐；隐藏的工具 / 按钮不绘制，但快捷键与输出行为照旧。
     visibility: crate::settings::ToolbarConfig,
     /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。

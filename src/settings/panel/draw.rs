@@ -117,9 +117,7 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
     // 支持项目块与组头的标签由各自的绘制函数负责，此处不重复绘制
     if !matches!(row.kind, RowKind::Qr | RowKind::Group) {
         let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
-        // 操作按钮行（如「恢复默认」）的标签用强调色，提示整行可点
-        let color = if row.kind == RowKind::Action { p.accent } else { p.text };
-        draw_text(pixmap, lx, ly, row.label, size, color);
+        draw_text(pixmap, lx, ly, row.label, size, p.text);
     }
     match row.kind {
         RowKind::Toggle => draw_toggle(pixmap, panel, row),
@@ -129,7 +127,6 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
         RowKind::Readonly => draw_readonly(pixmap, panel, row),
         RowKind::About => draw_about(pixmap, panel, row),
         RowKind::Link => super::link::draw_link(pixmap, panel, row),
-        RowKind::Action => super::link::draw_action(pixmap, panel, row),
         RowKind::Button => super::link::draw_button(pixmap, panel, row, hovered),
         RowKind::Qr => super::reward::draw_block(pixmap, panel, row),
     }
@@ -143,7 +140,6 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::Autostart => panel.autostart_on,
         RowId::ConfirmCancel => panel.config.confirm_cancel,
         RowId::AutoCheckUpdate => panel.config.auto_check_update,
-        RowId::OcrAutoCopy => panel.config.ocr.auto_copy,
         // 工具栏元素显隐（EDT-16）：纯视觉开关，默认全开
         RowId::Toolbar(slot) => panel.config.toolbar.visible(slot),
         _ => false,
@@ -224,7 +220,6 @@ fn draw_readonly(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row)
     let text = match row.id {
         RowId::Lang => "简体中文",
         RowId::Widenote => "无修饰键会覆盖其他程序按键，建议 Ctrl/Alt",
-        RowId::OcrNote => "本地识别，图片不出本机",
         _ => "",
     };
     draw_right_text(pixmap, panel, row, text);
