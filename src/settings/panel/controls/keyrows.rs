@@ -15,7 +15,7 @@ use super::RowId;
 pub enum KeyBind {
     /// 全局热键（截图 / 再次截图 / 贴图 / 贴图边框）：比较「虚拟键 + 修饰键」，两者都写回。
     Hotkey,
-    /// 覆盖层内按键（长截图 / OCR）与工具切换键：按下即触发，只认虚拟键，修饰键恒为 0
+    /// 覆盖层内按键（长截图）与工具切换键：按下即触发，只认虚拟键，修饰键恒为 0
     /// （捕获时按住的 Ctrl 不记录，比较时也不看）。
     Plain,
 }
@@ -82,7 +82,7 @@ impl KeyRowSpec {
 }
 
 /// 快捷键行元数据（顺序即界面顺序，见模块文档）。
-pub const KEY_ROWS: [KeyRowSpec; 16] = [
+pub const KEY_ROWS: [KeyRowSpec; 15] = [
     KeyRowSpec::hotkey(
         RowId::HotkeyShot,
         "截图",
@@ -123,18 +123,12 @@ pub const KEY_ROWS: [KeyRowSpec; 16] = [
             cfg.hotkey.border_modifiers = mods;
         },
     ),
-    // 长截图键 / OCR 键在覆盖层内按下即触发，与工具键同组
+    // 长截图键在覆盖层内按下即触发，与工具键同组
     KeyRowSpec::plain(
         RowId::HotkeyLongshot,
         "长截图",
         |hk, _| (hk.longshot_key, 0),
         |cfg, vk, _| cfg.hotkey.longshot_key = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::HotkeyOcr,
-        "OCR",
-        |hk, _| (hk.ocr_key, 0),
-        |cfg, vk, _| cfg.hotkey.ocr_key = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolRect,
@@ -254,7 +248,6 @@ mod tests {
             ("贴图", "F3".into()),
             ("贴图边框", "Ctrl+F3".into()),
             ("长截图", "S".into()),
-            ("OCR", "T".into()),
             ("工具·矩形", "1".into()),
             ("工具·箭头", "2".into()),
             ("工具·文本", "3".into()),

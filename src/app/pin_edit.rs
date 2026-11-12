@@ -88,7 +88,6 @@ impl App {
             palette: crate::theme::palette(crate::theme::resolve(self.config.theme)),
             tool_keys: self.config.tool_keys.clone(),
             longshot_key: self.config.hotkey.longshot_key,
-            ocr_key: self.config.hotkey.ocr_key,
             visibility: self.config.toolbar.clone(),
             confirm_cancel: self.config.confirm_cancel,
             pin_key: self.config.hotkey.pin_key,

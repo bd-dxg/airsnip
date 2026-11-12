@@ -57,18 +57,16 @@ pub enum Section {
     Hotkeys,
     Save,
     Appearance,
-    Ocr,
     About,
 }
 
 impl Section {
-    pub const ALL: [Section; 7] = [
+    pub const ALL: [Section; 6] = [
         Section::General,
         Section::Toolbar,
         Section::Hotkeys,
         Section::Save,
         Section::Appearance,
-        Section::Ocr,
         Section::About,
     ];
 
@@ -79,7 +77,6 @@ impl Section {
             Section::Hotkeys => "快捷键",
             Section::Save => "保存",
             Section::Appearance => "外观",
-            Section::Ocr => "OCR 翻译",
             Section::About => "关于",
         }
     }
@@ -104,8 +101,6 @@ pub enum RowId {
     HotkeyBorder,
     /// 长截图键（覆盖层内按下，默认 S）。
     HotkeyLongshot,
-    /// OCR 键（覆盖层内按下，默认 T，OCR-3）。
-    HotkeyOcr,
     /// 工具切换键（M3）：矩形 / 箭头 / 文本 / 模糊 / 荧光笔 / 高亮。
     ToolRect,
     ToolArrow,
@@ -169,12 +164,6 @@ pub enum RowId {
     Toolbar(ToolbarSlot),
     /// 工具栏组头（EDT-16）：整组全显 / 全隐，部分可见时半选。
     ToolbarGroup(ToolbarGroup),
-    /// 识别语言（点击循环切换，OCR-6）。
-    OcrLang,
-    /// 识别后自动复制到剪贴板（OCR-10，默认关）。
-    OcrAutoCopy,
-    /// OCR 说明（只读：本地识别、图片不出本机）。
-    OcrNote,
 }
 
 /// 行控件类型。
@@ -194,8 +183,6 @@ pub enum RowKind {
     About,
     /// 外部链接：右侧强调色文字，点击用浏览器打开。
     Link,
-    /// 操作按钮：右侧强调色文字，点击执行一次动作（如「恢复默认」）。
-    Action,
     /// 状态行：右侧按钮（文案随状态变，忙时置灰），整行可点。
     Button,
     /// 支持项目块：高行（左侧文案 + 右侧赞赏码）。
@@ -337,7 +324,6 @@ mod tests {
                     RowId::HotkeyPin,
                     RowId::HotkeyBorder,
                     RowId::HotkeyLongshot,
-                    RowId::HotkeyOcr,
                     RowId::ToolRect,
                     RowId::ToolArrow,
                     RowId::ToolText,
@@ -380,7 +366,6 @@ mod tests {
                     }
                     rows
                 }
-                Section::Ocr => vec![RowId::OcrAutoCopy, RowId::OcrLang, RowId::OcrNote],
             };
             assert_eq!(rows, expected, "节 {sec:?} 行集合错误");
         }

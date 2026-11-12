@@ -94,15 +94,4 @@ mod tests {
         );
         assert_eq!(conflict_for(&cfg, RowId::HotkeyPin, vk, mods), Some("再次截图"));
     }
-
-    /// OCR 键（OCR-3）：默认 T 不冲突；与长截图 / 工具键同键位应报冲突。
-    #[test]
-    fn ocr_key_conflicts() {
-        let cfg = crate::settings::Config::default();
-        assert_eq!(conflict_for(&cfg, RowId::HotkeyOcr, 0x54, 0), None);
-        assert_eq!(conflict_for(&cfg, RowId::HotkeyOcr, 0x53, 0), Some("长截图"));
-        assert_eq!(conflict_for(&cfg, RowId::HotkeyOcr, 0x31, 0), Some("工具·矩形"));
-        // 反向：把长截图键改为 T 时也应被 OCR 键拦下
-        assert_eq!(conflict_for(&cfg, RowId::HotkeyLongshot, 0x54, 0), Some("OCR"));
-    }
 }

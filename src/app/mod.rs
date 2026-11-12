@@ -5,7 +5,6 @@
 
 mod actions;
 pub mod autostart;
-mod bubble;
 pub mod filedlg;
 pub(crate) mod hotkey;
 pub(crate) mod mouse;
@@ -37,10 +36,7 @@ pub const WM_PIN_FROM_EDITOR: u32 = WM_APP + 3;
 pub const WM_OVERLAY_DONE: u32 = WM_APP + 4;
 /// 贴图窗口 → 主窗口：贴图内边框快捷键已切换（更新默认配置，M2b）。
 pub const WM_PIN_BORDER_CHANGED: u32 = WM_APP + 5;
-/// 覆盖层线程 → 主窗口：OCR 请求（GlobalAlloc: u32 w + u32 h + i32 x + i32 y + RGBA，OCR-7）。
-pub const WM_OCR_REQUEST: u32 = WM_APP + 6;
-/// OCR 卡片 → 主窗口：用户切了「自动复制」开关（wparam = 0 关 / 1 开）。
-pub const WM_OCR_AUTOCOPY_CHANGED: u32 = WM_APP + 7;
+// WM_APP + 6 / + 7 曾用于 OCR 请求与「自动复制」开关（已随 OCR 功能移除，编号不复用）。
 /// 贴图窗口 → 主窗口：请求进入标注编辑（wparam = 贴图句柄，ADR 0028）。
 pub const WM_PIN_EDIT_REQUEST: u32 = WM_APP + 8;
 /// 覆盖层线程 → 主窗口：贴图编辑完成 / 取消（wparam = 载荷 HGLOBAL 或 0，lparam = 目标贴图句柄，ADR 0028）。

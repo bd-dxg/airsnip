@@ -219,11 +219,6 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
                 push(ui_scale_row(m), RowKind::Radio, m.title(), &mut y, items);
             }
         }
-        Section::Ocr => {
-            push(RowId::OcrAutoCopy, RowKind::Toggle, "识别后自动复制", &mut y, items);
-            push(RowId::OcrLang, RowKind::Action, "识别语言", &mut y, items);
-            push(RowId::OcrNote, RowKind::Readonly, "说明", &mut y, items);
-        }
         Section::About => {
             push(RowId::About, RowKind::About, "AirSnip 轻截", &mut y, items);
             push(RowId::Repo, RowKind::Link, "项目地址", &mut y, items);

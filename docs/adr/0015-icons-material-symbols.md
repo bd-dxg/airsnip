@@ -35,6 +35,8 @@ status/{check,cross}.svg
 > 数量变化（本 ADR 之后）：v0.7.0 加了设置面板的清除按钮（`panel/delete.svg`），
 > v0.8.0 开发期又加 OCR 按钮（`toolbar/ocr.svg`），现全组 **21 个**（toolbar 18 / status 2 / panel 1）；
 > `optical_scale` 不再只有 `save`，另加 `delete` 0.85、`ocr` 0.9。换源决策本身未变。
+>
+> 注（ADR 0035）：OCR 已撤销，`toolbar/ocr.svg` 已删除，`ocr` 的 0.9 光学缩放一并去掉。
 
 清洗规则（保持渲染端不变）：
 

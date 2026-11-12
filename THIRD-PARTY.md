@@ -171,7 +171,7 @@ AirSnip 自身以 **GPL-3.0-only** 发布。以下是随程序一同分发的第
 
 - 来源：https://github.com/google/material-design-icons（`symbols/web/*/materialsymbolsoutlined`）
 - 许可证：Apache-2.0，https://www.apache.org/licenses/LICENSE-2.0
-- 使用范围：`assets/icons/ui/` 下全部 21 个 SVG（`toolbar/*` / `status/*` / `panel/*`）。仅去掉 `width`/`height`、给 `<path>` 补 `fill="currentColor"`，图形未做其他修改。
+- 使用范围：`assets/icons/ui/` 下全部 24 个 SVG（`toolbar/*` / `status/*` / `panel/*`）。仅去掉 `width`/`height`、给 `<path>` 补 `fill="currentColor"`，图形未做其他修改。
 
 ### 本项目自绘
 

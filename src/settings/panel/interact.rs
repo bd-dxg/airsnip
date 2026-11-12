@@ -194,20 +194,6 @@ impl Panel {
                 self.config.toolbar.set_group_visible(group, on);
                 self.config_dirty = true;
             }
-            // 识别后自动复制（OCR-10）：与 OCR 卡片里的开关是同一个配置项
-            RowId::OcrAutoCopy => {
-                self.end_capture();
-                self.config.ocr.auto_copy = !self.config.ocr.auto_copy;
-                self.config_dirty = true;
-            }
-            // 识别语言（OCR-6）：点一下切下一个（跟随系统 → 已装语言 → 回到跟随系统）
-            RowId::OcrLang => {
-                self.end_capture();
-                if let Err(msg) = super::ocr::cycle(self) {
-                    message_box(None, &msg, MB_OK | MB_ICONWARNING);
-                }
-                self.config_dirty = true;
-            }
             _ => self.end_capture(),
         }
     }

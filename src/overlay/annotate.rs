@@ -61,14 +61,12 @@ impl super::Overlay {
     /// 鼠标键 / 仅在松键才发现的功能键（ADR 0019、#67）：落到长截图键或工具切换键时执行。
     /// 覆盖层的 PrtScn（只有 WM_KEYUP）与中键/侧键（只有鼠标消息）共用。
     pub(super) fn on_aux_key(&mut self, vk: u32) {
-        // 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图 / OCR）不适用；工具切换仍生效
+        // 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图）不适用；工具切换仍生效
         let outputs = !self.locked_selection;
         if outputs && vk == self.pin_key {
             self.on_pin(); // PIN-1：贴选区
         } else if outputs && vk == self.longshot_key {
             self.on_longshot();
-        } else if outputs && vk == self.ocr_key {
-            self.on_ocr(); // OCR-3：OCR 常开（EDT-16：隐藏按钮不关掉这个键）
         } else if let Some(t) = self.tool_by_key(vk) {
             self.switch_tool(t);
         }
@@ -127,8 +125,6 @@ impl super::Overlay {
             toolbar::Action::Pin => return self.on_pin(),
             // M4：长截图按钮 → 选区作为视口进入拼接（不复绘）
             toolbar::Action::Longshot => return self.on_longshot(),
-            // OCR-3：OCR 按钮 → 原图交给主线程识别（不复绘）
-            toolbar::Action::Ocr => return self.on_ocr(),
             // OUT-1：复制按钮 → 复制到剪贴板并关闭覆盖层（不复绘）
             toolbar::Action::Copy => return self.on_copy(),
             // OUT-2：保存按钮 → 按配置保存并关闭覆盖层（不复绘）

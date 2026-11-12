@@ -11,7 +11,7 @@ body:
         2. 用下面的「版本」字段填上确切版本号，不要写「最新版」；
         3. 截图类问题请把**复现步骤写到能照着做**，最好附一张表现异常的截图。
 
-        有些「问题」是刻意的设计取舍（只支持 Windows 10 1607+ / Windows 11，长截图需手动滚动，OCR 需装语言包等），提交前请先扫一眼 [README 的「已知限制」](https://github.com/bd-dxg/airsnip#已知限制)。
+        有些「问题」是刻意的设计取舍（只支持 Windows 10 1607+ / Windows 11，长截图需手动滚动等），提交前请先扫一眼 [README 的「已知限制」](https://github.com/bd-dxg/airsnip#已知限制)。OCR / 翻译已在后续版本撤销（见 [ADR 0035](https://github.com/bd-dxg/airsnip/blob/main/docs/adr/0035-remove-ocr.md)），相关需求请用其他软件。
 
   - type: checkboxes
     id: preflight
@@ -39,8 +39,7 @@ body:
       placeholder: |
         1. 启动 AirSnip，热键为默认 F1
         2. 按 F1 框选一块区域
-        3. 按 T 触发 OCR
-        4. ...
+        3. ...（接下来做了什么动作）
     validations:
       required: true
 

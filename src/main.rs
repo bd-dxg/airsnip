@@ -9,7 +9,6 @@ pub mod app;
 pub mod capture;
 pub mod editor;
 pub mod longshot;
-pub mod ocr; // 二期
 pub mod output;
 pub mod overlay;
 pub mod perf;

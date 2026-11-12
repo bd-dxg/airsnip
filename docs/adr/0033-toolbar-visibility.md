@@ -4,7 +4,7 @@
 - 影响范围：`src/settings/toolbar.rs`（新增，配置模型）、`src/overlay/toolbar/{mod,layout,draw}.rs`、
   `src/overlay/{init,opts,mod,selection,font,annotate,wndproc}.rs`、`src/settings/panel/{controls,draw,interact,toolbar_page}.rs`、
   `src/app/{actions,pin_edit}.rs`、`src/ocr/*`
-- 相关：issue #143、PRD EDT-16 / OCR-1 / OCR-2 / OCR-13、CONTEXT.md「工具栏可见性」「功能开关」、
+- 相关：issue #143、PRD EDT-16 / OCR-1 / OCR-2 / OCR-13、
   ADR 0017（快捷键清空为「未设置」）、ADR 0028（贴图编辑模式）、ADR 0022（OCR）
 
 ## 背景
@@ -31,6 +31,8 @@
   隐藏的色块仍保留「上次颜色」。能力与绘制彻底解耦，这是本 ADR 最重要的一条。
 
 ### 2. 元素清单是 24 项（issue 里写的「16 个开关」是笔误）
+
+> 注（ADR 0035）：OCR 已撤销，输出组由 3 项变 2 项、总数 24 → 23。下表保留当时的清单。
 
 | 组 | 元素 | 数量 |
 |---|---|---|
@@ -59,6 +61,8 @@
   用户的出路正是隐藏不用的元素（README「已知限制」同步写明）。两条单测分别钉住现状与出路：
   `bar_wider_than_screen_is_left_aligned` / `hiding_groups_fits_narrow_hidpi_screen`。
 
+  > 注（ADR 0035）：OCR 按钮删除后，1366×768 @ 200% 已能放下（宽 1332），超宽用例改到 1280×720 @ 200%。
+
 ### 4. 开局回落放在 `overlay::init`，判据是纯函数
 
 `ToolbarConfig::settle_tool` / `settle_color`：要用的工具（`settings::last_tool()`）或当前色块被隐藏时，
@@ -85,6 +89,8 @@
 - 不做覆盖层内的显隐入口（右键菜单 / 悬浮「⋯」）、不做全局「全部显示」按钮、不做导入导出与多套预设。
 
 ### 6. 撤掉 OCR 总开关
+
+> 注（ADR 0035）：OCR 已整块撤销，本节描述的字段、按钮、快捷键与设置页均已不存在，保留仅作当时决策记录。
 
 - 删除 `[ocr] enabled` 字段，**旧值忽略、不迁移**：旧用户 `enabled = false` 升级后 OCR 直接可用
   （serde 默认忽略未知字段，`[ocr]` 段其余字段照旧读入）。

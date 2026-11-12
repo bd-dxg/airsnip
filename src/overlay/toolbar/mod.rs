@@ -75,8 +75,6 @@ pub enum Action {
     Pin,
     /// M4：把当前选区作为滚动视口，进入长截图拼接（长截图键同效，默认 S）。
     Longshot,
-    /// OCR-3：把选区原图交给本地 OCR 识别（OCR 键同效，默认 T；功能关闭时按钮不出现）。
-    Ocr,
     /// OUT-1：复制选区到剪贴板（Enter / Ctrl+C 同效）。
     Copy,
     /// OUT-2：按配置的目录与格式保存（Ctrl+S 同效）。
@@ -239,7 +237,7 @@ mod tests {
     /// 第二行（EDT-4）同样不能与信息文字重叠，且两行不越出屏幕。
     #[test]
     fn text_row_stays_inside_screen() {
-        // 200% 缩放下用 1080p 屏：OCR 按钮常驻（EDT-16）后工具栏更宽，
+        // 1080p@200%：工具栏上元素全可见时已经很宽，
         // 1366×768@200% 已放不下，那个组合由 `bar_wider_than_screen_starts_at_margin` 单独记录
         for (vw, vh, ui) in [(1366, 768, base()), (1920, 1080, Ui::from_dpi(192))] {
             let cases = [
@@ -278,11 +276,13 @@ mod tests {
     }
 
     /// 已知限制（EDT-16）：工具栏比屏幕还宽时只能从左边距开始画，右侧被裁（**不**引入换行、
-    /// 也**不**改为右对齐）。这是「OCR 按钮默认出现」的副作用，已写入 README「已知限制」
+    /// 也**不**改为右对齐）。这是「工具栏元素全可见」的副作用，已写入 README「已知限制」
     /// 与 ADR 0033：用户的出路是隐藏不用的元素（见下一条测试）。
+    /// 用 1280×720@200%：移除 OCR 按钮后 1366×768@200% 已经放得下（宽 1332），
+    /// 但更小的屏仍然会超。
     #[test]
     fn bar_wider_than_screen_is_left_aligned() {
-        let (vw, vh) = (1366, 768);
+        let (vw, vh) = (1280, 720);
         let ui = Ui::from_dpi(192);
         let bar = layout(sel(100, 100, 400, 300), vw, vh, &all(), true, ui);
         assert!(bar.rect.w > vw, "该组合下工具栏确实比屏幕宽：{}", bar.rect.w);
@@ -307,7 +307,7 @@ mod tests {
         assert!(thin.rect.x >= ui.px(4.0) && thin.rect.x + thin.rect.w <= vw);
         // 剩下的元素一个不少地仍在命中区里
         assert!(thin.hits.iter().any(|(_, a)| *a == Action::Save));
-        assert!(!thin.hits.iter().any(|(_, a)| *a == Action::Ocr));
+        assert!(!thin.hits.iter().any(|(_, a)| *a == Action::Pin));
     }
 
     #[test]
@@ -325,9 +325,9 @@ mod tests {
                 assert!(w[0].0.x + w[0].0.w <= w[1].0.x, "元素重叠：{:?} / {:?}", w[0].0, w[1].0);
             }
         }
-        // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行；OCR 常驻，EDT-16）
+        // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 29);
+        assert_eq!(actions.len(), 28);
         assert_eq!(actions[..10], Tool::ALL.map(Action::Tool));
         // 色块：5 个，均可双击改色（issue #73 后续，不再有单独的自定义槽）
         assert_eq!(actions[10..15], [0, 1, 2, 3, 4].map(Action::Color));
@@ -336,11 +336,10 @@ mod tests {
         assert_eq!(actions[17], Action::Redo);
         assert_eq!(actions[18], Action::Pin);
         assert_eq!(actions[19], Action::Longshot);
-        assert_eq!(actions[20], Action::Ocr, "OCR 按钮应紧跟长截图");
-        assert_eq!(actions[21], Action::Copy);
-        assert_eq!(actions[22], Action::Save);
+        assert_eq!(actions[20], Action::Copy);
+        assert_eq!(actions[21], Action::Save);
         assert_eq!(
-            actions[23..],
+            actions[22..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -358,7 +357,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, &all(), false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 23);
+        assert_eq!(bar.hits.len(), 22);
     }
 
     /// 隐藏的元素不再有命中区，工具栏宽度随之变窄（R1/R2）。
@@ -442,7 +441,7 @@ mod tests {
         );
     }
 
-    /// 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图 / OCR）整体不出现，复制/保存仍在。
+    /// 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图）整体不出现，复制/保存仍在。
     #[test]
     fn output_group_hidden_when_editing() {
         let s = sel(100, 100, 400, 300);
@@ -454,12 +453,12 @@ mod tests {
             show_output: false,
         };
         let edit = layout_ex(s, 2560, 1440, &editing, base()).expect("应有工具栏");
-        let is_output = |a: &Action| matches!(a, Action::Pin | Action::Longshot | Action::Ocr);
+        let is_output = |a: &Action| matches!(a, Action::Pin | Action::Longshot);
         assert!(full.hits.iter().any(|(_, a)| *a == Action::Pin));
         assert!(!edit.hits.iter().any(|(_, a)| is_output(a)), "编辑模式不应有输出组");
         assert!(edit.hits.iter().any(|(_, a)| *a == Action::Copy));
         assert!(edit.hits.iter().any(|(_, a)| *a == Action::Save));
-        // 少了三个按钮，工具栏更窄
+        // 少了两个按钮，工具栏更窄
         assert!(edit.rect.w < full.rect.w);
     }
 

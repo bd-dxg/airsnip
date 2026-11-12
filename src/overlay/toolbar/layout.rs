@@ -38,7 +38,7 @@ pub struct Shown<'a> {
     pub vis: &'a ToolbarConfig,
     /// 是否要文本第二行：调用方给「文本工具 / 选中文本 / 正在输入」，此处再与显隐开关求与。
     pub text_row: bool,
-    /// 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图 / OCR）整体不出现。
+    /// 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图）整体不出现。
     pub show_output: bool,
 }
 
@@ -60,7 +60,6 @@ fn item_of(slot: ToolbarSlot, ui: Ui) -> Option<(Action, i32, i32)> {
         ToolbarSlot::Redo => (Action::Redo, btn, btn),
         ToolbarSlot::Pin => (Action::Pin, btn, btn),
         ToolbarSlot::Longshot => (Action::Longshot, btn, btn),
-        ToolbarSlot::Ocr => (Action::Ocr, btn, btn),
         ToolbarSlot::Copy => (Action::Copy, btn, btn),
         ToolbarSlot::Save => (Action::Save, btn, btn),
         ToolbarSlot::TextRow => return None,

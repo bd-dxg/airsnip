@@ -25,7 +25,6 @@ dependencies = [
  "toml",
  "windows",
  "windows-core",
- "windows-future",
 ]
 
 [[package]]
