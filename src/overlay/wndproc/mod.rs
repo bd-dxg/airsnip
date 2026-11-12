@@ -234,8 +234,12 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             }
             LRESULT(0)
         }
-        // 中文 IME（EDT-4）：组合开始无需处理；组合更新读取候选/结果；结束清空候选
-        WM_IME_STARTCOMPOSITION => LRESULT(0),
+        // 中文 IME（EDT-4）：组合开始前把候选框锚到自绘光标（issue #139）；
+        // 组合更新读取候选/结果；结束清空候选
+        WM_IME_STARTCOMPOSITION => {
+            overlay.sync_ime_window_pos();
+            LRESULT(0)
+        }
         WM_IME_COMPOSITION => {
             if overlay.is_editing_text() {
                 overlay.on_text_composition(lparam.0 as u32);
