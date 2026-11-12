@@ -1,0 +1,69 @@
+name: 打标签后移入 Waiting for author
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  move:
+    # 只响应下面这几个标签,按你实际使用的标签名修改
+    if: contains(fromJSON('["待确认需求","已提供测试包"]'), github.event.label.name)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 把卡片移到 Waiting for author
+        env:
+          GH_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          ISSUE_NODE_ID: ${{ github.event.issue.node_id }}
+          OWNER: bd-dxg
+          PROJECT_NUMBER: 4
+          STATUS_NAME: Waiting for author
+        run: |
+          set -euo pipefail
+
+          # 1. 查出项目 ID、Status 字段 ID、目标列的选项 ID
+          DATA=$(gh api graphql \
+            -f owner="$OWNER" -F num="$PROJECT_NUMBER" \
+            -f query='
+              query($owner:String!, $num:Int!) {
+                user(login:$owner) {
+                  projectV2(number:$num) {
+                    id
+                    field(name:"Status") {
+                      ... on ProjectV2SingleSelectField {
+                        id
+                        options { id name }
+                      }
+                    }
+                  }
+                }
+              }')
+
+          PROJECT_ID=$(echo "$DATA" | jq -r '.data.user.projectV2.id')
+          FIELD_ID=$(echo "$DATA" | jq -r '.data.user.projectV2.field.id')
+          OPTION_ID=$(echo "$DATA" | jq -r --arg n "$STATUS_NAME" \
+            '.data.user.projectV2.field.options[] | select(.name==$n) | .id')
+
+          if [ -z "$OPTION_ID" ]; then
+            echo "找不到名为 '$STATUS_NAME' 的列,请检查名称"; exit 1
+          fi
+
+          # 2. 确保 issue 在看板里(已在则直接返回已有卡片)
+          ITEM_ID=$(gh api graphql \
+            -f p="$PROJECT_ID" -f c="$ISSUE_NODE_ID" \
+            -f query='
+              mutation($p:ID!, $c:ID!) {
+                addProjectV2ItemById(input:{projectId:$p, contentId:$c}) {
+                  item { id }
+                }
+              }' --jq '.data.addProjectV2ItemById.item.id')
+
+          # 3. 把 Status 改成 Waiting for author
+          gh api graphql \
+            -f p="$PROJECT_ID" -f i="$ITEM_ID" -f f="$FIELD_ID" -f o="$OPTION_ID" \
+            -f query='
+              mutation($p:ID!, $i:ID!, $f:ID!, $o:String!) {
+                updateProjectV2ItemFieldValue(input:{
+                  projectId:$p, itemId:$i, fieldId:$f,
+                  value:{ singleSelectOptionId:$o }
+                }) { projectV2Item { id } }
+              }'

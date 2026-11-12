@@ -1,0 +1,26 @@
+name: 长期无回复处理
+on:
+  schedule:
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          any-of-labels: '待确认需求,已提供测试包'
+          days-before-issue-stale: 5
+          days-before-issue-close: 2
+          stale-issue-label: '长期无回复'
+          stale-issue-message: >
+            这个 issue 已经 5 天没有新的反馈了。如果问题仍然存在,请回复说明;
+            2 天内无回复将自动关闭(之后随时可以重新打开)。
+          close-issue-message: >
+            由于长期未收到反馈,先关闭此 issue。有新信息时欢迎重新打开。
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
