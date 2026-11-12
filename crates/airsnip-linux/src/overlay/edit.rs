@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use airsnip_core::editor::{Kind, Object, Point, Tool, next_number};
+use airsnip_core::editor::{Kind, Object, Point, Tool, next_number, snap_direction, square_corner};
 
 use super::state::Overlay;
 
@@ -72,10 +72,40 @@ pub fn begin(ov: &mut Overlay, p: (i32, i32)) {
 }
 
 /// 拖动：更新草稿终点（限制在选区内）。
-pub fn update(ov: &mut Overlay, p: (i32, i32)) {
+pub fn update(ov: &mut Overlay, p: (i32, i32), shift: bool) {
     let Some(sel) = ov.sel else { return };
     let (x, y) = sel.clamp_point(p.0, p.1);
-    let end = Point::new(x as f32, y as f32);
+    let raw = Point::new(x as f32, y as f32);
+    // Shift 约束（与 Windows 版一致）：矩形/椭圆 → 正方形；箭头/直线 → 水平/垂直/45° 吸附
+    let end = if shift {
+        match ov.tool {
+            Tool::Arrow | Tool::Line => {
+                let from = match ov.draft.as_ref().map(|d| &d.kind) {
+                    Some(Kind::Arrow { from, .. }) => *from,
+                    Some(Kind::Line { from, .. }) => *from,
+                    _ => raw,
+                };
+                snap_direction(from, raw)
+            }
+            Tool::Rect | Tool::Highlight | Tool::Blur | Tool::Glow | Tool::Ellipse => {
+                let anchor = match ov.draft.as_ref().map(|d| &d.kind) {
+                    Some(Kind::Rect { a, .. })
+                    | Some(Kind::Highlight { a, .. })
+                    | Some(Kind::Blur { a, .. })
+                    | Some(Kind::Glow { a, .. })
+                    | Some(Kind::Ellipse { a, .. }) => *a,
+                    _ => raw,
+                };
+                square_corner(anchor, raw)
+            }
+            _ => raw,
+        }
+    } else {
+        raw
+    };
+    // 约束后可能跑出选区，再钳一次
+    let (cx, cy) = sel.clamp_point(end.x.round() as i32, end.y.round() as i32);
+    let end = Point::new(cx as f32, cy as f32);
     let Some(draft) = ov.draft.as_mut() else {
         return;
     };
@@ -167,7 +197,7 @@ mod tests {
         let mut ov = overlay();
         ov.tool = Tool::Rect;
         begin(&mut ov, (10, 10));
-        update(&mut ov, (40, 40));
+        update(&mut ov, (40, 40), false);
         commit(&mut ov);
         assert_eq!(ov.doc.objects().len(), 1);
         assert!(matches!(ov.doc.objects()[0].kind, Kind::Rect { .. }));
@@ -178,7 +208,7 @@ mod tests {
         let mut ov = overlay();
         ov.tool = Tool::Rect;
         begin(&mut ov, (10, 10));
-        update(&mut ov, (11, 11));
+        update(&mut ov, (11, 11), false);
         commit(&mut ov);
         assert!(ov.doc.objects().is_empty());
     }
@@ -203,7 +233,7 @@ mod tests {
         });
         ov.tool = Tool::Line;
         begin(&mut ov, (10, 10));
-        update(&mut ov, (999, 999));
+        update(&mut ov, (999, 999), false);
         let Kind::Line { to, .. } = ov.draft.as_ref().unwrap().kind else {
             panic!("应是直线")
         };
@@ -215,7 +245,7 @@ mod tests {
         let mut ov = overlay();
         ov.tool = Tool::Rect;
         begin(&mut ov, (5, 5));
-        update(&mut ov, (30, 30));
+        update(&mut ov, (30, 30), false);
         commit(&mut ov);
         assert_eq!(ov.doc.objects().len(), 1);
         assert!(undo(&mut ov));

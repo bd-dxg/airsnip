@@ -13,6 +13,8 @@
 
 use airsnip_core::editor::{Bounds, Kind, Object, Point};
 
+pub mod paint;
+
 use super::state::{Overlay, Sel};
 
 /// 手柄边长（物理像素）。
@@ -21,6 +23,10 @@ pub const HANDLE: f32 = 7.0;
 pub const TOL: f32 = 7.0;
 /// 对象最小尺寸（防止缩成一条线后再也点不中）。
 const MIN_SIZE: f32 = 6.0;
+/// 圆角手柄的基准内缩。
+const RADIUS_GRIP: f32 = 14.0;
+/// 半径 → 手柄内缩的系数（圆弧到角的距离比例）。
+const ARC_TO_CORNER: f32 = 0.293;
 
 /// 编辑手柄。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,6 +43,11 @@ pub enum Handle {
     S,
     SW,
     W,
+    /// 箭头曲率控制点（1/3、2/3 处）。
+    Ctrl1,
+    Ctrl2,
+    /// 圆角手柄（右侧内侧小圆）。
+    Radius,
 }
 
 /// 正在进行的拖动。
@@ -55,6 +66,18 @@ pub enum Drag {
         handle: Handle,
         bounds: Bounds,
         kind: Kind,
+    },
+    /// 拖箭头曲率控制点。
+    Curve {
+        which: Handle,
+        kind: Kind,
+    },
+    /// 拖圆角手柄。
+    Radius {
+        kind: Kind,
+        /// 起始圆角半径（每帧按总位移重算，不累积）。
+        corner: f32,
+        from: Point,
     },
 }
 
@@ -75,6 +98,21 @@ fn near(a: Point, b: Point, tol: f32) -> bool {
 
 /// 命中的手柄（按对象类型区分：箭头 / 直线只有两端点）。
 pub fn handle_at(obj: &Object, p: Point) -> Option<Handle> {
+    // 圆角手柄压在最上面，优先命中
+    if let Some((x, y)) = radius_handle_point(obj)
+        && near(Point::new(x, y), p, TOL)
+    {
+        return Some(Handle::Radius);
+    }
+    // 箭头的曲率控制点（1/3、2/3）
+    if let Some([c1, c2]) = obj.kind.control_points() {
+        if near(c1, p, TOL) {
+            return Some(Handle::Ctrl1);
+        }
+        if near(c2, p, TOL) {
+            return Some(Handle::Ctrl2);
+        }
+    }
     match &obj.kind {
         Kind::Arrow { from, to, .. } | Kind::Line { from, to } => {
             if near(*from, p, TOL) {
@@ -146,7 +184,18 @@ pub fn press(ov: &mut Overlay, p: (i32, i32), ctrl: bool) -> bool {
             .and_then(|obj| handle_at(obj, pt).map(|h| (h, obj.bounds(), obj.kind.clone())));
         if let Some((handle, bounds, kind)) = hit {
             ov.doc.begin();
-            ov.edit = Some(Drag::Resize { handle, bounds, kind });
+            ov.edit = Some(match handle {
+                // 箭头曲率控制点
+                Handle::Ctrl1 | Handle::Ctrl2 => Drag::Curve { which: handle, kind },
+                // 圆角手柄
+                Handle::Radius => Drag::Radius {
+                    corner: kind.corner().unwrap_or(0.0),
+                    kind,
+                    from: pt,
+                },
+                // 端点 / 八向缩放
+                _ => Drag::Resize { handle, bounds, kind },
+            });
             return true;
         }
     }
@@ -227,8 +276,26 @@ pub fn drag(ov: &mut Overlay, p: (i32, i32)) {
             match handle {
                 // 端点手柄：直接改端点（不缩放整体）
                 Handle::Start | Handle::End => set_endpoint(&mut edited, handle, pt),
+                Handle::Ctrl1 | Handle::Ctrl2 | Handle::Radius => {}
                 _ => edited.remap(bounds, resized(bounds, handle, pt)),
             }
+            obj.kind = edited;
+        }
+        Drag::Curve { which, kind } => {
+            let mut edited = kind;
+            if let Kind::Arrow { c1, c2, .. } = &mut edited {
+                match which {
+                    Handle::Ctrl1 => *c1 = pt,
+                    Handle::Ctrl2 => *c2 = pt,
+                    _ => {}
+                }
+            }
+            obj.kind = edited;
+        }
+        Drag::Radius { kind, corner, from } => {
+            let mut edited = kind;
+            let next = corner + radius_delta(pt.x - from.x, pt.y - from.y);
+            edited.set_corner(next.max(0.0));
             obj.kind = edited;
         }
     }
@@ -301,7 +368,7 @@ fn resized(from: Bounds, handle: Handle, p: Point) -> Bounds {
             to.y1 = p.y;
         }
         Handle::W => to.x0 = p.x,
-        Handle::Start | Handle::End => {}
+        Handle::Start | Handle::End | Handle::Ctrl1 | Handle::Ctrl2 | Handle::Radius => {}
     }
     // 允许反向拖（拖过对边就翻过来），但不允许缩到看不见
     if to.x1 - to.x0 < MIN_SIZE {
@@ -335,6 +402,24 @@ fn set_endpoint(kind: &mut Kind, handle: Handle, p: Point) {
         (Kind::Line { to, .. }, Handle::End) => *to = p,
         _ => {}
     }
+}
+
+/// 圆角手柄位置（ADR 0010）：包围框内侧右上角，随半径内缩。
+///
+/// `inset = 基准内缩 + 0.293 × r`，并夹到短边的 45%——圆弧离角越远，手柄跟着往里走，
+/// 这样"拖手柄"的直觉与"改半径"一致（朝中心拖变大、朝角拖变小）。
+pub fn radius_handle_point(obj: &Object) -> Option<(f32, f32)> {
+    let r = obj.kind.corner()?;
+    let f = frame(obj);
+    let inset = (RADIUS_GRIP + ARC_TO_CORNER * r)
+        .min(f.w as f32 * 0.45)
+        .min(f.h as f32 * 0.45);
+    Some(((f.x + f.w) as f32 - inset, f.y as f32 + inset))
+}
+
+/// 拖拽位移 → 圆角半径变化量。**朝中心拖（左下）增大、朝角拖（右上）减小**。
+pub fn radius_delta(dx: f32, dy: f32) -> f32 {
+    (dy - dx) * 0.5
 }
 
 /// 手柄位置列表（绘制与命中同一份数据）。
@@ -520,79 +605,49 @@ mod tests {
     }
 
     #[test]
+    fn curve_control_point_drag_bends_arrow() {
+        let mut ov = overlay_with_rect();
+        // 换成一个箭头并选中
+        ov.doc = airsnip_core::editor::Document::new();
+        ov.doc.push(Object {
+            kind: Kind::arrow(Point::new(100.0, 100.0), Point::new(300.0, 100.0)),
+            style: Style::new([0, 0, 0, 255], 4.0),
+        });
+        press(&mut ov, (100, 100), false); // 选中（点在起点手柄上也会选中）
+        let c1 = match ov.doc.objects()[0].kind.control_points() {
+            Some([c1, _]) => c1,
+            _ => panic!("箭头应有控制点"),
+        };
+        // 抓住第一个控制点往上拖
+        press(&mut ov, (c1.x.round() as i32, c1.y.round() as i32), false);
+        assert!(matches!(ov.edit, Some(Drag::Curve { .. })), "应进入曲线拖动");
+        drag(&mut ov, (c1.x.round() as i32, c1.y.round() as i32 - 60));
+        release(&mut ov);
+        let after = ov.doc.objects()[0].kind.control_points().unwrap()[0];
+        assert!((after.y - c1.y).abs() > 30.0, "控制点应被拖走：{:?} → {:?}", c1, after);
+    }
+
+    #[test]
+    fn radius_handle_drag_rounds_rect() {
+        let mut ov = overlay_with_rect();
+        press(&mut ov, (100, 80), false); // 选中
+        let obj = &ov.doc.objects()[0];
+        let (hx, hy) = radius_handle_point(obj).unwrap();
+        press(&mut ov, (hx.round() as i32, hy.round() as i32), false);
+        assert!(matches!(ov.edit, Some(Drag::Radius { .. })), "应进入圆角拖动");
+        // 朝中心（左下）拖 → 半径增大
+        drag(&mut ov, (hx.round() as i32 - 40, hy.round() as i32 + 40));
+        release(&mut ov);
+        let r = ov.doc.objects()[0].kind.corner().unwrap();
+        assert!(r > 10.0, "圆角应变大，实际 {r}");
+        assert!(ov.doc.undo(), "改圆角应可撤销");
+    }
+
+    #[test]
     fn frame_covers_object_bounds() {
         let obj = rect_obj();
         let f = frame(&obj);
         assert!(f.x <= 50 && f.y <= 40);
         assert!(f.x + f.w >= 150 && f.y + f.h >= 120);
-    }
-}
-
-/// 画选中对象的编辑框：虚线包围框 + 手柄（箭头/直线只有两端点）。
-///
-/// 只上屏显示，不进导出（导出由 `draw::bake` 烘焙对象本身）。
-pub fn paint_frame(pixmap: &mut tiny_skia::Pixmap, obj: &Object) {
-    use tiny_skia::{Paint, Stroke, Transform};
-    let accent = [26u8, 115, 232, 255];
-    let mut paint = Paint::default();
-    paint.set_color_rgba8(accent[0], accent[1], accent[2], accent[3]);
-
-    // 包围框（箭头 / 直线不画框，只给端点）
-    if !matches!(obj.kind, Kind::Arrow { .. } | Kind::Line { .. }) {
-        let b = obj.bounds();
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.move_to(b.x0, b.y0);
-        pb.line_to(b.x1, b.y0);
-        pb.line_to(b.x1, b.y1);
-        pb.line_to(b.x0, b.y1);
-        pb.close();
-        if let Some(path) = pb.finish() {
-            // 先黑后白两遍，深浅底图上都看得见
-            let mut dark = Paint::default();
-            dark.set_color_rgba8(0, 0, 0, 140);
-            pixmap.stroke_path(
-                &path,
-                &dark,
-                &Stroke {
-                    width: 2.0,
-                    ..Default::default()
-                },
-                Transform::identity(),
-                None,
-            );
-            pixmap.stroke_path(
-                &path,
-                &paint,
-                &Stroke {
-                    width: 1.0,
-                    ..Default::default()
-                },
-                Transform::identity(),
-                None,
-            );
-        }
-    }
-
-    for (_, p) in handle_points(obj) {
-        let Some(rect) = tiny_skia::Rect::from_xywh(p.x - HANDLE / 2.0, p.y - HANDLE / 2.0, HANDLE, HANDLE) else {
-            continue;
-        };
-        let mut pb = tiny_skia::PathBuilder::new();
-        pb.push_rect(rect);
-        if let Some(path) = pb.finish() {
-            let mut white = Paint::default();
-            white.set_color_rgba8(255, 255, 255, 255);
-            pixmap.fill_path(&path, &white, tiny_skia::FillRule::Winding, Transform::identity(), None);
-            pixmap.stroke_path(
-                &path,
-                &paint,
-                &Stroke {
-                    width: 1.0,
-                    ..Default::default()
-                },
-                Transform::identity(),
-                None,
-            );
-        }
     }
 }

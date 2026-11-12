@@ -100,7 +100,7 @@ impl Dispatch<WlPointer, ()> for Backend {
                             objedit::drag(ov, p);
                             repaint = true;
                         } else if ov.drawing {
-                            edit::update(ov, p);
+                            edit::update(ov, p, ov.shift);
                             repaint = true;
                         } else if let Some(from) = ov.drag_from {
                             let (cw, ch) = (ov.bright.width() as i32, ov.bright.height() as i32);

@@ -74,17 +74,20 @@ pub fn rebuild(ov: &mut Overlay) {
         if let Some(idx) = ov.selected
             && let Some(obj) = doc.objects().get(idx)
         {
-            super::objedit::paint_frame(display, obj);
+            super::objedit::paint::frame(display, obj);
+            super::objedit::paint::curve_handles(display, obj);
+            super::objedit::paint::radius_handle(display, obj);
         }
         // 正在输入的文本（光标提示）画在所有对象之上
         if let Some(edit) = text_edit {
             super::text_input::paint(display, edit, sel.w as f32);
         }
     }
-    draw_decorations(&mut ov.display, sel);
-    // 工具栏（选区下方优先，塞不下翻上方）
     let (cw, ch) = (ov.display.width() as i32, ov.display.height() as i32);
     let tb = super::toolbar::layout(cw, ch, sel);
+    draw_size_hint(&mut ov.display, sel, tb.y, ch);
+    draw_decorations(&mut ov.display, sel);
+    // 工具栏（选区下方优先，塞不下翻上方）
     let (tool, color_index, filled, pointer) = (ov.tool, ov.color_index, ov.filled, ov.pointer);
     super::toolbar::paint(&mut ov.display, &tb, tool, color_index, filled, pointer);
 }
@@ -124,6 +127,54 @@ fn copy_block(
         let bytes = &src.data()[so..so + row_bytes];
         dst.data_mut()[do_..do_ + row_bytes].copy_from_slice(bytes);
     }
+}
+
+/// 选区尺寸提示（CAP-2）：「宽 × 高」画在工具栏的**对面**一侧（工具栏在下 → 文字在上）。
+///
+/// 用 16px 粗体 + 1px 黑色阴影：纯白字在浅色底图上会看不清，加阴影后深浅都可用。
+fn draw_size_hint(pixmap: &mut tiny_skia::Pixmap, sel: Sel, toolbar_y: i32, canvas_h: i32) {
+    use airsnip_core::draw::text::{TextSink, TextSpec};
+    let label = format!("{} × {}", sel.w, sel.h);
+    let spec = TextSpec {
+        family: std::sync::Arc::from(super::text_input::DEFAULT_FAMILY),
+        size: 16.0,
+        bold: true,
+        italic: false,
+    };
+    crate::draw::text::with_engine(|sink| {
+        let (_, th) = sink.measure(&label, &spec);
+        // 工具栏在选区下方 → 文字放上方；反之放下方
+        let toolbar_below = toolbar_y >= sel.y + sel.h;
+        let mut y = if toolbar_below {
+            sel.y as f32 - th - 6.0
+        } else {
+            (sel.y + sel.h) as f32 + 6.0
+        };
+        // 上方放不下就翻到下方，再不行贴边
+        if y < 0.0 {
+            y = (sel.y + sel.h) as f32 + 6.0;
+        }
+        y = y.clamp(0.0, (canvas_h as f32 - th).max(0.0));
+        let x = (sel.x as f32 + 2.0).clamp(0.0, (pixmap.width() as f32 - 4.0).max(0.0));
+        let pos = airsnip_core::editor::Point::new(x, y);
+        // 阴影 + 白字
+        sink.draw(
+            pixmap,
+            airsnip_core::editor::Point::new(x + 1.0, y + 1.0),
+            &label,
+            &spec,
+            [0, 0, 0, 210],
+            tiny_skia::Transform::identity(),
+        );
+        sink.draw(
+            pixmap,
+            pos,
+            &label,
+            &spec,
+            [255, 255, 255, 255],
+            tiny_skia::Transform::identity(),
+        );
+    });
 }
 
 /// 聚光区域恢复原亮度（`corner > 0` 时四角按覆盖率插值，避免硬边）。
@@ -337,7 +388,7 @@ mod tests {
         ov.filled = true;
         ov.style = airsnip_core::editor::Style::new([255, 0, 0, 255], 4.0);
         crate::overlay::edit::begin(&mut ov, (20, 20));
-        crate::overlay::edit::update(&mut ov, (180, 180));
+        crate::overlay::edit::update(&mut ov, (180, 180), false);
         crate::overlay::edit::commit(&mut ov);
         let out = export(&ov, sel).unwrap();
         let i = ((100 * 200 + 100) * 4) as usize;
@@ -513,6 +564,53 @@ mod tests {
             let c = crate::draw::pixmap_to_canvas(&ov.display);
             crate::codec::write_png(&c, std::path::Path::new("/tmp/airsnip-tools.png")).unwrap();
         }
+    }
+
+    #[test]
+    fn shift_squares_the_rect() {
+        use airsnip_core::editor::Tool;
+        let canvas = crate::canvas::Canvas::new(300, 300);
+        let mut ov = Overlay::new(&canvas).unwrap();
+        ov.sel = Some(Sel {
+            x: 0,
+            y: 0,
+            w: 300,
+            h: 300,
+        });
+        ov.tool = Tool::Rect;
+        crate::overlay::edit::begin(&mut ov, (20, 20));
+        crate::overlay::edit::update(&mut ov, (200, 80), true);
+        let kind = &ov.draft.as_ref().unwrap().kind;
+        let airsnip_core::editor::Kind::Rect { a, b, .. } = kind else {
+            panic!("应是矩形")
+        };
+        assert!(
+            ((a.x - b.x).abs() - (a.y - b.y).abs()).abs() < 1.5,
+            "Shift 应把矩形变成正方形：{:?} {:?}",
+            a,
+            b
+        );
+    }
+
+    #[test]
+    fn shift_snaps_the_arrow() {
+        use airsnip_core::editor::Tool;
+        let canvas = crate::canvas::Canvas::new(300, 300);
+        let mut ov = Overlay::new(&canvas).unwrap();
+        ov.sel = Some(Sel {
+            x: 0,
+            y: 0,
+            w: 300,
+            h: 300,
+        });
+        ov.tool = Tool::Arrow;
+        crate::overlay::edit::begin(&mut ov, (100, 100));
+        crate::overlay::edit::update(&mut ov, (250, 130), true);
+        let airsnip_core::editor::Kind::Arrow { from, to, .. } = &ov.draft.as_ref().unwrap().kind else {
+            panic!("应是箭头")
+        };
+        // 30/150 的斜率小于 22.5°，应吸附成水平
+        assert!((to.y - from.y).abs() < 2.0, "应吸附为水平：{:?} → {:?}", from, to);
     }
 
     #[test]
