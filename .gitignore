@@ -4,3 +4,7 @@
 # 本地会话记录（planning-with-files），不入库
 /Task/
 /.planning/
+
+# 领域术语表：与 PRD §4 编号表、模块注释重复且无人维护，已于 3da1fea 删除，
+# 后又被误加回（be80dfd）。忽略以免再次入库。
+/CONTEXT.md
