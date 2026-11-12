@@ -1,0 +1,31 @@
+[package]
+name = "airsnip-linux"
+version = "0.11.0"
+edition = "2024"
+description = "AirSnip 轻截 Linux 前端：Wayland/wlroots 系合成器（ADR 0034）"
+license = "GPL-3.0-only"
+
+# 二进制名与 Windows 版一致（都叫 airsnip），方便用户在合成器配置里绑定同一个命令名。
+# 注意：同一 workspace 里根包（Windows 前端）也叫 airsnip，因此 **不能** 用
+# `cargo build --workspace`（两个 bin 会撞 target/debug/airsnip）；Linux 侧请用
+# `cargo build -p airsnip-linux`。
+[[bin]]
+name = "airsnip"
+path = "src/main.rs"
+
+[dependencies]
+# 跨平台核心（标注对象模型 / 文档撤销栈）
+airsnip-core = { version = "0.11.0", path = "../airsnip-core" }
+# Wayland 客户端与协议绑定（MIT / Apache-2.0，与 GPL-3.0-only 兼容）
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "unstable", "staging"] }
+# wlr-screencopy（抓屏）与 wlr-layer-shell（覆盖层），同属 wlroots 协议集
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+# wl_shm 缓冲区的 mmap（MIT / Apache-2.0）
+# 文本整形与栅格化（MIT/Apache-2.0/ISC 组合，与 GPL-3.0-only 兼容）
+# 接进 core 的 TextSink 接口，替代 Windows 侧的 DirectWrite。
+cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash", "fontconfig"] }
+# 矢量绘制（与 Windows 版同一套，纯 CPU）
+tiny-skia = "0.12.0"
+memmap2 = "0.9"
+png = "0.18"

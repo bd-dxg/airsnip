@@ -5,7 +5,7 @@ use tiny_skia::Pixmap;
 
 /// 区域盒式模糊：`passes` 次水平+垂直滑动窗口（边缘复制），就地修改像素图指定区域。
 /// 区域坐标已在目标坐标系；半径过小或区域越界时安全返回。
-pub(super) fn box_blur_region(pixmap: &mut Pixmap, x0: i32, y0: i32, rw: i32, rh: i32, radius: f32, passes: u32) {
+pub fn box_blur_region(pixmap: &mut Pixmap, x0: i32, y0: i32, rw: i32, rh: i32, radius: f32, passes: u32) {
     let r = radius.round().max(1.0) as i32;
     if rw < 1 || rh < 1 || r < 1 {
         return;

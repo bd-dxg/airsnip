@@ -8,8 +8,8 @@ mod curve;
 mod document;
 mod hit;
 mod number;
-pub(crate) mod palette;
-pub(crate) mod text;
+pub mod palette;
+pub mod text;
 mod tool;
 mod transform;
 

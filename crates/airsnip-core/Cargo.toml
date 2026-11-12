@@ -1,0 +1,10 @@
+[package]
+name = "airsnip-core"
+version = "0.11.0"
+edition = "2024"
+description = "AirSnip 轻截跨平台核心：标注对象模型、文档与撤销栈（无平台依赖）"
+license = "GPL-3.0-only"
+
+[dependencies]
+# 纯 CPU 软件光栅（ADR 0034）：绘制工具跨平台共用，不涉及平台 API。
+tiny-skia = "0.12.0"

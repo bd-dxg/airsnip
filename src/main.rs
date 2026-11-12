@@ -7,7 +7,9 @@
 
 pub mod app;
 pub mod capture;
-pub mod editor;
+// 跨平台核心（ADR 0034）：editor 已搬到 crates/airsnip-core，这里重导出，
+// 全仓库既有的 `crate::editor::…` 路径保持不变。
+pub use airsnip_core::editor;
 pub mod longshot;
 pub mod ocr; // 二期
 pub mod output;

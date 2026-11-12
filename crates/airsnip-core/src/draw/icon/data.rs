@@ -17,7 +17,7 @@ macro_rules! icon_table {
             /// 嵌入的 SVG 源文本。
             pub fn source(self) -> &'static str {
                 match self {
-                    $(Icon::$name => include_str!(concat!("../../../assets/icons/ui/", $path)),)*
+                    $(Icon::$name => include_str!(concat!("../../../../../assets/icons/ui/", $path)),)*
                 }
             }
         }

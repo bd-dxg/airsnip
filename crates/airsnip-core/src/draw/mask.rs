@@ -9,14 +9,14 @@
 use tiny_skia::Pixmap;
 
 /// 像素区域（x0, y0, x1, y1 半开区间，物理像素）。
-pub(crate) type Region = (i32, i32, i32, i32);
+pub type Region = (i32, i32, i32, i32);
 
 /// 浮点矩形（x0, y0, x1, y1）：**完整**对象矩形，圆角一律按它算（不随脏区裁剪）。
-pub(crate) type FRect = (f32, f32, f32, f32);
+pub type FRect = (f32, f32, f32, f32);
 
 /// 圆角半径夹到 `[0, 短边一半]`（与 `editor::Kind::corner_limit` 同一规则）。
 /// `rect` 为**完整**对象矩形 `(x0, y0, x1, y1)`。
-pub(crate) fn clamp_radius(rect: FRect, r: f32) -> f32 {
+pub fn clamp_radius(rect: FRect, r: f32) -> f32 {
     let (x0, y0, x1, y1) = rect;
     let limit = (x1 - x0).abs().min((y1 - y0).abs()) * 0.5;
     r.clamp(0.0, limit)
@@ -26,7 +26,7 @@ pub(crate) fn clamp_radius(rect: FRect, r: f32) -> f32 {
 ///
 /// `rect` 必须是**完整**对象矩形，不能是裁剪后的脏区：聚光 / 模糊回贴时区域会被裁到脏区，
 /// 但圆角要按完整矩形算，否则靠角的那次局部重绘会把角画成直角。
-pub(crate) fn corner_coverage(px: f32, py: f32, rect: FRect, r: f32) -> f32 {
+pub fn corner_coverage(px: f32, py: f32, rect: FRect, r: f32) -> f32 {
     if r < 0.5 {
         return 1.0;
     }
@@ -47,7 +47,7 @@ pub(crate) fn corner_coverage(px: f32, py: f32, rect: FRect, r: f32) -> f32 {
 /// 区域内的四角方块行列范围：不在这些行列上的像素一律满覆盖（走快速路径）。
 ///
 /// 性能意义：整行直边可以按块拷贝或走原循环，只有角的 `r × r` 方块内才逐像素算覆盖率。
-pub(crate) struct CornerBands {
+pub struct CornerBands {
     /// `[0, n_top)` 行落在上角方块内
     n_top: usize,
     /// `[b_start, rh)` 行落在下角方块内
@@ -89,7 +89,7 @@ impl CornerBands {
 }
 
 /// 把像素区域与画布求交；空区域返回 None。
-pub(crate) fn clip_region(pixmap: &Pixmap, region: Region) -> Option<Region> {
+pub fn clip_region(pixmap: &Pixmap, region: Region) -> Option<Region> {
     let (w, h) = (pixmap.width() as i32, pixmap.height() as i32);
     let (x0, y0, x1, y1) = region;
     let c = (x0.max(0), y0.max(0), x1.min(w), y1.min(h));
@@ -98,7 +98,7 @@ pub(crate) fn clip_region(pixmap: &Pixmap, region: Region) -> Option<Region> {
 
 /// 拷贝 `region` 范围内的 RGBA 像素为紧凑缓冲（行优先，行宽 = 区域宽）。
 /// 区域裁剪到画布内；空区域返回空缓冲。
-pub(crate) fn copy_region(pixmap: &Pixmap, region: Region) -> Vec<u8> {
+pub fn copy_region(pixmap: &Pixmap, region: Region) -> Vec<u8> {
     let Some((x0, y0, x1, y1)) = clip_region(pixmap, region) else {
         return Vec::new();
     };
@@ -115,13 +115,13 @@ pub(crate) fn copy_region(pixmap: &Pixmap, region: Region) -> Vec<u8> {
 /// 按圆角遮罩把紧凑缓冲 `src` 混入 `dst` 的同一区域：`dst = dst + (src − dst) × coverage`。
 /// `src` 必须来自 `copy_region(dst, region)`（同尺寸、同裁剪），`corner_rect` 为完整对象矩形。
 /// 用于聚光：`src` 是原图、`dst` 是暗图，圆角内换成原图亮度。
-pub(crate) fn blend_compact(dst: &mut Pixmap, src: &[u8], region: Region, corner_rect: FRect, r: f32) {
+pub fn blend_compact(dst: &mut Pixmap, src: &[u8], region: Region, corner_rect: FRect, r: f32) {
     blend_impl(dst, src, region, corner_rect, r, false);
 }
 
 /// 按圆角遮罩把紧凑缓冲 `src` 恢复回来：`dst = src + (dst − src) × coverage`。
 /// 用于模糊：`dst` 已经是模糊结果，圆角处要换回模糊前的 `src`。
-pub(crate) fn restore_compact(dst: &mut Pixmap, src: &[u8], region: Region, corner_rect: FRect, r: f32) {
+pub fn restore_compact(dst: &mut Pixmap, src: &[u8], region: Region, corner_rect: FRect, r: f32) {
     blend_impl(dst, src, region, corner_rect, r, true);
 }
 

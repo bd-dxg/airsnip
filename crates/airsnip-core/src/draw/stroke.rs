@@ -8,7 +8,7 @@ use super::paint_of;
 use crate::editor::{Point, Style};
 
 /// EDT-13 直线：无箭头的纯线段，端点用圆端帽（避免描边超出端点的生硬截断）。
-pub(super) fn draw_line(pixmap: &mut Pixmap, from: Point, to: Point, style: &Style, tr: Transform) {
+pub fn draw_line(pixmap: &mut Pixmap, from: Point, to: Point, style: &Style, tr: Transform) {
     let (dx, dy) = (to.x - from.x, to.y - from.y);
     if dx * dx + dy * dy < 0.25 {
         return;
@@ -29,7 +29,7 @@ pub(super) fn draw_line(pixmap: &mut Pixmap, from: Point, to: Point, style: &Sty
 }
 
 /// EDT-14 椭圆：外接矩形对角两点，`filled` 时填充（半透明由颜色 alpha 表达，与矩形一致）。
-pub(super) fn draw_ellipse(pixmap: &mut Pixmap, a: Point, b: Point, filled: bool, style: &Style, tr: Transform) {
+pub fn draw_ellipse(pixmap: &mut Pixmap, a: Point, b: Point, filled: bool, style: &Style, tr: Transform) {
     let (x0, y0) = (a.x.min(b.x), a.y.min(b.y));
     let (x1, y1) = (a.x.max(b.x), a.y.max(b.y));
     if x1 - x0 < 1.0 || y1 - y0 < 1.0 {
@@ -58,7 +58,7 @@ pub(super) fn draw_ellipse(pixmap: &mut Pixmap, a: Point, b: Point, filled: bool
 /// EDT-15 手绘：用「相邻点中点 + 二次贝塞尔」平滑折线。
 /// 从首点出发，每对相邻点的中点用二次贝塞尔连接（控制点取原始点），
 /// 只在相邻点有实际距离时绘制，避免重合点产生退化线段。
-pub(super) fn draw_freehand(pixmap: &mut Pixmap, pts: &[Point], style: &Style, tr: Transform) {
+pub fn draw_freehand(pixmap: &mut Pixmap, pts: &[Point], style: &Style, tr: Transform) {
     if pts.len() < 2 {
         return;
     }

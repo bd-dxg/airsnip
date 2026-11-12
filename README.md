@@ -1,9 +1,13 @@
 # AirSnip（轻截）
 
-**2 MB 以内的 Windows 截图标注工具。** 待机不占 CPU、常驻内存个位数 MB、按热键 0.1 秒级出画面——
-标注、二次编辑、长截图、贴图、多格式另存，功能一样不少。
+**2 MB 以内的截图标注工具，Windows 与 Linux（Wayland）双平台。** 待机不占 CPU、常驻内存个位数 MB、
+按热键 0.1 秒级出画面——标注、二次编辑、长截图、贴图、多格式另存，功能一样不少。
 
 > 纯 CPU 渲染，不依赖 GPU、不套 Electron、不装运行时。解压即用的绿色单文件，在核显迷你主机、虚拟机、远程桌面里同样流畅。
+>
+> **两套原生前端，共用同一份核心与绘制代码：** Windows 版（GDI + DirectWrite）与 Linux 版
+> （Wayland `wlr-screencopy` + `wlr-layer-shell` + cosmic-text），标注对象模型、撤销栈、
+> 矢量绘制逻辑都在 `airsnip-core` 里，两个平台行为一致。Linux 侧见 [Linux（Wayland）原生前端](#linuxwayland原生前端)。
 
 ![AirSnip 截图覆盖层：冻结屏幕、框选区域、底部标注工具栏](assets/hero.webp)
 
@@ -127,10 +131,81 @@
 
 ## 系统要求
 
+### Windows
+
 - **Windows 10 及以上（64 位）**；Windows 11 已实测。只提供 x64 构建。
 - **Windows 7 / 8 / 8.1 无法运行**，且不是功能缺失——exe 在加载阶段就会被系统拒绝，双击后通常弹「无法定位程序输入点 WaitOnAddress 于动态链接库 KERNEL32.dll 上」或被提示缺少 `api-ms-win-core-synch-l1-2-0.dll`，进程起不来。
 
   原因：程序静态导入了 Windows 10 之前不存在的系统 API——`WaitOnAddress`（Windows 8 引入，Rust 标准库从 1.78 起用它做锁）、`GetDpiForMonitor`（8.1）、`GetDpiForWindow`（10 1607），以及 WinRT OCR 的 `RoInitialize` / `RoGetActivationFactory`（Windows 8 引入，而 `Windows.Media.Ocr` 只在 Windows 10 上存在）。这些是导入表里的必解析项，无法运行时降级；要在 Win7 上跑需要自行编译 Rust 标准库（tier-3 目标 `x86_64-win7-windows-msvc`）并砍掉 OCR，本项目不做这个取舍。完整原因与导入项清单见 [#94](https://github.com/bd-dxg/airsnip/issues/94)。
+
+## Linux（Wayland）原生前端
+
+Windows 版之外，仓库里另有一个 **Linux 原生前端**（`crates/airsnip-linux`，ADR 0034），
+面向 **wlroots 系协议族**的合成器：**niri / sway / Hyprland / KDE Plasma 6**。
+
+- 不用 Wine、不用虚拟机：抓屏走 `wlr-screencopy`，覆盖层走 `wlr-layer-shell`，纯 CPU 渲染
+- 热键交给合成器绑定（Wayland 没有全局热键协议），因此**没有常驻进程、没有托盘**
+- **不做** GNOME Wayland（不支持上述协议）与 X11
+
+当前进度（分阶段见 ADR 0034 §6）：
+
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| S1 | `wlr-screencopy` 抓屏合成整屏底图（与 `grim` 逐像素一致） | ✅ 已交付 |
+| S2 | 全屏覆盖层 + 框选 + `Enter` 复制 / `Ctrl+S` 保存 / `Esc` 取消 | ✅ 已交付 |
+| S3 | 绘制层与 `airsnip-core` 打通（一份绘制代码两平台共用） | ✅ 已交付 |
+| S4 | 10 种标注工具 + **工具栏**（工具 / 5 色块 / 填充 / 撤销 / 重做 / 复制 / 保存） | ✅ 已交付 |
+| S4b | 文本工具与中文输入法（text-input-v3）、对象选中/拖动/缩放/删除、滚轮调线宽、尺寸提示 | 🚧 进行中 |
+| S5 | 贴图、长截图、OCR、多格式另存、设置面板 | ⬜ 未开始 |
+
+**已交付的 Windows 版功能中，Linux 侧尚未移植的**：长截图、贴图（Pin）、OCR、设置面板、
+多格式另存为、颜色/填充作用于选中对象。
+| S5 | 贴图、长截图、OCR、多格式另存 | ⬜ |
+
+```bash
+cargo build -p airsnip-linux --release    # 产物 target/release/airsnip
+./target/release/airsnip snip             # 截图：框选 → Enter 复制 / Ctrl+S 保存 / Esc 取消
+./target/release/airsnip capture -o a.png # 只抓屏落 PNG（验证用）
+```
+
+niri 的绑定（`~/.config/niri/config.kdl`）：
+
+```kdl
+binds {
+    Mod+F1 { spawn "airsnip" "snip"; }
+}
+```
+
+当前可用的键位（先在终端里试 `./target/release/airsnip snip`）：
+
+| 键 | 作用 |
+|---|---|
+| 拖动 | 框选（选区内变亮） |
+| **工具栏** | 选区下方单行：10 工具 / 5 色块 / 填充 / 撤销 / 重做 / 复制 / 保存（点图标即生效） |
+| `1`–`9`、`0` | 切换工具：矩形 / 箭头 / 文本 / 荧光笔 / 模糊 / 聚光 / 序号 / 直线 / 椭圆 / 手绘 |
+| 选区内拖动 | 用当前工具画标注 |
+| `Ctrl+Z` / `Ctrl+Y` | 撤销 / 重做 |
+| `Enter` / `Ctrl+C` | 复制选区（含标注） |
+| `Ctrl+S` | 保存到 `$XDG_PICTURES_DIR/airsnip-<时间戳>.png` |
+| `Esc` | 取消 |
+
+复制走 **`wl-copy`**（`wl-clipboard` 包，Wayland 桌面基本必装）：AirSnip 把 PNG 交给它之后
+立刻退出，由 `wl-copy` 常驻持有选区——与你桌面上其它截图工具（Flameshot / DMS quickCapture）
+的行为一致。机器上没有 `wl-copy` 时退回内置驻留模式（AirSnip 自己持有选区，直到被顶掉）。
+
+已知边界：文本工具与中文输入法未接（`T`/文本图标暂无输入框）、对象还不能选中后拖动/缩放/删除、
+颜色与填充只作用于「下一次绘制」、没有尺寸提示文字、保存固定写图片目录（无另存为对话框）。
+
+### Linux（Wayland）
+
+- **wlroots 系协议的 Wayland 合成器**：niri / sway / Hyprland / KDE Plasma 6 已支持用例；
+  niri 26.04 为本仓库的实测环境（双屏 1920×1080，实机验证）
+- 需要 `wlr-screencopy`（抓屏）与 `wlr-layer-shell`（覆盖层）两个协议；
+  缺协议时程序会明确报错，不会静默降级
+- 剪贴板需要 `wl-clipboard`（`wl-copy` / `wl-paste`，主流发行版基本预装）；
+  没装时退回内置驻留模式
+- **不支持** GNOME Wayland（不提供上述协议，需 PipeWire + portal，属另一条实现路径）与 X11
+- 无 GUI 运行时依赖：不装 GTK/Qt/Electron，字体走 fontconfig（中文需系统里有思源黑体或 Noto CJK）
 
 ## 下载与使用
 

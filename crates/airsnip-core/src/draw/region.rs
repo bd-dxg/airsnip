@@ -164,7 +164,11 @@ mod tests {
     #[test]
     fn highlight_corner_leaves_corners_untouched() {
         let mut p = blank(80, 60);
-        crate::render::draw_object(&mut p, &highlight((10.0, 10.0), (70.0, 50.0), 12.0));
+        crate::draw::objects::draw_object(
+            &mut p,
+            &highlight((10.0, 10.0), (70.0, 50.0), 12.0),
+            &crate::draw::text::NoText,
+        );
 
         assert_eq!(pixel(&p, 5, 5), (255, 255, 255, 255), "对象外应保持原样");
         assert_eq!(pixel(&p, 10, 10), (255, 255, 255, 255), "圆角处应未被染色");
@@ -191,7 +195,7 @@ mod tests {
             },
             style: Style::new([0, 0, 0, 255], 2.0),
         };
-        crate::render::draw_object(&mut p, &obj);
+        crate::draw::objects::draw_object(&mut p, &obj, &crate::draw::text::NoText);
 
         assert_eq!(
             pixel(&p, 7, 7),

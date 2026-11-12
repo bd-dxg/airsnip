@@ -7,12 +7,13 @@ use tiny_skia::{Pixmap, Transform};
 use crate::editor::{Kind, Object, Point};
 
 use super::mask;
+use crate::draw::text::TextSink;
 
 /// 导出烘焙（OUT-1/OUT-2）：把标注对象栅格化进裁剪结果图。
 /// `origin` 是裁剪区域在覆盖层坐标系中的左上角；对象坐标减去它即为裁剪图坐标。
 /// 存在聚光（Glow）对象时：整图先暗化，再把各 Glow 区域恢复为原图亮度（聚光效果），
 /// 与屏幕显示一致；其余对象照常绘制。
-pub fn bake_objects(pixmap: &mut Pixmap, objects: &[Object], origin: (i32, i32)) {
+pub fn bake_objects(pixmap: &mut Pixmap, objects: &[Object], origin: (i32, i32), sink: &dyn TextSink) {
     let transform = Transform::from_translate(-origin.0 as f32, -origin.1 as f32);
     if objects.iter().any(|o| matches!(o.kind, Kind::Glow { .. })) {
         // 备份原图，暗化后用于恢复 Glow 区域
@@ -28,7 +29,7 @@ pub fn bake_objects(pixmap: &mut Pixmap, objects: &[Object], origin: (i32, i32))
         if matches!(obj.kind, Kind::Glow { .. }) {
             continue; // 已在上面处理，不重复绘制
         }
-        super::draw_object_with(pixmap, obj, transform);
+        crate::draw::objects::draw_object_with_text(pixmap, obj, transform, sink);
     }
 }
 
@@ -99,7 +100,7 @@ mod tests {
             style: Style::new([0, 0, 0, 255], 2.0),
         };
         // 裁剪原点 (80,80) → 聚光区落在裁剪图 (20,20)-(60,60)
-        bake_objects(&mut p, &[obj], (80, 80));
+        bake_objects(&mut p, &[obj], (80, 80), &crate::draw::text::NoText);
 
         let at = |p: &Pixmap, x: u32, y: u32| p.data()[((y * p.width() + x) * 4) as usize];
         assert!(at(&p, 40, 40) > 200, "中心应恢复原图亮度（白）");
