@@ -70,6 +70,12 @@ pub fn rebuild(ov: &mut Overlay) {
         }
         let clip = (sel.x, sel.y, sel.x + sel.w, sel.y + sel.h);
         crate::draw::draw_objects(display, doc.objects(), draft.as_ref(), clip);
+        // 选中对象的编辑框（虚线框 + 手柄），仅上屏不导出
+        if let Some(idx) = ov.selected
+            && let Some(obj) = doc.objects().get(idx)
+        {
+            super::objedit::paint_frame(display, obj);
+        }
         // 正在输入的文本（光标提示）画在所有对象之上
         if let Some(edit) = text_edit {
             super::text_input::paint(display, edit, sel.w as f32);

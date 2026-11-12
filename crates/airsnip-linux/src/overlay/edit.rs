@@ -128,8 +128,10 @@ pub fn commit(ov: &mut Overlay) {
     };
     if degenerate {
         ov.doc.commit(false);
+        crate::wayland::debug("草稿太小，丢弃");
         return;
     }
+    crate::wayland::debug(format!("提交对象 #{}", ov.doc.objects().len()));
     ov.doc.push(draft);
     ov.doc.commit(true);
 }

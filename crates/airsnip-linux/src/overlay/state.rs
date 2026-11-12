@@ -109,6 +109,13 @@ pub struct Overlay {
     pub done: bool,
     pub action: Option<Action>,
     /// 正在输入文本（EDT-4）；`None` 表示不在文本编辑态。
+    /// 选中的对象下标（EDT-7，S4c）。
+    pub selected: Option<usize>,
+    /// 正在进行的对象拖动 / 缩放。
+    pub edit: Option<super::objedit::Drag>,
+    /// 按下时压在某个对象上：(对象下标, 按下时的对象数)。
+    /// 松手时若对象数没变 → 这次是"单击选中"；变了 → 是"在对象上画了新标注"。
+    pub pending_select: Option<(usize, usize)>,
     pub text_edit: Option<super::text_input::TextEdit>,
     /// 输入法是否已接管按键（收到过 commit/preedit 事件）。
     pub ime_active: bool,
@@ -148,6 +155,9 @@ impl Overlay {
             ctrl: false,
             done: false,
             action: None,
+            selected: None,
+            edit: None,
+            pending_select: None,
             text_edit: None,
             ime_active: false,
             shift: false,

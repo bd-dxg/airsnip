@@ -9,6 +9,7 @@
 pub mod clipboard;
 pub mod edit;
 pub mod input;
+pub mod objedit;
 pub mod paint;
 pub mod paths;
 pub mod state;
@@ -61,6 +62,11 @@ pub fn run() -> Result<(), Error> {
     let action = overlay.action.unwrap_or(Action::Cancel);
     let serial = overlay.serial;
     let sel = overlay.current_sel();
+    crate::wayland::debug(format!(
+        "导出：选区 {sel:?}，对象 {} 个（选中 {:?}）",
+        overlay.doc.objects().len(),
+        overlay.selected
+    ));
     let out = match (action, sel) {
         (Action::Cancel, _) => None,
         (_, None) => {

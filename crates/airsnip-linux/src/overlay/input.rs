@@ -13,7 +13,7 @@ use wayland_client::{Connection, Dispatch, QueueHandle, WEnum};
 use airsnip_core::editor::Tool;
 
 use super::state::{Action, Sel};
-use super::{edit, paint};
+use super::{edit, objedit, paint};
 use crate::wayland::Backend;
 
 // Linux evdev 键码（input-event-codes.h）
@@ -29,6 +29,11 @@ const KEY_CTRL_R: u32 = 97;
 const KEY_SHIFT_L: u32 = 42;
 const KEY_SHIFT_R: u32 = 54;
 const KEY_BACKSPACE: u32 = 14;
+const KEY_DELETE: u32 = 111;
+const KEY_LEFT: u32 = 105;
+const KEY_RIGHT: u32 = 106;
+const KEY_UP: u32 = 103;
+const KEY_DOWN: u32 = 108;
 /// BTN_LEFT
 const BTN_LEFT: u32 = 0x110;
 
@@ -91,7 +96,10 @@ impl Dispatch<WlPointer, ()> for Backend {
                     if let Some(i) = ov.active {
                         let p = ov.layers[i].to_canvas(surface_x, surface_y);
                         ov.pointer = Some(p);
-                        if ov.drawing {
+                        if ov.edit.is_some() {
+                            objedit::drag(ov, p);
+                            repaint = true;
+                        } else if ov.drawing {
                             edit::update(ov, p);
                             repaint = true;
                         } else if let Some(from) = ov.drag_from {
@@ -133,10 +141,26 @@ impl Dispatch<WlPointer, ()> for Backend {
                         }
                     }
                     if pressed {
-                        // 2) 已框选且按在选区内 → 画标注；否则开始新的框选
+                        // 2) 对象编辑优先：点中对象 = 选中（Ctrl 才是拖动），点手柄 = 缩放
+                        if !handled && ov.current_sel().is_some() {
+                            handled = objedit::press(ov, p, ov.ctrl);
+                            if ov.edit.is_some() {
+                                repaint = true;
+                            }
+                        }
+                        // 3) 已框选且按在选区内 → 画标注；否则开始新的框选
                         if !handled {
                             let inside = ov.current_sel().map(|s| s.contains(p.0, p.1)).unwrap_or(false);
                             if inside {
+                                // 压在对象上：先记下"可能是单击选中"（松手时按有无位移判定）
+                                if !ov.ctrl {
+                                    if let Some(idx) = objedit::hit_object_loose(
+                                        ov,
+                                        airsnip_core::editor::Point::new(p.0 as f32, p.1 as f32),
+                                    ) {
+                                        ov.pending_select = Some((idx, ov.doc.objects().len()));
+                                    }
+                                }
                                 ov.drawing = true;
                                 edit::begin(ov, p);
                                 if ov.text_edit.is_some() {
@@ -153,9 +177,19 @@ impl Dispatch<WlPointer, ()> for Backend {
                     } else if ov.toolbar_hold {
                         // 工具栏上松手：不结束任何手势
                         ov.toolbar_hold = false;
+                    } else if ov.edit.is_some() {
+                        objedit::release(ov);
+                        repaint = true;
                     } else if ov.drawing {
                         edit::commit(ov);
                         ov.drawing = false;
+                        // 单击（没有真的画出对象）= 选中按下时压着的那个对象
+                        if let Some((idx, len)) = ov.pending_select.take()
+                            && ov.doc.objects().len() == len
+                        {
+                            ov.selected = Some(idx);
+                            crate::wayland::debug(format!("选中对象 #{idx}"));
+                        }
                     } else {
                         ov.drag_from = None;
                         if ov.sel.map(|s| !s.usable()).unwrap_or(true) {
@@ -164,6 +198,18 @@ impl Dispatch<WlPointer, ()> for Backend {
                         crate::wayland::debug(format!("框选结束 {:?}", ov.sel));
                     }
                     repaint = true;
+                }
+                wl_pointer::Event::Axis { axis, value, .. } => {
+                    // 只在垂直滚动时调线宽（数值方向：向下为负增长）
+                    let vertical = matches!(
+                        axis,
+                        WEnum::Value(wayland_client::protocol::wl_pointer::Axis::VerticalScroll)
+                    );
+                    if vertical && value.abs() > 0.01 {
+                        let delta = if value > 0.0 { -1.0 } else { 1.0 };
+                        objedit::adjust_width(ov, delta);
+                        repaint = true;
+                    }
                 }
                 wl_pointer::Event::Leave { .. } => ov.active = None,
                 _ => {}
@@ -194,9 +240,20 @@ fn on_toolbar(ov: &mut super::state::Overlay, item: super::toolbar::Item) {
             if i < DEFAULT_COLORS.len() {
                 ov.color_index = i;
                 ov.style.color = DEFAULT_COLORS[i];
+                // 有选中对象时改它的颜色（一步撤销）
+                let c = DEFAULT_COLORS[i];
+                super::objedit::restyle_selected(ov, |obj| obj.style.color = c);
             }
         }
-        Item::Fill => ov.filled = !ov.filled,
+        Item::Fill => {
+            ov.filled = !ov.filled;
+            let filled = ov.filled;
+            super::objedit::restyle_selected(ov, |obj| match &mut obj.kind {
+                airsnip_core::editor::Kind::Rect { filled: f, .. }
+                | airsnip_core::editor::Kind::Ellipse { filled: f, .. } => *f = filled,
+                _ => {}
+            });
+        }
         Item::Undo => {
             edit::undo(ov);
         }
@@ -283,6 +340,24 @@ impl Dispatch<WlKeyboard, ()> for Backend {
                             KEY_ENTER | KEY_KPENTER => ov.finish(Action::Copy),
                             KEY_C if ov.ctrl => ov.finish(Action::Copy),
                             KEY_S if ov.ctrl => ov.finish(Action::Save),
+                            KEY_BACKSPACE | KEY_DELETE => {
+                                if objedit::delete(ov) {
+                                    repaint = true;
+                                    crate::wayland::debug("删除选中对象");
+                                }
+                            }
+                            KEY_LEFT | KEY_RIGHT | KEY_UP | KEY_DOWN => {
+                                let step = if ov.shift { 5.0 } else { 1.0 };
+                                let (dx, dy) = match key {
+                                    KEY_LEFT => (-step, 0.0),
+                                    KEY_RIGHT => (step, 0.0),
+                                    KEY_UP => (0.0, -step),
+                                    _ => (0.0, step),
+                                };
+                                if objedit::nudge(ov, dx, dy) {
+                                    repaint = true;
+                                }
+                            }
                             KEY_Z if ov.ctrl => repaint = edit::undo(ov),
                             KEY_Y if ov.ctrl => repaint = edit::redo(ov),
                             // 工具切换：1–9、0（与 README 的 10 个工具顺序一致）
