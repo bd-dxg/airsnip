@@ -96,7 +96,13 @@ SDR 内容精确落回 `[0,1]` 不受影响，HDR 高光压到白。
   GPU 渲染流程，与 ADR 0001 的纯 CPU 渲染原则抵赖，暂不做。
 - **待机开销不变**：抓屏只在按键时发生，无轮询、无定时器。
 - **多屏**：逐 output 抓取后按 `DesktopCoordinates` 贴进虚拟屏画布，负坐标布局与 BitBlt 路径语义一致。
-  但**混合 HDR + SDR 多屏未实测**（当前无多屏环境）。
+  **混合 HDR + SDR 多屏**（v0.11.2 修，issue #156）：初版只把 HDR 输出贴进画布，画布初值为零，
+  于是「非 HDR 的那块屏」在覆盖层里整块是黑的（实测反馈：笔记本内屏 SDR + 外接 2K HDR，截屏时内屏全黑、
+  十字光标照画、点长截图后恢复正常——长截图按选区重新 BitBlt，不走这条路径）。
+  现在 `hdr::capture_virtual_screen` 遍历**全部**已连接输出：HDR 走 DDA + 色调映射，
+  SDR 该屏矩形走 `BitBlt`（带 `CAPTUREBLT`，与纯 SDR 路径一致）后贴进同一张画布。
+  顺带的好处：HDR 状态**漏检**（DisplayConfig 与 DXGI 设备名对不上、回落为 SDR）时只表现为该屏过曝，
+  不再是黑屏。
 - **许可证**：仅使用系统 API 与既有 `windows` crate，无新依赖；`cargo deny check` 配置不变。
 - **已知限制**：`DuplicateOutput1` 在个别驱动（如本机 Intel Iris Xe）以外的组合下行为需实测；
   失败时 `capture_virtual_screen` 返回 `Err`，用户会看到「抓屏失败」提示而非静默劣化。

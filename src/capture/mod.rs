@@ -93,11 +93,15 @@ pub fn capture_region(x: i32, y: i32, w: u32, h: u32) -> Result<CapturedScreen, 
     if let Some(result) = hdr::capture_region(x, y, w, h) {
         return result;
     }
-    capture_region_bitblt(x, y, w, h)
+    // 长截图不需要 CAPTUREBLT：抓取普通窗口内容即可（分层窗口内容由目标页面自绘）。
+    capture_region_bitblt(x, y, w, h, false)
 }
 
 /// GDI `BitBlt` 抓取指定区域。
-fn capture_region_bitblt(x: i32, y: i32, w: u32, h: u32) -> Result<CapturedScreen, String> {
+///
+/// `captureblt` 为 `true` 时带 `CAPTUREBLT`（把分层窗口一并抓入，整屏截图用）；
+/// 长截图逐帧采集用 `false`（更快，且不需要额外的合成层）。
+fn capture_region_bitblt(x: i32, y: i32, w: u32, h: u32, captureblt: bool) -> Result<CapturedScreen, String> {
     unsafe {
         let hdc_screen = GetDC(None);
         if hdc_screen.0.is_null() {
@@ -132,8 +136,8 @@ fn capture_region_bitblt(x: i32, y: i32, w: u32, h: u32) -> Result<CapturedScree
         };
 
         let _ = SelectObject(hdc_mem, hbmp.into());
-        // 长截图不需要 CAPTUREBLT：抓取普通窗口内容即可（分层窗口内容由目标页面自绘）。
-        if BitBlt(hdc_mem, 0, 0, w as i32, h as i32, Some(hdc_screen), x, y, SRCCOPY).is_err() {
+        let rop = if captureblt { SRCCOPY | CAPTUREBLT } else { SRCCOPY };
+        if BitBlt(hdc_mem, 0, 0, w as i32, h as i32, Some(hdc_screen), x, y, rop).is_err() {
             let _ = DeleteObject(hbmp.into());
             let _ = DeleteDC(hdc_mem);
             let _ = ReleaseDC(None, hdc_screen);
