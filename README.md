@@ -138,6 +138,17 @@
 
   原因：程序静态导入了 Windows 10 之前不存在的系统 API——`WaitOnAddress`（Windows 8 引入，Rust 标准库从 1.78 起用它做锁）、`GetDpiForMonitor`（8.1）、`GetDpiForWindow`（10 1607），以及 WinRT OCR 的 `RoInitialize` / `RoGetActivationFactory`（Windows 8 引入，而 `Windows.Media.Ocr` 只在 Windows 10 上存在）。这些是导入表里的必解析项，无法运行时降级；要在 Win7 上跑需要自行编译 Rust 标准库（tier-3 目标 `x86_64-win7-windows-msvc`）并砍掉 OCR，本项目不做这个取舍。完整原因与导入项清单见 [#94](https://github.com/bd-dxg/airsnip/issues/94)。
 
+### Linux（Wayland）
+
+- **wlroots 系协议的 Wayland 合成器**：niri / sway / Hyprland / KDE Plasma 6 已支持用例；
+  niri 26.04 为本仓库的实测环境（双屏 1920×1080，实机验证）
+- 需要 `wlr-screencopy`（抓屏）与 `wlr-layer-shell`（覆盖层）两个协议；
+  缺协议时程序会明确报错，不会静默降级
+- 剪贴板需要 `wl-clipboard`（`wl-copy` / `wl-paste`，主流发行版基本预装）；
+  没装时退回内置驻留模式
+- **不支持** GNOME Wayland（不提供上述协议，需 PipeWire + portal，属另一条实现路径）与 X11
+- 无 GUI 运行时依赖：不装 GTK/Qt/Electron，字体走 fontconfig（中文需系统里有思源黑体或 Noto CJK）
+
 ## Linux（Wayland）原生前端
 
 Windows 版之外，仓库里另有一个 **Linux 原生前端**（`crates/airsnip-linux`，ADR 0034），
@@ -160,19 +171,35 @@ Windows 版之外，仓库里另有一个 **Linux 原生前端**（`crates/airsn
 
 **已交付的 Windows 版功能中，Linux 侧尚未移植的**：长截图、贴图（Pin）、OCR、设置面板、
 多格式另存为、颜色/填充作用于选中对象。
-| S5 | 贴图、长截图、OCR、多格式另存 | ⬜ |
+
+三种装法，任选其一：
 
 ```bash
-cargo build -p airsnip-linux --release    # 产物 target/release/airsnip
-./target/release/airsnip snip             # 截图：框选 → Enter 复制 / Ctrl+S 保存 / Esc 取消
-./target/release/airsnip capture -o a.png # 只抓屏落 PNG（验证用）
+# 1) AUR（含 Linux 前端的首个版本起可用，打包细节见 packaging/aur/README.md）
+yay -S airsnip            # 或 paru -S airsnip → 装到 /usr/bin/airsnip
+
+# 2) 官方打包脚本：产出 dist/airsnip-v<版本>-linux-x86_64.tar.gz + SHA256SUMS
+scripts/package-linux.sh && tar xzf dist/airsnip-v*-linux-x86_64.tar.gz
+
+# 3) 装到用户目录（不动系统目录，本机当前就是这么装的）
+scripts/install-linux.sh  # 构建 release + 装到 ~/.local/bin/airsnip
 ```
+
+日常命令：
+
+```bash
+airsnip snip                 # 截图：框选 → Enter 复制 / Ctrl+S 保存 / Esc 取消
+airsnip capture -o a.png     # 只抓屏落 PNG（验证用）
+```
+
+卸载：删掉那个二进制即可（`/usr/bin/airsnip` 或 `~/.local/bin/airsnip`）——
+不写全局配置、不装守护进程、不注册自启。
 
 niri 的绑定（`~/.config/niri/config.kdl`）：
 
 ```kdl
 binds {
-    Mod+F1 { spawn "airsnip" "snip"; }
+    Mod+F1 { spawn "airsnip" "snip"; }   # 或写绝对路径 ~/.local/bin/airsnip
 }
 ```
 
@@ -195,17 +222,6 @@ binds {
 
 已知边界：文本工具与中文输入法未接（`T`/文本图标暂无输入框）、对象还不能选中后拖动/缩放/删除、
 颜色与填充只作用于「下一次绘制」、没有尺寸提示文字、保存固定写图片目录（无另存为对话框）。
-
-### Linux（Wayland）
-
-- **wlroots 系协议的 Wayland 合成器**：niri / sway / Hyprland / KDE Plasma 6 已支持用例；
-  niri 26.04 为本仓库的实测环境（双屏 1920×1080，实机验证）
-- 需要 `wlr-screencopy`（抓屏）与 `wlr-layer-shell`（覆盖层）两个协议；
-  缺协议时程序会明确报错，不会静默降级
-- 剪贴板需要 `wl-clipboard`（`wl-copy` / `wl-paste`，主流发行版基本预装）；
-  没装时退回内置驻留模式
-- **不支持** GNOME Wayland（不提供上述协议，需 PipeWire + portal，属另一条实现路径）与 X11
-- 无 GUI 运行时依赖：不装 GTK/Qt/Electron，字体走 fontconfig（中文需系统里有思源黑体或 Noto CJK）
 
 ## 下载与使用
 
@@ -235,6 +251,18 @@ cargo deny check          # 依赖许可证 / 安全公告 / 来源检查
 pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip / .exe
 pwsh scripts/gen-latest-json.ps1 -Notes "说明"  # 生成并签名自动更新清单 latest.json
 ```
+
+Linux 前端：
+
+```bash
+cargo build -p airsnip-linux --release   # 产物 target/release/airsnip
+cargo test -p airsnip-core -p airsnip-linux
+scripts/package-linux.sh                 # → dist/airsnip-v<版本>-linux-x86_64.tar.gz + SHA256SUMS
+```
+
+CI（`.github/workflows/linux.yml`）：ubuntu-latest 上跑 `cargo fmt` / `cargo deny check` /
+单测 / release 打包并上传 artifact。**不要**用 `cargo build --workspace`：两个 bin 都叫
+`airsnip`，会撞产物名，且 Windows 前端在 Linux 上编不过。
 
 技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.11.0。
 

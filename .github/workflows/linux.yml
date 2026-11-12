@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# Linux 前端（crates/airsnip-linux）的 CI（ADR 0034）。
+#
+# Windows 版仍由本地 scripts/package.ps1 打包发布，这里只覆盖 Linux 侧：
+#   lint    —— rustfmt + cargo deny（许可证 / 安全公告 / 来源 / 重复版本）
+#   test    —— core + linux 两个 crate 的单测
+#   package —— release 构建 + 打 tgz，产物作为 artifact 上传
+#
+# 注意几点与项目的约定：
+#   - 测试只跑 `-p airsnip-core -p airsnip-linux`：根包是 Windows 前端，
+#     在 Linux runner 上逐不出（需要 msvc 目标）。
+#   - 不用 `cargo build --workspace`：两个 bin 都叫 `airsnip`，同 workspace 会撞产物名。
+name: linux
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/**"
+      - ".github/workflows/linux.yml"
+  pull_request:
+    paths:
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/**"
+      - ".github/workflows/linux.yml"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: fmt + deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo fmt --check -p airsnip-core -p airsnip-linux
+      - run: cargo deny check
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p airsnip-core -p airsnip-linux
+
+  package:
+    name: package (x86_64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # cosmic-text 用 fontdb 的 fontconfig 解析字体，纯 Rust；dist 打包脚本只需要
+      # tar / sha256sum / ldd，ubuntu-latest 都有，所以无需额外 apt 安装。
+      - run: scripts/package-linux.sh
+      - name: 上传发布包
+        uses: actions/upload-artifact@v4
+        with:
+          name: airsnip-linux-x86_64
+          path: |
+            dist/*.tar.gz
+            dist/SHA256SUMS
+            dist/airsnip-linux-x86_64
+          if-no-files-found: error

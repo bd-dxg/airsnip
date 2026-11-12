@@ -1,0 +1,18 @@
+pkgbase = airsnip
+	pkgdesc = 轻量原生截图与标注工具（Wayland：wlr-screencopy + wlr-layer-shell，纯 CPU 渲染）
+	pkgver = 0.12.0
+	pkgrel = 1
+	url = https://github.com/bd-dxg/airsnip
+	arch = x86_64
+	license = GPL-3.0-only
+	makedepends = cargo
+	makedepends = rust
+	depends = glibc
+	optdepends = wl-clipboard: 复制后由 wl-copy 持有选区（未安装时 AirSnip 自身驻留并服务剪贴板）
+	provides = airsnip
+	conflicts = airsnip-bin
+	conflicts = airsnip-git
+	source = airsnip-0.12.0.tar.gz::https://github.com/bd-dxg/airsnip/archive/refs/tags/v0.12.0.tar.gz
+	sha256sums = SKIP
+
+pkgname = airsnip

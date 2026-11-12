@@ -1,0 +1,40 @@
+# Maintainer: AirSnip <airsnip@users.noreply.github.com>
+#
+# AUR 包：airsnip（源码构建）
+#
+# 重要：本 PKGBUILD 面向**包含 Linux 前端的首个版本**（≥ v0.12.0）。
+# v0.11.0 及更早的源码包里没有 crates/airsnip-linux，构建会失败。
+# 发版流程：打完 tag 后把 pkgver 改成该 tag、重算 sha256sums、重生成 .SRCINFO。
+#
+# 只构建 Linux 前端（`-p airsnip-linux`）：仓库根包是 Windows 前端，
+# 在 Linux 上逐不过去，也不要让它参与本次构建。
+pkgname=airsnip
+pkgver=0.12.0
+pkgrel=1
+pkgdesc="轻量原生截图与标注工具（Wayland：wlr-screencopy + wlr-layer-shell，纯 CPU 渲染）"
+arch=('x86_64')
+url="https://github.com/bd-dxg/airsnip"
+license=('GPL-3.0-only')
+depends=('glibc')
+makedepends=('cargo' 'rust')
+optdepends=(
+    'wl-clipboard: 复制后由 wl-copy 持有选区（未安装时 AirSnip 自身驻留并服务剪贴板）'
+)
+provides=('airsnip')
+conflicts=('airsnip-bin' 'airsnip-git')
+source=("$pkgname-$pkgver.tar.gz::https://github.com/bd-dxg/airsnip/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP') # 发版时替换为真实摘要（updpkgsums 或 sha256sum）
+
+build() {
+    cd "$pkgname-$pkgver"
+    export CARGO_TARGET_DIR="$srcdir/target"
+    cargo build --release --locked -p airsnip-linux
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+    install -Dm755 "$srcdir/target/release/airsnip" "$pkgdir/usr/bin/airsnip"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 THIRD-PARTY.md "$pkgdir/usr/share/doc/$pkgname/THIRD-PARTY.md"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+}

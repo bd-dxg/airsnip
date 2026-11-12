@@ -85,6 +85,9 @@
 - Linux 前端（ADR 0034）：`cargo build -p airsnip-linux --release`（产物 `target/release/airsnip`）、`./target/release/airsnip snip`（覆盖层：框选 → `Enter` 复制 / `Ctrl+S` 保存 / `Esc` 取消）、`airsnip capture -o /tmp/a.png`（抓全屏落 PNG）、`airsnip capture --list`（列输出名称/位置/尺寸/缩放）、`cargo test -p airsnip-core -p airsnip-linux`（83 + 21 项）。`AIRSNIP_DEBUG=1` 打印 configure / 拖拽 / 按键日志，并让工具栏渲染测试落盘 `/tmp/airsnip-toolbar.png`。**不要**用 `cargo build --workspace`：两个 bin 都叫 `airsnip` 会撞产物名，且 Windows 前端在 Linux 上编不过。`AIRSNIP_TIMING=1` 打印抓屏各阶段耗时。
 - 格式化检查：`cargo fmt --check`（提交前必须通过）
 - 性能采集：`scripts/perf-capture.ps1`（热键延迟 + 帧耗时，需管理员）与 `scripts/perf.ps1`（待机 CPU/内存）；报告见 `docs/perf-m5.md`
+- Linux 打包发布：`scripts/package-linux.sh`（构建 → 校验体积/`ldd`/`--help` → 输出 `dist\airsnip-v{版本}-linux-x86_64.tar.gz` + `SHA256SUMS`；`--skip-build` 复用已有产物）
+- AUR：包在 `packaging/aur/airsnip/`（`PKGBUILD` + `.SRCINFO`，源码构建），发布流程见 `packaging/aur/README.md`；本地验证 `makepkg -f`，改版本后 `updpkgsums` + `makepkg --printsrcinfo > .SRCINFO`。**只面向含 Linux 前端的版本（≥ v0.12.0）**
+- CI：`.github/workflows/linux.yml`（ubuntu-latest：`cargo fmt --check -p …` / `cargo deny check` / `cargo test -p airsnip-core -p airsnip-linux` / `scripts/package-linux.sh` + artifact）
 - 打包发布：`scripts/package.ps1`（构建 release → 校验体积/图标/PE 导入表 → 输出 `dist\airsnip-v{版本}-win-x64.zip` 与自动更新用的 `.exe`）
 - 生成更新清单：`scripts/gen-latest-json.ps1 -Notes "说明"`（算 SHA-256 → 调 `update-sign` 签名 → 输出 `dist\latest.json`，需先跑 package.ps1）
 - 更新密钥：`cargo run --example update-keygen`（私钥写 `%USERPROFILE%\.airsnip\update.key`，公钥打印出来填进 `UPDATE_PUBKEY_HEX`）
