@@ -25,6 +25,8 @@
 | 素材多为外部混合风格，`rect` / `blur` 墨水 11.1% / 12.8%，边缘发灰 | 全组换为 **Material Symbols（outlined，Apache-2.0）**，墨水 11.8%～37.6% | ADR 0015、`assets/icons/ui/README.md` |
 | 「许可证与出处未登记」的遗留项 | **已消除**：换源后许可证链完整，已登记进 `THIRD-PARTY.md` | ADR 0015 |
 | `optical_scale` 微调：实心油漆桶 0.95、字号加减号 0.78 | 现值：`save` 0.92、`delete` 0.85、`ocr` 0.9，其余 1.0 | `src/render/icon/mod.rs` |
+
+> 注（ADR 0035）：OCR 已撤销，`toolbar/ocr.svg` 与 `ocr` 的 0.9 光学缩放已删除；上两行保留当时的图标规模记录。
 | 墨水覆盖率测试区间 5%–45% | **5%–48%**（`src/render/icon/mod.rs`） | ADR 0015 换源后重定 |
 | 状态语义中「开关类（填充、圆角、B、I）」 | 圆角开关已不存在，只剩填充 / B / I | ADR 0010 |
 

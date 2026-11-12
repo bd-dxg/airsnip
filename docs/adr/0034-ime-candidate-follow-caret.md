@@ -4,6 +4,8 @@
 - 影响范围：`src/overlay/ime.rs`（新增 `sync_ime_window_pos` / `caret_client_pos`）；`src/overlay/{textinput,wndproc/mod}.rs`
 - 相关：issue #139、ADR 0004（自绘文本 + 直接处理 IME 消息）、ADR 0016（界面缩放）、ADR 0022（OCR 气泡用原生 `EDIT` 作对照）
 
+> 注（ADR 0035）：作为对照组的 OCR 气泡已随 OCR 一同撤销，本文的结论（IMM32 上报客户区坐标有效）不受影响。
+
 ## 背景
 
 问题反馈（issue #139）：在截图里用文本工具打中文时，**候选框不跟随光标**，飘到屏幕别处，而且每次位置都不一样。
