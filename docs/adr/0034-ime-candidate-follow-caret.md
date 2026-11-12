@@ -1,6 +1,6 @@
 # ADR 0034：自绘文本要把光标位置报给输入法（候选框跟随）
 
-- 状态：已采纳（v0.10.x 开发期；坐标口径在 v0.11.0 修正，见决策 1）
+- 状态：已采纳（v0.10.x 开发期；坐标口径在 v0.11.1 开发期修正，见决策 1）
 - 影响范围：`src/overlay/ime.rs`（新增 `sync_ime_window_pos` / `caret_client_pos`）；`src/overlay/{textinput,wndproc/mod}.rs`
 - 相关：issue #139、ADR 0004（自绘文本 + 直接处理 IME 消息）、ADR 0016（界面缩放）、ADR 0022（OCR 气泡用原生 `EDIT` 作对照）
 
@@ -28,7 +28,7 @@ COMPOSITIONFORM { dwStyle: CFS_POINT,        ptCurrentPos: (x, y) }  // 组合�
 ```
 
 - **必须是 `CFS_CANDIDATEPOS`，不能留 `CFS_DEFAULT`**：后者等于「让输入法自己决定」，就是本次 bug 的原状。
-- **坐标是客户区坐标**（v0.11.0 修正）：覆盖层是无边框 popup（`WS_POPUP`，无标题栏 / 边框），客户区
+- **坐标是客户区坐标**（v0.11.1 开发期修正）：覆盖层是无边框 popup（`WS_POPUP`，无标题栏 / 边框），客户区
   原点就是窗口左上角、也就是画布原点，所以直接用画布坐标，不叠加虚拟屏原点。
   **踩过的坑**：最初按「屏幕坐标」传（画布 + `capture.origin_*`）。普通截图下两者恰好等价——覆盖层
   铺满虚拟屏、原点 (0, 0)——所以看不出问题；**贴图编辑**（ADR 0028）的窗口只有贴图那么大、坐在
