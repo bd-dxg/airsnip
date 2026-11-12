@@ -9,6 +9,16 @@ use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK, PostMessageW,
 use crate::overlay::{geometry::SelRect, surface::crop_pixmap};
 use crate::{output, render};
 
+/// 覆盖层画布坐标 → 屏幕坐标（物理像素）。
+///
+/// 覆盖层铺满整个虚拟屏，画布原点在虚拟屏左上角；`SM_XVIRTUALSCREEN` 在
+/// 「副屏在左 / 在上」的布局里是负数。三条输出载荷（贴图 / 长截图 / OCR）都要这对
+/// 坐标，各写一遍加法迟早漏一个——贴图的 PIN-1 路径就是这么漏掉的（issue #152：
+/// 多显示器下贴图不平移，偏出一整块屏幕）。收敛到这里，改一处三处一起对。
+fn to_screen(sel: SelRect, origin_x: i32, origin_y: i32) -> (i32, i32) {
+    (origin_x + sel.x, origin_y + sel.y)
+}
+
 impl super::super::Overlay {
     /// 输出用像素图：裁剪选区 → 把标注对象烘焙进结果图（OUT-1/OUT-2）。
     /// 标注坐标是覆盖层坐标系，需按裁剪原点平移到裁剪图坐标。
@@ -43,8 +53,10 @@ impl super::super::Overlay {
                 *hp = w;
                 *hp.add(1) = h;
                 let sp = hp.add(2) as *mut i32;
-                *sp = sel.x;
-                *sp.add(1) = sel.y;
+                // 选区在屏幕上的位置（PIN 定位用，issue #152：必须含虚拟屏原点）
+                let (sx, sy) = to_screen(sel, self.capture.origin_x, self.capture.origin_y);
+                *sp = sx;
+                *sp.add(1) = sy;
                 std::ptr::copy_nonoverlapping(cropped.data().as_ptr(), (ptr as *mut u8).add(16), px_total);
                 let _ = GlobalUnlock(hg);
                 let _ = PostMessageW(
@@ -65,12 +77,8 @@ impl super::super::Overlay {
     /// 长截图（M4，LNG-1）：记录屏幕坐标选区并关闭覆盖层，由 app 线程启动拼接。
     pub(in crate::overlay) fn on_longshot(&mut self) {
         if let Some(sel) = self.selection {
-            self.viewport = Some((
-                sel.x + self.capture.origin_x,
-                sel.y + self.capture.origin_y,
-                sel.w as u32,
-                sel.h as u32,
-            ));
+            let (x, y) = to_screen(sel, self.capture.origin_x, self.capture.origin_y);
+            self.viewport = Some((x, y, sel.w as u32, sel.h as u32));
             self.cancelled = false;
             unsafe {
                 let _ = PostMessageW(Some(self.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
@@ -106,9 +114,10 @@ impl super::super::Overlay {
             *hp = w;
             *hp.add(1) = h;
             // 选区在屏幕上的位置：气泡按它定位（OCR-7）
+            let (sx, sy) = to_screen(sel, self.capture.origin_x, self.capture.origin_y);
             let sp = hp.add(2) as *mut i32;
-            *sp = sel.x + self.capture.origin_x;
-            *sp.add(1) = sel.y + self.capture.origin_y;
+            *sp = sx;
+            *sp.add(1) = sy;
             std::ptr::copy_nonoverlapping(cropped.data().as_ptr(), (ptr as *mut u8).add(16), px_total);
             let _ = GlobalUnlock(hg);
             let _ = PostMessageW(
@@ -190,5 +199,27 @@ impl super::super::Overlay {
         });
         self.cancelled = false;
         self.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sel(x: i32, y: i32) -> SelRect {
+        SelRect { x, y, w: 10, h: 10 }
+    }
+
+    /// 画布原点在虚拟屏左上角：主屏在左上时恒等，副屏为负时必须整体平移。
+    /// 贴图漏掉这一步就是 issue #152 第 1 点（多显示器下贴图不平移）。
+    #[test]
+    fn to_screen_adds_virtual_screen_origin() {
+        assert_eq!(to_screen(sel(100, 200), 0, 0), (100, 200), "单屏恒等");
+        assert_eq!(
+            to_screen(sel(100, 200), -1920, 0),
+            (-1820, 200),
+            "副屏在左侧（虚拟屏原点为负）时必须平移"
+        );
+        assert_eq!(to_screen(sel(0, 0), 1920, -200), (1920, -200), "原点在左上以外同样生效");
     }
 }
