@@ -55,7 +55,7 @@ impl RegionCapture {
             Box::new(|x, y, w, h| {
                 hdr::HdrRegionSession::open(x, y, w, h).map(|r| r.map(|s| Box::new(s) as Box<dyn HdrGrabber>))
             }),
-            Box::new(|x, y, w, h| Ok(super::capture_region_bitblt(x, y, w, h)?.rgba)),
+            Box::new(|x, y, w, h| Ok(super::capture_region_bitblt(x, y, w, h, false)?.rgba)),
         )
     }
 
