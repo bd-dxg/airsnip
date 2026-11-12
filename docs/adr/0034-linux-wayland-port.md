@@ -112,7 +112,8 @@ Windows 版靠 `RegisterHotKey` + 托盘常驻。Wayland **没有**全局热键�
 | **S2** | `wlr-layer-shell` 全屏覆盖层：冻结画面、框选、`Enter` 复制到剪贴板、`Ctrl+S` 另存 PNG、`Esc` 取消 | 按 niri 绑定 → 出覆盖层 → 框选 → 粘到别的程序 | ✅ 已交付 |
 | **S3** | 绘制层上移到 `airsnip-core` + `TextSink` 抽象（DirectWrite / cosmic-text 双实现） | 两个平台共用一份对象绘制代码 | ✅ 已交付 |
 | **S4** | 10 种标注工具 + **工具栏**（工具 / 5 色块 / 填充 / 撤销重做 / 复制 / 保存） | 与 Windows 版工具集对齐 | ✅ 已交付并装机（`~/.local/bin/airsnip`，Alt+A 绑定在 niri） |
-| **S4b** | 文本工具 + 中文输入法（text-input-v3）、对象选中/拖动/缩放/删除、滚轮调线宽/模糊强度、尺寸提示 | 日常可用 | 🚧 |
+| **S4b** | 文本工具 + 中文输入法（text-input-v3） | 中文能上屏、能提交为文本对象 | ✅ 已交付 |
+| **S4c** | 对象选中/拖动/缩放/删除、滚轮调线宽/模糊强度、尺寸提示 | 日常可用 | 🚧 |
 | **S5** | 贴图（layer-shell overlay 层）、长截图（复用拼接算法）、OCR（Tesseract，含语言包检测）、多格式输出 | 与 Windows 版功能对等 | ⬜ |
 
 阶段顺序的理由：S1 把「协议链路」的不确定性一次性消掉（已证明可行）；
@@ -198,6 +199,29 @@ Flameshot 的行为一致：`printf x | wl-copy` 秒返回、数据仍在剪贴�
   剪贴板取回为有效 PNG，且**复制后 AirSnip 进程退出**（选区交给 `wl-copy` 持有）
 - 回归：`cargo test -p airsnip-core -p airsnip-linux` = 83 + 24 项；`cargo deny check` 四类全绿；
   Windows 侧 `cargo check --target x86_64-pc-windows-msvc --all-targets` 通过（Linux 上交叉 check）
+
+### 12. 文本工具（S4b）与输入法
+
+Wayland 没有 Windows 的 `EDIT` 子控件可用，所以文本编辑是自己做的一层最小状态机
+（`overlay/text_input.rs`）：
+
+- 点击放置 → `zwp_text_input_v3.enable()` 请求输入法 → 收 `commit_string` 追加 → 
+  `Esc` / 点击别处结束 → 非空则成为一个普通 `Kind::Text` 对象（渲染与导出都走 core）
+- 没有输入法时退回按键：evdev → US 布局可打印字符（`key_char`），覆盖常用字母数字符号
+- 编辑态**不写历史**：提交成功才算一次可撤销编辑（与 Windows 版一致）
+
+**实测踩到的坑（很重要）**：输入法会把 `Enter` 吃掉——合成器只回 `commit_string`，
+我们的 `wl_keyboard.key` 根本收不到 Enter。于是：
+1. 结束输入改用 `Esc` / 点击别处（`Enter` 只在**没有**输入法接管时作为提交键）；
+2. 编辑态下 `Esc` 是**提交**而不是丢弃——否则输入被吞后用户没有"结束但不丢字"的键。
+   这与 Windows 版（`Esc` 取消输入）不同，属于平台差异，已写进 README。
+
+另外把默认色块从白改成**红**（与 Windows 版一致）：荧光笔是正片叠底，白色 = 像素不变，
+用白色画高亮看起来"完全没反应"。
+
+**聚光（Glow）的显示管线**：`Kind::Glow` 在对象绘制里是**空实现**（Windows 版也一样），
+效果由"选区内整体暗化 + 把每块聚光区域恢复成原图亮度"提供；Linux 侧原先漏了这层，
+现在 `paint::rebuild` 里补齐（圆角用 core 的 `mask::blend_compact` 插值），导出侧 `draw::bake` 本来就是对的。
 
 ## 后果
 

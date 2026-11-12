@@ -19,7 +19,10 @@ pub fn begin(ov: &mut Overlay, p: (i32, i32)) {
     let (x, y) = p;
     let pt = Point::new(x as f32, y as f32);
     let kind = match ov.tool {
-        Tool::Text => return,
+        Tool::Text => {
+            super::text_input::begin(ov, p);
+            return;
+        }
         Tool::Rect => Kind::Rect {
             a: pt,
             b: pt,

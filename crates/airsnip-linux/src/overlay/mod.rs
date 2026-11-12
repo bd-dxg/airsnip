@@ -13,6 +13,7 @@ pub mod paint;
 pub mod paths;
 pub mod state;
 pub mod surface;
+pub mod text_input;
 pub mod toolbar;
 
 use crate::Error;

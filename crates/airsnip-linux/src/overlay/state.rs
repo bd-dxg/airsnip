@@ -108,6 +108,12 @@ pub struct Overlay {
     pub ctrl: bool,
     pub done: bool,
     pub action: Option<Action>,
+    /// 正在输入文本（EDT-4）；`None` 表示不在文本编辑态。
+    pub text_edit: Option<super::text_input::TextEdit>,
+    /// 输入法是否已接管按键（收到过 commit/preedit 事件）。
+    pub ime_active: bool,
+    /// Shift 是否按住（无输入法时的字符大小写）。
+    pub shift: bool,
 }
 
 impl Overlay {
@@ -123,9 +129,11 @@ impl Overlay {
             display,
             doc: Document::new(),
             tool: Tool::Rect,
-            style: Style::new(DEFAULT_COLORS[0], DEFAULT_LINE_WIDTH),
+            // 默认选红（与 Windows 版一致）：荧光笔是正片叠底，白色 = 不变，
+            // 白底默认色会让「高亮」看起来完全没反应。
+            style: Style::new(DEFAULT_COLORS[1], DEFAULT_LINE_WIDTH),
             filled: false,
-            color_index: 0,
+            color_index: 1,
             toolbar_hold: false,
             blur_radius: DEFAULT_BLUR_RADIUS,
             number_font_size: DEFAULT_NUMBER_FONT_SIZE,
@@ -140,6 +148,9 @@ impl Overlay {
             ctrl: false,
             done: false,
             action: None,
+            text_edit: None,
+            ime_active: false,
+            shift: false,
         })
     }
 

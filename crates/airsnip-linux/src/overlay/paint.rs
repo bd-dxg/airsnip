@@ -47,12 +47,33 @@ pub fn rebuild(ov: &mut Overlay) {
             display,
             doc,
             draft,
+            text_edit,
             ..
         } = ov;
         display.clone_from(dim);
-        copy_block(display, bright, sel.x, sel.y, sel.w, sel.h, sel.x, sel.y);
+        // 聚光（Glow）语义与 Windows 版一致：**选区内整体保持暗化**，
+        // 只把每块聚光区域恢复成原图亮度（`Kind::Glow` 在对象绘制里是空实现，
+        // 效果由这条管线提供；导出时由 `draw::bake` 做同样的事）。
+        let glow_on = doc
+            .objects()
+            .iter()
+            .chain(draft.iter())
+            .any(|o| matches!(o.kind, airsnip_core::editor::Kind::Glow { .. }));
+        if glow_on {
+            for obj in doc.objects().iter().chain(draft.iter()) {
+                if let airsnip_core::editor::Kind::Glow { a, b, corner } = &obj.kind {
+                    restore_glow(display, bright, *a, *b, *corner);
+                }
+            }
+        } else {
+            copy_block(display, bright, sel.x, sel.y, sel.w, sel.h, sel.x, sel.y);
+        }
         let clip = (sel.x, sel.y, sel.x + sel.w, sel.y + sel.h);
         crate::draw::draw_objects(display, doc.objects(), draft.as_ref(), clip);
+        // 正在输入的文本（光标提示）画在所有对象之上
+        if let Some(edit) = text_edit {
+            super::text_input::paint(display, edit, sel.w as f32);
+        }
     }
     draw_decorations(&mut ov.display, sel);
     // 工具栏（选区下方优先，塞不下翻上方）
@@ -97,6 +118,32 @@ fn copy_block(
         let bytes = &src.data()[so..so + row_bytes];
         dst.data_mut()[do_..do_ + row_bytes].copy_from_slice(bytes);
     }
+}
+
+/// 聚光区域恢复原亮度（`corner > 0` 时四角按覆盖率插值，避免硬边）。
+fn restore_glow(
+    display: &mut tiny_skia::Pixmap,
+    bright: &tiny_skia::Pixmap,
+    a: airsnip_core::editor::Point,
+    b: airsnip_core::editor::Point,
+    corner: f32,
+) {
+    let (fx0, fy0) = (a.x.min(b.x), a.y.min(b.y));
+    let (fx1, fy1) = (a.x.max(b.x), a.y.max(b.y));
+    let (x0, y0) = (fx0.floor() as i32, fy0.floor() as i32);
+    let (x1, y1) = (fx1.ceil() as i32, fy1.ceil() as i32);
+    if x1 <= x0 || y1 <= y0 {
+        return;
+    }
+    let full = (fx0, fy0, fx1, fy1);
+    let r = airsnip_core::draw::mask::clamp_radius(full, corner);
+    if r < 0.5 {
+        copy_block(display, bright, x0, y0, x1 - x0, y1 - y0, x0, y0);
+        return;
+    }
+    let region = (x0, y0, x1, y1);
+    let buf = airsnip_core::draw::mask::copy_region(bright, region);
+    airsnip_core::draw::mask::blend_compact(display, &buf, region, full, r);
 }
 
 /// 选区装饰：2px 主题蓝 + 1px 白色内线 + 八向手柄。
@@ -289,6 +336,177 @@ mod tests {
         let out = export(&ov, sel).unwrap();
         let i = ((100 * 200 + 100) * 4) as usize;
         assert_eq!(&out.px[i..i + 3], &[255, 0, 0], "填充矩形应盖住底图");
+    }
+
+    /// 十种工具都在画：确认 highlight / blur / glow / text 真的落到像素上。
+    #[test]
+    fn every_tool_kind_renders() {
+        use airsnip_core::draw::text::TextSink;
+        use airsnip_core::editor::{Kind, Object, Point, Style};
+        let mut canvas = crate::canvas::Canvas::new(600, 400);
+        // 条纹底图（模糊/高亮/聚光都需要「有内容」才看得出来）
+        for y in 0..400u32 {
+            for x in 0..600u32 {
+                let i = ((y * 600 + x) * 4) as usize;
+                let v = if ((x / 12) + (y / 12)) % 2 == 0 { 200 } else { 60 };
+                canvas.px[i] = v as u8;
+                canvas.px[i + 1] = (v as u8).wrapping_add(30);
+                canvas.px[i + 2] = (v as u8).wrapping_sub(20);
+                canvas.px[i + 3] = 255;
+            }
+        }
+        let mut ov = Overlay::new(&canvas).unwrap();
+        let sel = Sel {
+            x: 0,
+            y: 0,
+            w: 600,
+            h: 400,
+        };
+        ov.sel = Some(sel);
+        let obj = |kind: Kind, color: [u8; 4], width: f32| Object {
+            kind,
+            style: Style::new(color, width),
+        };
+        let spec = airsnip_core::draw::text::TextSpec::new(28.0);
+        let size = crate::draw::text::with_engine(|sink| sink.measure("Text 文本", &spec));
+        ov.doc.push(obj(
+            Kind::Rect {
+                a: Point::new(20.0, 20.0),
+                b: Point::new(140.0, 90.0),
+                radius: 6.0,
+                filled: false,
+            },
+            [229, 57, 53, 255],
+            4.0,
+        ));
+        ov.doc.push(obj(
+            Kind::arrow(Point::new(160.0, 30.0), Point::new(300.0, 90.0)),
+            [229, 57, 53, 255],
+            4.0,
+        ));
+        // 高亮：橙色正片叠底
+        ov.doc.push(obj(
+            Kind::Highlight {
+                a: Point::new(20.0, 110.0),
+                b: Point::new(200.0, 170.0),
+                corner: 0.0,
+            },
+            [251, 140, 0, 255],
+            4.0,
+        ));
+        // 模糊
+        ov.doc.push(obj(
+            Kind::Blur {
+                a: Point::new(220.0, 110.0),
+                b: Point::new(340.0, 170.0),
+                radius: 16.0,
+                corner: 0.0,
+            },
+            [0, 0, 0, 255],
+            4.0,
+        ));
+        // 聚光：这块钱应该恢复原亮度，其余选区暗化
+        ov.doc.push(obj(
+            Kind::Glow {
+                a: Point::new(380.0, 110.0),
+                b: Point::new(560.0, 170.0),
+                corner: 0.0,
+            },
+            [0, 0, 0, 255],
+            4.0,
+        ));
+        ov.doc.push(obj(
+            Kind::Number {
+                center: Point::new(60.0, 260.0),
+                tip: Point::new(120.0, 300.0),
+                n: 1,
+                font_size: 20.0,
+                radius: 16.0,
+            },
+            [229, 57, 53, 255],
+            4.0,
+        ));
+        ov.doc.push(obj(
+            Kind::Line {
+                from: Point::new(150.0, 250.0),
+                to: Point::new(260.0, 300.0),
+            },
+            [67, 160, 71, 255],
+            4.0,
+        ));
+        ov.doc.push(obj(
+            Kind::Ellipse {
+                a: Point::new(300.0, 240.0),
+                b: Point::new(400.0, 310.0),
+                filled: true,
+            },
+            [30, 136, 229, 255],
+            4.0,
+        ));
+        ov.doc.push(obj(
+            Kind::Freehand {
+                pts: std::sync::Arc::new(vec![
+                    Point::new(430.0, 250.0),
+                    Point::new(470.0, 300.0),
+                    Point::new(520.0, 260.0),
+                ]),
+            },
+            [255, 255, 255, 255],
+            4.0,
+        ));
+        ov.doc.push(obj(
+            Kind::Text {
+                pos: Point::new(30.0, 330.0),
+                text: std::sync::Arc::from("Text 文本"),
+                font_size: 28.0,
+                font_family: std::sync::Arc::from(super::super::text_input::DEFAULT_FAMILY),
+                bold: false,
+                italic: false,
+                size,
+            },
+            [255, 255, 255, 255],
+            4.0,
+        ));
+        rebuild(&mut ov);
+
+        let px = |x: u32, y: u32| -> [u8; 3] {
+            let i = ((y * 600 + x) * 4) as usize;
+            [ov.display.data()[i], ov.display.data()[i + 1], ov.display.data()[i + 2]]
+        };
+        // 高亮区域应偏橙（红通道明显高于蓝）
+        let hl = px(100, 140);
+        assert!(hl[0] > hl[2], "高亮应把像素染向橙色：{hl:?}");
+        // 聚光区域应恢复成**原图**亮度；选区其它地方应是暗化后的值
+        let orig = |x: u32, y: u32| -> [u8; 3] {
+            let i = ((y * 600 + x) * 4) as usize;
+            [canvas.px[i], canvas.px[i + 1], canvas.px[i + 2]]
+        };
+        assert_eq!(px(480, 140), orig(480, 140), "聚光区应恢复原亮度");
+        let dimpx = px(210, 190);
+        let o = orig(210, 190);
+        let expect = |v: u8| ((v as u32 * crate::overlay::state::DIM_K) >> 8) as u8;
+        assert_eq!(dimpx[0], expect(o[0]), "选区其余部分应为暗化值");
+        // 模糊区域应比条纹边界平滑（取相邻两像素，差值小于底图的强弱差）
+        let a = px(240, 140);
+        let b = px(252, 140);
+        let d = (a[0] as i32 - b[0] as i32).abs();
+        assert!(d < 60, "模糊后相邻像素差应减小：{a:?} {b:?} 差 {d}");
+        let sum = |p: [u8; 3]| p[0] as u32 + p[1] as u32 + p[2] as u32;
+        // 文本区域应有亮像素
+        let mut bright = 0;
+        for y in 330..360 {
+            for x in 30..160 {
+                if sum(px(x, y)) > 600 {
+                    bright += 1;
+                }
+            }
+        }
+        assert!(bright > 40, "文本应画出可见字形，实际亮像素={bright}");
+
+        if std::env::var_os("AIRSNIP_DEBUG").is_some() {
+            let c = crate::draw::pixmap_to_canvas(&ov.display);
+            crate::codec::write_png(&c, std::path::Path::new("/tmp/airsnip-tools.png")).unwrap();
+        }
     }
 
     #[test]

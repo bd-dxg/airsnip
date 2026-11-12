@@ -23,6 +23,8 @@ use wayland_client::protocol::wl_shm_pool::WlShmPool;
 use wayland_client::{Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_device_v1::WpCursorShapeDeviceV1;
 use wayland_protocols::wp::cursor_shape::v1::client::wp_cursor_shape_manager_v1::WpCursorShapeManagerV1;
+use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_manager_v3::ZwpTextInputManagerV3;
+use wayland_protocols::wp::text_input::zv3::client::zwp_text_input_v3::ZwpTextInputV3;
 use wayland_protocols::xdg::xdg_output::zv1::client::zxdg_output_manager_v1::ZxdgOutputManagerV1;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1::ZwlrLayerShellV1;
 use wayland_protocols_wlr::screencopy::v1::client::zwlr_screencopy_manager_v1::ZwlrScreencopyManagerV1;
@@ -52,6 +54,8 @@ pub struct Backend {
     pub data_device: Option<WlDataDevice>,
     pub cursor_shape_manager: Option<WpCursorShapeManagerV1>,
     pub cursor_shape_device: Option<WpCursorShapeDeviceV1>,
+    pub text_input_manager: Option<ZwpTextInputManagerV3>,
+    pub text_input: Option<ZwpTextInputV3>,
     pub screencopy: Option<ZwlrScreencopyManagerV1>,
     pub xdg_output_manager: Option<ZxdgOutputManagerV1>,
     pub outputs: Vec<Info>,
@@ -129,6 +133,9 @@ impl Backend {
         if let (Some(mgr), Some(pointer)) = (self.cursor_shape_manager.clone(), self.pointer.as_ref()) {
             self.cursor_shape_device = Some(mgr.get_pointer(pointer, qh, ()));
         }
+        if let Some(mgr) = self.text_input_manager.clone() {
+            self.text_input = Some(mgr.get_text_input(&seat, qh, ()));
+        }
     }
 
     /// 有 `zxdg_output_manager_v1` 就给每个输出挂一个 `zxdg_output_v1`。
@@ -179,6 +186,7 @@ impl Dispatch<WlRegistry, ()> for Backend {
             "zwlr_layer_shell_v1" => state.layer_shell = Some(registry.bind(name, version.min(4), qh, ())),
             "wl_seat" => state.seat = Some(registry.bind(name, version.min(7), qh, ())),
             "wl_data_device_manager" => state.data_device_manager = Some(registry.bind(name, version.min(3), qh, ())),
+            "zwp_text_input_manager_v3" => state.text_input_manager = Some(registry.bind(name, version.min(1), qh, ())),
             "wp_cursor_shape_manager_v1" => {
                 state.cursor_shape_manager = Some(registry.bind(name, version.min(1), qh, ()))
             }
@@ -272,6 +280,18 @@ impl Dispatch<ZwlrLayerShellV1, ()> for Backend {
         _state: &mut Self,
         _proxy: &ZwlrLayerShellV1,
         _event: <ZwlrLayerShellV1 as wayland_client::Proxy>::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZwpTextInputManagerV3, ()> for Backend {
+    fn event(
+        _state: &mut Self,
+        _proxy: &ZwpTextInputManagerV3,
+        _event: <ZwpTextInputManagerV3 as wayland_client::Proxy>::Event,
         _data: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,

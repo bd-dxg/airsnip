@@ -27,6 +27,8 @@ const KEY_Y: u32 = 21;
 const KEY_KPENTER: u32 = 96;
 const KEY_CTRL_R: u32 = 97;
 const KEY_SHIFT_L: u32 = 42;
+const KEY_SHIFT_R: u32 = 54;
+const KEY_BACKSPACE: u32 = 14;
 /// BTN_LEFT
 const BTN_LEFT: u32 = 0x110;
 
@@ -53,6 +55,8 @@ impl Dispatch<WlPointer, ()> for Backend {
     ) {
         let cursor_dev = state.cursor_shape_device.clone();
         let mut repaint = false;
+        let mut need_ime_on = false;
+        let mut need_ime_off = false;
         {
             let Some(ov) = state.overlay.as_mut() else {
                 return;
@@ -112,6 +116,11 @@ impl Dispatch<WlPointer, ()> for Backend {
                     }
                     let pressed = matches!(bs, WEnum::Value(ButtonState::Pressed));
                     let Some(p) = ov.pointer else { return };
+                    // 正在输入文本：任何点击都先提交（点哪儿都算"写完了"）
+                    if pressed && ov.text_edit.is_some() {
+                        super::text_input::commit(ov);
+                        need_ime_off = true;
+                    }
                     // 1) 工具栏优先：按在工具栏上就只处理按钮，不动选区/标注
                     let mut handled = false;
                     if pressed && let Some(sel) = ov.current_sel() {
@@ -130,6 +139,9 @@ impl Dispatch<WlPointer, ()> for Backend {
                             if inside {
                                 ov.drawing = true;
                                 edit::begin(ov, p);
+                                if ov.text_edit.is_some() {
+                                    need_ime_on = true;
+                                }
                             } else {
                                 ov.drawing = false;
                                 ov.drag_from = Some(p);
@@ -156,6 +168,12 @@ impl Dispatch<WlPointer, ()> for Backend {
                 wl_pointer::Event::Leave { .. } => ov.active = None,
                 _ => {}
             }
+        }
+        if need_ime_off {
+            super::text_input::disable_ime(state);
+        }
+        if need_ime_on {
+            super::text_input::enable_ime(state);
         }
         if repaint {
             paint::refresh_all(state);
@@ -201,6 +219,7 @@ impl Dispatch<WlKeyboard, ()> for Backend {
         _qh: &QueueHandle<Self>,
     ) {
         let mut repaint = false;
+        let mut need_ime_off = false;
         {
             let Some(ov) = state.overlay.as_mut() else {
                 return;
@@ -209,6 +228,7 @@ impl Dispatch<WlKeyboard, ()> for Backend {
                 wl_keyboard::Event::Enter { serial, .. } => ov.serial = serial,
                 wl_keyboard::Event::Modifiers { mods_depressed, .. } => {
                     ov.ctrl = mods_depressed & 4 != 0; // XKB Control
+                    ov.shift = mods_depressed & 1 != 0; // XKB Shift
                 }
                 wl_keyboard::Event::Key {
                     serial, key, state: ks, ..
@@ -217,28 +237,72 @@ impl Dispatch<WlKeyboard, ()> for Backend {
                     if !matches!(ks, WEnum::Value(KeyState::Pressed)) {
                         return;
                     }
-                    match key {
-                        KEY_CTRL_L | KEY_CTRL_R => ov.ctrl = true,
-                        KEY_ESC => ov.finish(Action::Cancel),
-                        KEY_ENTER | KEY_KPENTER => ov.finish(Action::Copy),
-                        KEY_C if ov.ctrl => ov.finish(Action::Copy),
-                        KEY_S if ov.ctrl => ov.finish(Action::Save),
-                        KEY_Z if ov.ctrl => repaint = edit::undo(ov),
-                        KEY_Y if ov.ctrl => repaint = edit::redo(ov),
-                        // 工具切换：1–9、0（与 README 的 10 个工具顺序一致）
-                        k if (2..=11).contains(&k) => {
-                            let idx = (k - 2) as usize; // evdev 1..=10 对应键帽 1..0
-                            if let Some(t) = Tool::ALL.get(idx).copied() {
-                                ov.tool = t;
-                                ov.draft = None;
-                                repaint = true;
+                    crate::wayland::debug(format!(
+                        "按键 evdev={key} ctrl={} shift={} 文本态={} ime={}",
+                        ov.ctrl,
+                        ov.shift,
+                        ov.text_edit.is_some(),
+                        ov.ime_active
+                    ));
+                    // 文本编辑态：按键只服务于输入，不切工具、不结束会话
+                    let editing = ov.text_edit.is_some();
+                    if editing {
+                        match key {
+                            // Esc 结束输入并**保留**已输入内容（不丢字）。
+                            // 不用 Esc 丢弃：输入法会把 Enter 吃掉（只回 commit_string），
+                            // 若 Esc 也丢弃，用户就没有"结束但不丢字"的键可用了。
+                            KEY_ESC => {
+                                let ok = super::text_input::commit(ov);
+                                crate::wayland::debug(format!("文本：Esc 结束 → 提交 {ok}"));
+                                need_ime_off = true;
+                            }
+                            // Enter 只在没有输入法接管时作为提交键：
+                            // 有输入法时 Enter 会被它吃掉（用于确认候选词），我们根本收不到。
+                            KEY_ENTER | KEY_KPENTER if !ov.ime_active => {
+                                let ok = super::text_input::commit(ov);
+                                crate::wayland::debug(format!("文本：Enter 提交 → {ok}"));
+                                need_ime_off = true;
+                            }
+                            KEY_BACKSPACE => super::text_input::backspace(ov),
+                            KEY_SHIFT_L | KEY_SHIFT_R => {}
+                            _ => {
+                                // 没有输入法时用按键兜底（有输入法就只认 commit_string）
+                                if !ov.ime_active
+                                    && let Some(c) = super::text_input::key_char(key, ov.shift)
+                                {
+                                    let mut buf = [0u8; 4];
+                                    super::text_input::insert(ov, c.encode_utf8(&mut buf));
+                                }
                             }
                         }
-                        _ => {}
+                        repaint = true;
+                    } else {
+                        match key {
+                            KEY_CTRL_L | KEY_CTRL_R => ov.ctrl = true,
+                            KEY_ESC => ov.finish(Action::Cancel),
+                            KEY_ENTER | KEY_KPENTER => ov.finish(Action::Copy),
+                            KEY_C if ov.ctrl => ov.finish(Action::Copy),
+                            KEY_S if ov.ctrl => ov.finish(Action::Save),
+                            KEY_Z if ov.ctrl => repaint = edit::undo(ov),
+                            KEY_Y if ov.ctrl => repaint = edit::redo(ov),
+                            // 工具切换：1–9、0（与 README 的 10 个工具顺序一致）
+                            k if (2..=11).contains(&k) => {
+                                let idx = (k - 2) as usize; // evdev 1..=10 对应键帽 1..0
+                                if let Some(t) = Tool::ALL.get(idx).copied() {
+                                    ov.tool = t;
+                                    ov.draft = None;
+                                    repaint = true;
+                                }
+                            }
+                            _ => {}
+                        }
                     }
                 }
                 _ => {}
             }
+        }
+        if need_ime_off {
+            super::text_input::disable_ime(state);
         }
         if repaint {
             paint::refresh_all(state);
