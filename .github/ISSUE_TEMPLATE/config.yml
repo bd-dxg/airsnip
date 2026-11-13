@@ -6,3 +6,6 @@ contact_links:
   - name: 系统要求与已知限制
     url: https://github.com/bd-dxg/airsnip#已知限制
     about: 有些「问题」是刻意的设计取舍（Win10 以下不支持、长截图需手动滚动等），先看这里。
+  - name: 暂无计划（不准备做的事情）
+    url: https://github.com/bd-dxg/airsnip/issues/127
+    about: 一些不准备开发的功能
