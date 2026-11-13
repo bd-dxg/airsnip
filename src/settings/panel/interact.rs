@@ -8,7 +8,7 @@ use windows::Win32::UI::WindowsAndMessaging::{MB_ICONWARNING, MB_OK};
 
 use crate::app::message_box;
 use crate::overlay::geometry::in_rect;
-use crate::settings::{GroupState, ThemeSetting};
+use crate::settings::{GroupState, PinPosition, ThemeSetting};
 use crate::theme::{self};
 
 use super::Panel;
@@ -137,14 +137,15 @@ impl Panel {
                     self.config_dirty = true;
                 }
             }
-            // 贴图位置（M2b）：改工作副本，面板关闭时统一写回
-            RowId::PinPosOriginal => {
+            // 贴图位置（M2b）：原位置 ↔ 屏幕中间，切完立即写回生效（不等关闭面板）
+            RowId::PinCenter => {
                 self.end_capture();
-                self.config.pin_position = crate::settings::PinPosition::Original;
-            }
-            RowId::PinPosCenter => {
-                self.end_capture();
-                self.config.pin_position = crate::settings::PinPosition::Center;
+                self.config.pin_position = if self.config.pin_position == PinPosition::Center {
+                    PinPosition::Original
+                } else {
+                    PinPosition::Center
+                };
+                self.config_dirty = true;
             }
             // 文件名模板（OUT-2）：保存对话框预填文件名用
             RowId::NameDateTime => {

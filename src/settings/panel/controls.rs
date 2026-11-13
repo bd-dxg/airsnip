@@ -120,10 +120,8 @@ pub enum RowId {
     Widenote,
     /// 一键恢复默认快捷键（SYS-2，快捷键页底部）。
     ResetKeys,
-    /// 贴图位置：截图原位置（M2b）。
-    PinPosOriginal,
-    /// 贴图位置：屏幕中间（M2b）。
-    PinPosCenter,
+    /// 贴图放在屏幕中间（M2b）：关 = 贴在截图原位置，开 = 居中于光标所在显示器。
+    PinCenter,
     /// 主题：跟随系统。
     ThemeFollow,
     /// 主题：浅色。
@@ -311,13 +309,7 @@ mod tests {
                 })
                 .collect();
             let expected = match sec {
-                Section::General => vec![
-                    RowId::Autostart,
-                    RowId::ConfirmCancel,
-                    RowId::Lang,
-                    RowId::PinPosOriginal,
-                    RowId::PinPosCenter,
-                ],
+                Section::General => vec![RowId::Autostart, RowId::ConfirmCancel, RowId::Lang, RowId::PinCenter],
                 Section::Hotkeys => vec![
                     RowId::HotkeyShot,
                     RowId::HotkeyRecapture,

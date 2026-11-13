@@ -148,8 +148,7 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
                 items,
             );
             push(RowId::Lang, RowKind::Readonly, "语言", &mut y, items);
-            push(RowId::PinPosOriginal, RowKind::Radio, "贴图位置·原位置", &mut y, items);
-            push(RowId::PinPosCenter, RowKind::Radio, "贴图位置·屏幕中间", &mut y, items);
+            push(RowId::PinCenter, RowKind::Toggle, "贴图放在屏幕中间", &mut y, items);
         }
         Section::Toolbar => {
             // 多列紧凑排布（EDT-16）：面板没有滚动条，五组 + 组内元素必须落在固定高内。
