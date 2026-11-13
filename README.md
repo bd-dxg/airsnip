@@ -153,6 +153,16 @@ pwsh scripts/gen-latest-json.ps1 -Notes "说明"  # 生成并签名自动更新�
 
 技术栈：Rust 1.98（edition 2024）、windows-rs 0.62、tiny-skia 0.12（矢量栅格化）、DirectWrite（文字）、serde / toml、png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.11.1。
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=bd-dxg%2Fairsnip&type=date&releases=&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=bd-dxg/airsnip&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=bd-dxg/airsnip&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=bd-dxg/airsnip&type=date&legend=bottom-right" />
+ </picture>
+</a>
+
 ## 已知限制
 
 - 发布版以管理员权限运行（覆盖 / 操作管理员窗口需要，见 ADR 0003）；开机自启走任务计划而非注册表
