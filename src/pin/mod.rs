@@ -11,6 +11,7 @@ pub mod clipboard; // tests 用
 mod dib;
 mod edit;
 mod menu;
+mod place;
 mod scale;
 mod window;
 mod wndproc;
@@ -21,10 +22,7 @@ use std::sync::Mutex;
 use tiny_skia::Pixmap;
 use windows::Win32::Foundation::{GlobalFree, HGLOBAL, HINSTANCE, HWND, LPARAM, WPARAM};
 use windows::Win32::System::Memory::{GlobalLock, GlobalUnlock};
-use windows::Win32::UI::WindowsAndMessaging::{
-    FindWindowW, GetSystemMetrics, MB_ICONERROR, MB_OK, PostMessageW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
-    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, WM_CLOSE,
-};
+use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, MB_ICONERROR, MB_OK, PostMessageW, WM_CLOSE};
 
 use crate::app::message_box;
 use crate::settings::PinPosition;
@@ -80,21 +78,7 @@ pub fn create(
         return Err("数量上限".into());
     }
     let (w, h) = (pixmap.width() as i32, pixmap.height() as i32);
-    let (vx, vy, vw, vh) = virtual_screen();
-    let (px, py) = match (place, at) {
-        // 原位置：选区坐标（坐标已含虚拟屏偏移），仅限幅回屏幕内
-        (PinPosition::Original, Some((sx, sy))) => (
-            sx.clamp(vx + 4, (vx + vw - w - 4).max(vx + 4)),
-            sy.clamp(vy + 4, (vy + vh - h - 4).max(vy + 4)),
-        ),
-        // 居中（剪贴板贴图 / 设置了居中）：级联偏移避免完全重叠
-        _ => {
-            let n = pins().len() as i32;
-            let x = (vx + vw / 2 - w / 2 + n * 20).clamp(vx + 4, (vx + vw - w - 4).max(vx + 4));
-            let y = (vy + vh / 2 - h / 2 + n * 20).clamp(vy + 4, (vy + vh - h - 4).max(vy + 4));
-            (x, y)
-        }
-    };
+    let (px, py) = place::resolve(place, at, (w, h), pins().len() as i32);
     let hwnd = window::spawn(pixmap, hinstance, px, py, show_border)?;
     register_hwnd(hwnd);
     Ok(hwnd)
@@ -251,16 +235,4 @@ pub fn toggle_border() -> Option<bool> {
         }
     }
     Some(on)
-}
-
-/// 虚拟屏幕矩形（多显示器统一坐标）。
-fn virtual_screen() -> (i32, i32, i32, i32) {
-    unsafe {
-        (
-            GetSystemMetrics(SM_XVIRTUALSCREEN),
-            GetSystemMetrics(SM_YVIRTUALSCREEN),
-            GetSystemMetrics(SM_CXVIRTUALSCREEN),
-            GetSystemMetrics(SM_CYVIRTUALSCREEN),
-        )
-    }
 }
