@@ -1,7 +1,6 @@
 name: 🐞 问题反馈
 description: 出现了不符合预期的行为（崩溃、显示异常、热键不响应、截图结果不对等）
-title: "[Bug] "
-labels: ["bug"]
+type: 缺陷
 body:
   - type: markdown
     attributes:

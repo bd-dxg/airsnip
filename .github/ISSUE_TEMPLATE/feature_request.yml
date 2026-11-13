@@ -1,7 +1,6 @@
 name: ✨ 功能建议
 description: 希望新增或改动一个功能
-title: "[Feature] "
-labels: ["enhancement"]
+type: 功能建议
 body:
   - type: markdown
     attributes:
