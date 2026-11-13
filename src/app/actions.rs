@@ -81,8 +81,10 @@ impl App {
     }
 
     /// 打开设置面板（M3）：主线程模态运行，防重入。
+    /// 已打开时（面板最小化或只是被其他窗口遮住，再点托盘）不重开，只把它还原并置前。
     pub fn open_settings(&mut self) {
         if self.settings_open {
+            crate::settings::panel::focus_existing();
             return;
         }
         self.settings_open = true;

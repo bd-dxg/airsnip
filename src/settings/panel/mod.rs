@@ -153,6 +153,23 @@ pub fn run(app: &mut App) {
     }
 }
 
+/// 把已打开的面板窗口还原并置前（托盘再点一次 / 右键菜单「设置」）。
+///
+/// 面板是主线程上的模态泵（`run` 阻塞到窗口关闭），已打开时再调 `run` 会多开一个窗口，
+/// 所以只能激活现有的那个。调用方与面板同线程（主窗口过程里调），这里直接操作窗口即可。
+pub fn focus_existing() {
+    unsafe {
+        let Ok(hwnd) = FindWindowW(WINDOW_CLASS, None) else {
+            return;
+        };
+        // 最小化时要先还原，否则 SetForegroundWindow 只改任务栏状态、窗口还是收着的
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        let _ = SetForegroundWindow(hwnd);
+    }
+}
+
 /// 创建设置窗口：初始按 scale=1 粗建，创建后按真实 DPI 校正。
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_NCCREATE {
