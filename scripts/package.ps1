@@ -1,7 +1,8 @@
 # 打包发布（M5）：构建 release → 校验图标/体积 → 输出 dist\airsnip-v{版本}-win-x64.zip
-# 用法：pwsh -File scripts/package.ps1            # 完整构建 + 打包
-#       pwsh -File scripts/package.ps1 -SkipBuild  # 复用已有 release 产物
-param([switch]$SkipBuild)
+# 用法：pwsh -File scripts/package.ps1                    # 完整构建 + 打包
+#       pwsh -File scripts/package.ps1 -SkipBuild        # 复用已有 release 产物
+#       pwsh -File scripts/package.ps1 -Suffix 20261113  # 加后缀区分测试包（不影响版本号）
+param([switch]$SkipBuild, [string]$Suffix = "")
 
 $ErrorActionPreference = 'Stop'
 
@@ -83,6 +84,8 @@ $m = Select-String -Path Cargo.toml -Pattern '^version = "(.+)"' | Select-Object
 if (-not $m) { throw "无法从 Cargo.toml 读取版本号" }
 $ver = $m.Matches[0].Groups[1].Value
 $name = "airsnip-v$ver-win-x64"
+# 测试包用后缀区分（issue 验证包）：版本号仍是当前 Cargo.toml 的，不会被自动更新覆盖
+if ($Suffix) { $name = "$name-$Suffix" }
 Write-Host "版本：$ver"
 
 if (-not $SkipBuild) {

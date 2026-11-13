@@ -140,6 +140,8 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::Autostart => panel.autostart_on,
         RowId::ConfirmCancel => panel.config.confirm_cancel,
         RowId::AutoCheckUpdate => panel.config.auto_check_update,
+        // 贴图居中（M2b）：开 = 屏幕中间，关 = 截图原位置
+        RowId::PinCenter => panel.config.pin_position == crate::settings::PinPosition::Center,
         // 工具栏元素显隐（EDT-16）：纯视觉开关，默认全开
         RowId::Toolbar(slot) => panel.config.toolbar.visible(slot),
         _ => false,
@@ -181,8 +183,6 @@ fn draw_radio(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::ThemeFollow => panel.config.theme == ThemeSetting::Follow,
         RowId::ThemeLight => panel.config.theme == ThemeSetting::Light,
         RowId::ThemeDark => panel.config.theme == ThemeSetting::Dark,
-        RowId::PinPosOriginal => panel.config.pin_position == crate::settings::PinPosition::Original,
-        RowId::PinPosCenter => panel.config.pin_position == crate::settings::PinPosition::Center,
         RowId::NameDateTime => panel.config.name_style == crate::settings::NameStyle::DateTime,
         RowId::NameTimestamp => panel.config.name_style == crate::settings::NameStyle::Timestamp,
         RowId::NameDate => panel.config.name_style == crate::settings::NameStyle::Date,
