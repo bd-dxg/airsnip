@@ -17,6 +17,7 @@ mod cancel_hint;
 mod control;
 mod cursor;
 mod delete;
+mod fade;
 mod font;
 pub(crate) mod geometry;
 mod ime;
@@ -31,6 +32,7 @@ mod recapture;
 mod selection;
 mod setup;
 pub(crate) mod shape;
+mod snap;
 pub(crate) mod surface;
 mod text_edit_state;
 mod textinput;
@@ -86,6 +88,12 @@ pub struct Overlay {
     mode: Mode,
     /// 双击选区空白的动作（ADR 0036 / 设置面板「通用」页）：复制或贴图。
     double_click: crate::settings::DoubleClickAction,
+    /// 窗口吸附（CAP-6 / ADR 0037，issue #62）：悬停高亮光标下的窗口矩形，单击即选中。
+    window_snap: bool,
+    /// 吸附运行态：候选矩形 / 候选窗口句柄 / 按下待定。
+    snap: snap::Snap,
+    /// 淡入进度（帧数，`fade::STEPS` 即完成）：一次性定时器链的状态（`fade`）。
+    fade_step: u32,
     /// 工具切换键配置（M3：数字键 1-5 切换标注工具）。
     tool_keys: crate::settings::ToolKeys,
     /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
@@ -206,11 +214,18 @@ pub fn run(capture: CapturedScreen, opts: OverlayOpts, hinstance: HINSTANCE, mai
     // 进入文本输入时再恢复（见 `ime::set_ime_enabled`，EDT-4）。
     overlay.set_ime_enabled(false);
     overlay.main_hwnd = main_hwnd;
+    // 窗口吸附（CAP-6 / ADR 0037）：**显示前**就把光标下的候选画进 `display`（不上屏）。
+    // 否则首帧先上一次全暗（`UpdateWindow`），紧接着吸附再把候选改成半亮，
+    // 用户会看到「明亮 → 极暗 → 半亮」两步闪烁。
+    overlay.prime_snap_at_cursor();
     let raw = Box::into_raw(Box::new(overlay));
 
     unsafe {
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, raw as isize);
         let t_pos = std::time::Instant::now();
+        // 淡入（CAP-2 显示动画）：先把窗口做成「整窗 alpha 0」，再显示并推 alpha，
+        // 120ms 后自动摘掉分层样式回到纯 GDI（见 `fade`）。
+        (*raw).begin_fade();
         let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), origin_x, origin_y, vw, vh, SWP_SHOWWINDOW);
         let pos = t_pos.elapsed();
         // 贴图编辑模式（ADR 0028）：初始选区由 seed 设定，主动画一帧（选区装饰 + 工具栏 + HUD），

@@ -11,7 +11,7 @@ use windows::Win32::Graphics::Gdi::{
 };
 
 use super::SelRect;
-use super::geometry::{info_font_size, info_pad_x, text_rect};
+use super::geometry::{info_font_size, info_pad_x};
 use super::ui::Ui;
 use crate::editor::Point;
 use crate::render::text::{self as dwrite, FontSpec};
@@ -74,9 +74,9 @@ impl super::Overlay {
 }
 
 /// 选区尺寸提示（物理像素）：与工具栏文字走同一套 DirectWrite 栅格化。
-/// 位置由 `text_rect` 确定，字色纯白；字号随显示器 DPI 缩放（CAP-5）。
-pub(super) fn draw_info_text(pixmap: &mut Pixmap, sel: SelRect, screen_w: i32, screen_h: i32, toolbar_h: i32, ui: Ui) {
-    let r = text_rect(sel, screen_w, screen_h, toolbar_h, ui);
+/// 位置由调用方算好传入（选区走 `text_rect`，吸附候选还要再夹回屏内，见 ADR 0037），
+/// 字色纯白；字号随显示器 DPI 缩放（CAP-5）。
+pub(super) fn draw_info_text(pixmap: &mut Pixmap, r: SelRect, sel: SelRect, ui: Ui) {
     let text = format!("{} × {}", sel.w, sel.h);
     // 字重加粗：16px 常规字重在暗底上偏细发灰，加粗后笔画更实且不刺眼。
     let mut spec = FontSpec::new(info_font_size(ui));
@@ -113,6 +113,25 @@ pub(super) fn blit_region(dst: &mut Pixmap, src: &Pixmap, r: SelRect) {
 /// 区域从 src 拷贝到 dst（用于从暗图恢复旧选区区域）。
 pub(super) fn restore_region(dst: &mut Pixmap, src: &Pixmap, r: SelRect) {
     blit_region(dst, src, r);
+}
+
+/// 区域就地压暗（ADR 0037）：逐行复用 `dim_chunk`，只碰 r 覆盖的像素。
+/// 窗口吸附的候选区先回贴原图再压暗一档，得到「比未选区域亮、比确认后的选区暗」的半亮预览。
+pub(super) fn dim_region(dst: &mut Pixmap, r: SelRect, k: u32) {
+    let w = dst.width() as i32;
+    let h = dst.height() as i32;
+    let x0 = r.x.clamp(0, w);
+    let y0 = r.y.clamp(0, h);
+    let x1 = (r.x + r.w).clamp(0, w);
+    let y1 = (r.y + r.h).clamp(0, h);
+    let row_bytes = (x1 - x0).max(0) as usize * 4;
+    if row_bytes == 0 {
+        return;
+    }
+    for y in y0..y1 {
+        let off = (y as usize * w as usize + x0 as usize) * 4;
+        dim_chunk(&mut dst.data_mut()[off..off + row_bytes], k);
+    }
 }
 
 /// 把任意尺寸的 `src`（straight RGBA）盖印到 `dst` 的 (x, y) 处（贴图编辑模式落底图，ADR 0028）。
@@ -281,5 +300,55 @@ mod tests {
         dst2.fill(tiny_skia::Color::BLACK);
         stamp(&mut dst2, &src, -2, -2); // 负偏移：src(2,2) 落到 dst(0,0)
         assert_eq!(&dst2.data()[0..4], &red);
+    }
+
+    /// 区域压暗（ADR 0037）：只改 r 内的 RGB，区域外与 alpha 一字不动。
+    #[test]
+    fn dim_region_only_touches_rect() {
+        let mut p = Pixmap::new(8, 8).unwrap();
+        p.fill(tiny_skia::Color::from_rgba8(200, 100, 50, 255));
+        let r = SelRect { x: 2, y: 2, w: 3, h: 3 };
+        dim_region(&mut p, r, 128);
+        let px = |x: usize, y: usize| &p.data()[(y * 8 + x) * 4..(y * 8 + x) * 4 + 4];
+        // 区域内：各通道乘 128/256，alpha 不变
+        assert_eq!(px(2, 2), &[100, 50, 25, 255]);
+        assert_eq!(px(4, 4), &[100, 50, 25, 255]);
+        // 区域外（紧邻的 x=5 / y=5）：完全没动
+        assert_eq!(px(5, 2), &[200, 100, 50, 255]);
+        assert_eq!(px(2, 5), &[200, 100, 50, 255]);
+        assert_eq!(px(0, 0), &[200, 100, 50, 255]);
+    }
+
+    /// 区域压暗（ADR 0037）：越界区域被裁切，不越界访问也不 panic。
+    #[test]
+    fn dim_region_clips_out_of_bounds() {
+        let mut p = Pixmap::new(4, 4).unwrap();
+        p.fill(tiny_skia::Color::from_rgba8(10, 20, 30, 255));
+        dim_region(
+            &mut p,
+            SelRect {
+                x: -4,
+                y: -4,
+                w: 6,
+                h: 6,
+            },
+            128,
+        );
+        // 只到 (2,2)：左上 2×2 被压暗，其余保持原值
+        assert_eq!(&p.data()[0..4], &[5, 10, 15, 255]);
+        assert_eq!(&p.data()[(1 * 4 + 1) * 4..(1 * 4 + 1) * 4 + 4], &[5, 10, 15, 255]);
+        assert_eq!(&p.data()[(2 * 4 + 2) * 4..(2 * 4 + 2) * 4 + 4], &[10, 20, 30, 255]);
+        // 完全在屏外的区域：直接返回
+        dim_region(
+            &mut p,
+            SelRect {
+                x: 10,
+                y: 10,
+                w: 4,
+                h: 4,
+            },
+            0,
+        );
+        assert_eq!(&p.data()[0..4], &[5, 10, 15, 255]);
     }
 }

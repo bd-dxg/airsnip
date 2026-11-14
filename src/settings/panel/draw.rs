@@ -147,6 +147,8 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::PinPosCenter => panel.config.pin_position == crate::settings::PinPosition::Center,
         // 双击选区空白（ADR 0036）：开 = 贴图，关 = 复制
         RowId::DoubleClick => panel.config.double_click_action == crate::settings::DoubleClickAction::Pin,
+        // 窗口吸附（CAP-6 / ADR 0037）：开 = 悬停预览窗口矩形，关 = 只有自由框选
+        RowId::WindowSnap => panel.config.window_snap,
         // 工具栏元素显隐（EDT-16）：纯视觉开关，默认全开
         RowId::Toolbar(slot) => panel.config.toolbar.visible(slot),
         _ => false,
@@ -287,8 +289,14 @@ mod tests {
         cfg.double_click_action = DoubleClickAction::Pin;
         assert_eq!(toggle_label(RowId::DoubleClick, &cfg), Some("双击选区空白·贴到屏幕"));
 
-        // 其余行（开机自启 / 连按两次退出 / 工具栏元素 …）保持静态文案
-        for id in [RowId::Autostart, RowId::ConfirmCancel, RowId::AutoCheckUpdate] {
+        // 其余行（开机自启 / 连按两次退出 / 工具栏元素 / 窗口吸附 …）保持静态文案：
+        // 窗口吸附只有一个含义（开 = 吸、关 = 不吸），不像「贴图位置」那样两端各是一种行为
+        for id in [
+            RowId::Autostart,
+            RowId::ConfirmCancel,
+            RowId::AutoCheckUpdate,
+            RowId::WindowSnap,
+        ] {
             assert_eq!(toggle_label(id, &Config::default()), None, "{id:?} 不应有动态文案");
         }
     }

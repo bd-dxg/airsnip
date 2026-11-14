@@ -96,6 +96,8 @@ impl Overlay {
         self.obj_drag = None;
         self.drag = None;
         self.selection = None;
+        // 窗口吸附（CAP-6 / ADR 0037）：旧候选作废（整屏重绘会一并擦掉）
+        self.snap = super::snap::Snap::default();
         self.bar = None;
         self.phase = Phase::Adjusting;
         self.viewport = None;

@@ -97,6 +97,8 @@ impl App {
             recapture_key: crate::settings::UNBOUND,
             recapture_modifiers: 0,
             double_click: self.config.double_click_action,
+            // 贴图编辑模式选区锁定（ADR 0028），吸附天然不生效；照配置传即可
+            window_snap: self.config.window_snap,
             colors: self.config.swatch_colors,
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,

@@ -14,6 +14,12 @@ use super::geometry::SelRect;
 /// 与 `pick::is_degenerate` 的 2px 呼应——小于它的草稿本来就会被丢弃。
 pub(super) const CLICK_SLOP: i32 = 2;
 
+/// 相对按下点是否已拖出 `CLICK_SLOP`（等于阈值仍算「没拖」，与 ADR 0023 §3 一致）。
+/// 对象内部按下（转绘制）与窗口吸附的候选待定（退回自由框选，CAP-6 / ADR 0037）共用同一判据。
+pub(super) fn beyond_slop(from: (i32, i32), to: (i32, i32)) -> bool {
+    (to.0 - from.0).abs() > CLICK_SLOP || (to.1 - from.1).abs() > CLICK_SLOP
+}
+
 /// 交互阶段。
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Phase {
@@ -89,5 +95,24 @@ impl super::Overlay {
             w: sel.w,
             h: sel.h,
         }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CLICK_SLOP, beyond_slop};
+
+    /// 阈值边界（ADR 0023 §3 / CAP-6）：恰好等于 `CLICK_SLOP` 仍算「没拖」，
+    /// 多一像素才转为拖动。两个判定点（转绘制 / 退回自由框选）都靠它，边界写反会把单击吞掉。
+    #[test]
+    fn slop_boundary() {
+        let from = (100, 100);
+        assert!(!beyond_slop(from, (100 + CLICK_SLOP, 100)));
+        assert!(!beyond_slop(from, (100, 100 - CLICK_SLOP)));
+        assert!(!beyond_slop(from, (100, 100)));
+        assert!(beyond_slop(from, (100 + CLICK_SLOP + 1, 100)));
+        assert!(beyond_slop(from, (100, 100 - CLICK_SLOP - 1)));
+        // 斜向：两轴都不超阈值时也不算拖动
+        assert!(!beyond_slop(from, (100 + CLICK_SLOP, 100 + CLICK_SLOP)));
     }
 }

@@ -7,6 +7,9 @@ use tiny_skia::{Paint, PathBuilder, Pixmap, Rect, Transform};
 
 use crate::overlay::geometry::SelRect;
 
+/// 选区与候选框的强调色（主题蓝，ADR 0037 起两处共用一份）。
+pub(crate) const ACCENT: [u8; 3] = [26, 115, 232];
+
 /// 由 RGBA 构造纯色画刷。
 pub(crate) fn paint_of(color: [u8; 4]) -> Paint<'static> {
     let mut p = Paint::default();
