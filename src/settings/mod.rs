@@ -11,6 +11,19 @@ use std::path::PathBuf;
 pub use hotkey::{HotkeyConfig, ToolKeys, UNBOUND};
 pub use toolbar::{GroupState, ToolbarConfig, ToolbarGroup, ToolbarSlot};
 
+/// 双击选区空白的动作（ADR 0036，设置面板「通用」页）。
+/// 默认复制（= 加这个开关之前的行为）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum DoubleClickAction {
+    /// 复制选区并关闭覆盖层（`DoubleClickAction::default()`）。
+    #[default]
+    #[serde(rename = "copy")]
+    Copy,
+    /// 把选区贴到屏幕（与贴图键 `F3` 同一条路径）。
+    #[serde(rename = "pin")]
+    Pin,
+}
+
 /// 主题设置：跟随系统 / 浅色 / 深色。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ThemeSetting {
@@ -144,6 +157,8 @@ pub struct Config {
     pub hotkey_warned: bool,
     /// 贴图初始位置（M2b）。
     pub pin_position: PinPosition,
+    /// 双击选区空白的动作（ADR 0036，默认复制）。
+    pub double_click_action: DoubleClickAction,
     /// 贴图 1px 蓝色边框（M2b，默认开）。
     pub pin_border: bool,
     /// 覆盖层界面缩放（CAP-5，默认自动）：4K@100% 这类高密度屏需要手动放大。
@@ -178,6 +193,7 @@ impl Default for Config {
             tool_keys: ToolKeys::default(),
             hotkey_warned: false,
             pin_position: PinPosition::Original,
+            double_click_action: DoubleClickAction::Copy,
             pin_border: true,
             ui_scale: UiScale::Auto,
             swatch_colors: crate::editor::DEFAULT_COLORS,
@@ -379,6 +395,29 @@ mod tests {
         };
         let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
         assert!(!back.confirm_cancel);
+    }
+
+    /// 双击选区空白的动作（ADR 0036）：旧配置回退为复制；新值用稳定短值写入并可往返。
+    #[test]
+    fn double_click_action_defaults_and_roundtrip() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(
+            old.double_click_action,
+            DoubleClickAction::Copy,
+            "旧配置应回退为双击复制"
+        );
+
+        let cfg = Config {
+            double_click_action: DoubleClickAction::Pin,
+            ..Default::default()
+        };
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        assert!(
+            text.contains("double_click_action = \"pin\""),
+            "配置里应写稳定短值：{text}"
+        );
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.double_click_action, DoubleClickAction::Pin);
     }
 
     /// 色块颜色（EDT-7）：旧配置缺字段回退预设色，新值能往返。

@@ -96,6 +96,7 @@ impl App {
             // 贴图编辑模式不注册「再次截图」键（选区锁定）：显式传未绑定，避免看着像生效
             recapture_key: crate::settings::UNBOUND,
             recapture_modifiers: 0,
+            double_click: self.config.double_click_action,
             colors: self.config.swatch_colors,
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,

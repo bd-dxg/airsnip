@@ -148,8 +148,23 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
                 items,
             );
             push(RowId::Lang, RowKind::Readonly, "语言", &mut y, items);
-            push(RowId::PinPosOriginal, RowKind::Radio, "贴图位置·原位置", &mut y, items);
-            push(RowId::PinPosCenter, RowKind::Radio, "贴图位置·屏幕中间", &mut y, items);
+            // 贴图位置与双击动作都是一行开关（ADR 0036）：行数不变，行高也没变，
+            // 但面板少一行就少 46px——之前“原位置 / 屏幕中间”占两行单选。
+            // 这两行的**显示文案随开关状态变**（`draw::toggle_label`），这里写默认（关）态的文字作兼底。
+            push(
+                RowId::PinPosCenter,
+                RowKind::Toggle,
+                "贴图位置·截图原位置",
+                &mut y,
+                items,
+            );
+            push(
+                RowId::DoubleClick,
+                RowKind::Toggle,
+                "双击选区空白·复制截图",
+                &mut y,
+                items,
+            );
         }
         Section::Toolbar => {
             // 多列紧凑排布（EDT-16）：面板没有滚动条，五组 + 组内元素必须落在固定高内。

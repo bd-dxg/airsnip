@@ -50,8 +50,8 @@ impl super::super::Overlay {
                 self.phase = Phase::Adjusting;
             }
             // 平移整个选区：按住空格拖（CAP-2），或移动态下直接拖选区内空白（ADR 0036）。
-            // `down_started_draw` 也在这里置位：「双击空白完成截图」的判据（M3）靠它
-            // 区分「双击空白」与「双击对象」，与绘制态的行为一致。
+            // `down_started_draw` 也在这里置位：双击空白的动作（复制 / 贴图）靠它区分
+            // 「双击空白」与「双击对象」，与绘制态的行为一致。
             PickTarget::MoveSelection => {
                 self.down_started_draw = true;
                 self.drag = Some(Drag {
@@ -222,8 +222,8 @@ impl super::super::Overlay {
         self.set_selection(new);
     }
 
-    /// 双击（EDT-3 / EDT-4 / M3）：命中对象 → 编辑文本 / 恢复直线；命中色块 → 改色面板；
-    /// 否则选区空白内双击 = 完成截图（复制，替代回车）。
+    /// 双击（EDT-3 / EDT-4 / M3 / ADR 0036）：命中对象 → 编辑文本 / 恢复直线；命中色块 → 改色面板；
+    /// 否则选区空白内双击 = 按设置的动作完成（默认复制，可改为贴图）。
     pub(in crate::overlay) fn on_lbutton_dblclick(&mut self, x: i32, y: i32) {
         // 双击也是用户新动作，解除取消待命（OUT-3 / issue #120）
         self.clear_cancel_arm();
@@ -239,13 +239,17 @@ impl super::super::Overlay {
         if handled {
             return;
         }
-        // 双击第一击在选区内空白处按下（start_draw），作废草稿并完成截图
+        // 双击第一击按在选区内空白处（绘制态起笔 / 移动态开始平移）：
+        // 作废可能产生的草稿，并按设置执行双击动作（ADR 0036）。
         if let Some(sel) = self.selection
             && sel.contains(x, y)
             && self.down_started_draw
         {
             self.draft = None;
-            self.finish_output();
+            match self.double_click {
+                crate::settings::DoubleClickAction::Copy => self.finish_output(),
+                crate::settings::DoubleClickAction::Pin => self.on_pin(),
+            }
         }
     }
 

@@ -137,14 +137,24 @@ impl Panel {
                     self.config_dirty = true;
                 }
             }
-            // 贴图位置（M2b）：改工作副本，面板关闭时统一写回
-            RowId::PinPosOriginal => {
-                self.end_capture();
-                self.config.pin_position = crate::settings::PinPosition::Original;
-            }
+            // 贴图位置（M2b）：一行开关，开 = 居中、关 = 原位置。
+            // 两者都立即写回（不等关面板），这样面板开着时按 F1 截图就是新行为。
             RowId::PinPosCenter => {
                 self.end_capture();
-                self.config.pin_position = crate::settings::PinPosition::Center;
+                self.config.pin_position = match self.config.pin_position {
+                    crate::settings::PinPosition::Center => crate::settings::PinPosition::Original,
+                    crate::settings::PinPosition::Original => crate::settings::PinPosition::Center,
+                };
+                self.config_dirty = true;
+            }
+            // 双击选区空白的动作（ADR 0036）：开 = 贴图，关 = 复制；同样立即写回
+            RowId::DoubleClick => {
+                self.end_capture();
+                self.config.double_click_action = match self.config.double_click_action {
+                    crate::settings::DoubleClickAction::Copy => crate::settings::DoubleClickAction::Pin,
+                    crate::settings::DoubleClickAction::Pin => crate::settings::DoubleClickAction::Copy,
+                };
+                self.config_dirty = true;
             }
             // 文件名模板（OUT-2）：保存对话框预填文件名用
             RowId::NameDateTime => {

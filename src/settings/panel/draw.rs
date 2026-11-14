@@ -117,7 +117,10 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
     // 支持项目块与组头的标签由各自的绘制函数负责，此处不重复绘制
     if !matches!(row.kind, RowKind::Qr | RowKind::Group) {
         let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
-        draw_text(pixmap, lx, ly, row.label, size, p.text);
+        // 开关行文案跟状态走（ADR 0036）：关闭态写默认行为，开启态写被打开的那个行为，
+        // 否则用户看不出「开」到底是哪个含义。
+        let label = toggle_label(row.id, &panel.config).unwrap_or(row.label);
+        draw_text(pixmap, lx, ly, label, size, p.text);
     }
     match row.kind {
         RowKind::Toggle => draw_toggle(pixmap, panel, row),
@@ -140,6 +143,10 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::Autostart => panel.autostart_on,
         RowId::ConfirmCancel => panel.config.confirm_cancel,
         RowId::AutoCheckUpdate => panel.config.auto_check_update,
+        // 贴图位置（M2b）：开 = 屏幕中间，关 = 截图原位置
+        RowId::PinPosCenter => panel.config.pin_position == crate::settings::PinPosition::Center,
+        // 双击选区空白（ADR 0036）：开 = 贴图，关 = 复制
+        RowId::DoubleClick => panel.config.double_click_action == crate::settings::DoubleClickAction::Pin,
         // 工具栏元素显隐（EDT-16）：纯视觉开关，默认全开
         RowId::Toolbar(slot) => panel.config.toolbar.visible(slot),
         _ => false,
@@ -173,6 +180,23 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     rounded_rect(pixmap, knob, (kd / 2) as f32, [255, 255, 255, 255], None);
 }
 
+/// 开关行的标签随状态变化（ADR 0036）：两行开关的「开」和「关」各是一种具体行为，
+/// 只写一半（如固定写「…·贴到屏幕」）用户不知道关掉是什么意思。
+/// 返回 `None` 表示该行文案是静态的（用 `Row::label`）。
+pub(super) fn toggle_label(id: RowId, cfg: &crate::settings::Config) -> Option<&'static str> {
+    match id {
+        RowId::PinPosCenter => Some(match cfg.pin_position {
+            crate::settings::PinPosition::Center => "贴图位置·屏幕中间",
+            crate::settings::PinPosition::Original => "贴图位置·截图原位置",
+        }),
+        RowId::DoubleClick => Some(match cfg.double_click_action {
+            crate::settings::DoubleClickAction::Pin => "双击选区空白·贴到屏幕",
+            crate::settings::DoubleClickAction::Copy => "双击选区空白·复制截图",
+        }),
+        _ => None,
+    }
+}
+
 /// 主题单选：○ 外圈 + 选中时 ● 内圈。
 fn draw_radio(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let p = panel.palette;
@@ -181,8 +205,6 @@ fn draw_radio(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::ThemeFollow => panel.config.theme == ThemeSetting::Follow,
         RowId::ThemeLight => panel.config.theme == ThemeSetting::Light,
         RowId::ThemeDark => panel.config.theme == ThemeSetting::Dark,
-        RowId::PinPosOriginal => panel.config.pin_position == crate::settings::PinPosition::Original,
-        RowId::PinPosCenter => panel.config.pin_position == crate::settings::PinPosition::Center,
         RowId::NameDateTime => panel.config.name_style == crate::settings::NameStyle::DateTime,
         RowId::NameTimestamp => panel.config.name_style == crate::settings::NameStyle::Timestamp,
         RowId::NameDate => panel.config.name_style == crate::settings::NameStyle::Date,
@@ -244,4 +266,30 @@ fn draw_right_text(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Ro
 pub(super) fn draw_text(pixmap: &mut Pixmap, x: f32, y: f32, text: &str, size: f32, color: [u8; 4]) {
     let spec = dwrite::FontSpec::new(size);
     dwrite::draw(pixmap, Point::new(x, y), text, &spec, color, Transform::identity());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::{Config, DoubleClickAction, PinPosition};
+
+    /// ADR 0036：行内开关的文案必须跟状态走——关闭态写默认行为、开启态写被打开的那个行为，
+    /// 否则用户只能看到一半含义（「·贴到屏幕」关掉是什么？）。
+    #[test]
+    fn toggle_labels_follow_state() {
+        let mut cfg = Config::default();
+        assert_eq!(toggle_label(RowId::PinPosCenter, &cfg), Some("贴图位置·截图原位置"));
+        cfg.pin_position = PinPosition::Center;
+        assert_eq!(toggle_label(RowId::PinPosCenter, &cfg), Some("贴图位置·屏幕中间"));
+
+        let mut cfg = Config::default();
+        assert_eq!(toggle_label(RowId::DoubleClick, &cfg), Some("双击选区空白·复制截图"));
+        cfg.double_click_action = DoubleClickAction::Pin;
+        assert_eq!(toggle_label(RowId::DoubleClick, &cfg), Some("双击选区空白·贴到屏幕"));
+
+        // 其余行（开机自启 / 连按两次退出 / 工具栏元素 …）保持静态文案
+        for id in [RowId::Autostart, RowId::ConfirmCancel, RowId::AutoCheckUpdate] {
+            assert_eq!(toggle_label(id, &Config::default()), None, "{id:?} 不应有动态文案");
+        }
+    }
 }
