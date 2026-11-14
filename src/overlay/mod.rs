@@ -2,13 +2,15 @@
 //! 覆盖层（CAP-2/3）：覆盖整个虚拟屏幕的无边框置顶窗口，
 //! 冻结画面 + 选区暗化（预生成暗图 + 选区回贴原图），支持框选、移动与八向缩放。
 //! 选区确认后进入标注模式（EDT-1/EDT-2/EDT-7）：工具栏切换工具与样式，在选区内拖拽即绘制标注。
+//! **ADR 0036**：框选完成后默认是「移动选区」态（`Mode::Move`）——拖选区内空白平移选区、拖对象移动该对象，
+//! 标注跟着一起走；显式选工具（工具栏 / 数字键）后才进入绘制态（`Mode::Draw`）。
 //!
 //! 文件分工：`wndproc` 消息分发、`setup` 窗口创建、`geometry` 矩形运算、`surface` 像素缓冲与上屏、
 //! `cursor` 光标、`selection` 脏区重绘、`interaction` 鼠标交互、`pick` 对象选中与控制柄、
 //! `objedit` 对象手柄与拖动缩放、`wheel` 滚轮调属性、`font` 字体设置与字体面板、`annotate` 标注与输出、
 //! `delete` 选中对象的单独删除、`toolbar` 工具栏、`ui` 按显示器 DPI 的界面缩放、`opts` 启动参数、`recapture` 再次截图（issue #118）。
-//! 按下优先级（ADR 0023）见 `pick::pick_target`：手柄 > 曲线控制柄 > 选区手柄 > 空格移动选区
-//! > Ctrl + 对象 > 选中对象框边 > 对象内部（绘制）> 空白绘制。
+//! 按下优先级（ADR 0023 / ADR 0036）见 `pick::pick_target`：手柄 > 曲线控制柄 > 选区手柄
+//! > 空格移动选区 > （移动态）对象 / 选区平移 > Ctrl + 对象 > 选中对象框边 > 对象内部（绘制）> 空白绘制。
 
 mod annotate;
 mod cancel_hint;
@@ -44,7 +46,7 @@ use windows::Win32::UI::Input::Ime::HIMC;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use crate::capture::CapturedScreen;
-use crate::editor::{Document, Object, Point, Tool};
+use crate::editor::{Document, Mode, Object, Point};
 use crate::theme::Palette;
 
 use geometry::SelRect;
@@ -78,8 +80,10 @@ pub struct Overlay {
     drag: Option<Drag>,
     /// 标注文档（对象列表 + 撤销/重做，EDT-1/EDT-2/EDT-7）。
     doc: Document,
-    /// 当前工具与样式（EDT-7）。
-    tool: Tool,
+    /// 当前交互模式（ADR 0036）：`Move` = 平移选区 / 移动对象，`Draw(t)` = 用 t 画新标注。
+    /// 开局为 `Move`（贴图编辑模式例外，选区锁定，直接进绘制态），
+    /// 不再记忆上次工具（没有“上次工具”这件事）。
+    mode: Mode,
     /// 工具切换键配置（M3：数字键 1-5 切换标注工具）。
     tool_keys: crate::settings::ToolKeys,
     /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
@@ -256,9 +260,8 @@ pub fn run(capture: CapturedScreen, opts: OverlayOpts, hinstance: HINSTANCE, mai
         }
     }
 
-    // 记录本会话最后使用的工具（下次截图默认沿用，首次为矩形，M3）
+    // 记录本会话最后使用的工具：ADR 0036 后不再记忆（每次截图都从移动态开始）
     crate::perf::log_frames_summary();
-    crate::settings::last_tool_store(unsafe { (*raw).tool });
 
     let cancelled = unsafe { (*raw).cancelled };
     let viewport = unsafe { (*raw).viewport };

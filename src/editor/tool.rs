@@ -41,6 +41,28 @@ impl Tool {
     ];
 }
 
+/// 交互模式（ADR 0036）：截图框选完成后默认「移动选区」，显式选工具后进入绘制。
+///
+/// 模式决定「选区内按下会发生什么」，是 ADR 0023「绘制优先」的替代方案：
+/// 那条规则只在 `Draw` 态成立；`Move` 态下按下对象 = 移动该对象、按下空白 = 平移选区。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    /// 指针语义：拖选区内空白 = 平移选区，拖对象 = 移动该对象。
+    Move,
+    /// 绘制语义：用 `Draw(tool)` 画新标注（ADR 0023「绘制优先」仅在此态成立）。
+    Draw(Tool),
+}
+
+impl Mode {
+    /// 当前待用工具；`Move` 态为 `None`（各绘制入口据此判断「现在不能画」）。
+    pub fn tool(self) -> Option<Tool> {
+        match self {
+            Mode::Move => None,
+            Mode::Draw(t) => Some(t),
+        }
+    }
+}
+
 /// 新建对象默认线宽（物理像素，连续可调：滚轮 / 二级工具栏）。
 pub const DEFAULT_LINE_WIDTH: f32 = 4.0;
 
@@ -58,3 +80,17 @@ pub const DEFAULT_FONT_FAMILY: &str = "Microsoft YaHei UI";
 
 /// 字号可调范围（滚轮 / 第二行 −+ 共用）。
 pub const FONT_SIZE_RANGE: (f32, f32) = (10.0, 96.0);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// ADR 0036：移动态没有待用工具（各绘制入口靠它判断「现在不能画」）。
+    #[test]
+    fn mode_maps_to_tool() {
+        assert_eq!(Mode::Move.tool(), None);
+        for t in Tool::ALL {
+            assert_eq!(Mode::Draw(t).tool(), Some(t), "{t:?} 应能取回自身");
+        }
+    }
+}

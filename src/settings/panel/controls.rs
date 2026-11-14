@@ -38,7 +38,9 @@ pub const HOVER_PAD: i32 = 8;
 /// 支持项目行高度（文案 + 赞赏码，高于标准行）。
 pub const QR_ROW_H: i32 = 200;
 /// 「工具栏」页的组头行高度（比标准行矮，五组标题不占太多竖向空间）。
-pub const GROUP_H: i32 = 26;
+/// ADR 0036 从 26 收到 24：工具组多了一个「移动」按钮（ 11 个 / 5 列 = 3 行），
+/// 页脚提示与最后一排开关之间的呼吸空间只剩 2px，靠这 10px 补回。
+pub const GROUP_H: i32 = 24;
 /// 「工具栏」页单元格的水平内边距（多列布局，比整行小）。
 pub const CELL_PAD: i32 = 6;
 /// 开关胶囊宽度（绘制与命中共用，避免两处各写一份）。
@@ -101,6 +103,8 @@ pub enum RowId {
     HotkeyBorder,
     /// 长截图键（覆盖层内按下，默认 S）。
     HotkeyLongshot,
+    /// 工具切换键：移动选区（ADR 0036，框选完成后的缺省态；开 = 指针）。
+    ToolMove,
     /// 工具切换键（M3）：矩形 / 箭头 / 文本 / 模糊 / 荧光笔 / 高亮。
     ToolRect,
     ToolArrow,
@@ -324,6 +328,7 @@ mod tests {
                     RowId::HotkeyPin,
                     RowId::HotkeyBorder,
                     RowId::HotkeyLongshot,
+                    RowId::ToolMove,
                     RowId::ToolRect,
                     RowId::ToolArrow,
                     RowId::ToolText,

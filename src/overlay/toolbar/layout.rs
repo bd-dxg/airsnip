@@ -40,11 +40,17 @@ pub struct Shown<'a> {
     pub text_row: bool,
     /// 贴图编辑模式（ADR 0028）：输出组（贴图 / 长截图）整体不出现。
     pub show_output: bool,
+    /// 选区是否可移动（ADR 0036）：贴图编辑模式选区锁定，「移动」按钮不画。
+    pub show_move: bool,
 }
 
 impl Shown<'_> {
     /// 该元素是否绘制：显隐开关 + 编辑模式叠加。
     fn draws(&self, slot: ToolbarSlot) -> bool {
+        if slot == ToolbarSlot::Move {
+            // ADR 0036：选区锁定（贴图编辑）时指针模式无意义，不画按钮
+            return self.show_move && self.vis.visible(slot);
+        }
         self.vis.visible(slot) && (self.show_output || slot.group() != ToolbarGroup::Output)
     }
 }
@@ -53,6 +59,7 @@ impl Shown<'_> {
 fn item_of(slot: ToolbarSlot, ui: Ui) -> Option<(Action, i32, i32)> {
     let (btn, sw) = (ui.px(BTN_BASE), ui.px(SW_BASE));
     Some(match slot {
+        ToolbarSlot::Move => (Action::Move, btn, btn),
         ToolbarSlot::Tool(t) => (Action::Tool(t), btn, btn),
         ToolbarSlot::Color(i) => (Action::Color(i), sw, sw),
         ToolbarSlot::Fill => (Action::ToggleFill, btn, btn),

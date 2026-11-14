@@ -82,7 +82,7 @@ impl KeyRowSpec {
 }
 
 /// 快捷键行元数据（顺序即界面顺序，见模块文档）。
-pub const KEY_ROWS: [KeyRowSpec; 15] = [
+pub const KEY_ROWS: [KeyRowSpec; 16] = [
     KeyRowSpec::hotkey(
         RowId::HotkeyShot,
         "截图",
@@ -129,6 +129,13 @@ pub const KEY_ROWS: [KeyRowSpec; 15] = [
         "长截图",
         |hk, _| (hk.longshot_key, 0),
         |cfg, vk, _| cfg.hotkey.longshot_key = vk,
+    ),
+    // ADR 0036：移动（指针）键排在工具键之前——它才是框选完成后的缺省态
+    KeyRowSpec::plain(
+        RowId::ToolMove,
+        "工具·移动",
+        |_, tk| (tk.move_key, 0),
+        |cfg, vk, _| cfg.tool_keys.move_key = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolRect,
@@ -248,6 +255,7 @@ mod tests {
             ("贴图", "F3".into()),
             ("贴图边框", "Ctrl+F3".into()),
             ("长截图", "S".into()),
+            ("工具·移动", "V".into()),
             ("工具·矩形", "1".into()),
             ("工具·箭头", "2".into()),
             ("工具·文本", "3".into()),

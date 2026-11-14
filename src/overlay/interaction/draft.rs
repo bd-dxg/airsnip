@@ -31,9 +31,13 @@ fn segment_region(a: Point, b: Point, width: f32) -> SelRect {
 
 impl super::super::Overlay {
     /// 在选区内开始拖拽绘制标注（EDT-1/EDT-2）；文本工具转为点击放置（EDT-4）。
+    /// 移动态（ADR 0036）不可绘制：调用方已按模式分流，这里再守一道，免得丢工具后默默画错东西。
     pub(super) fn start_draw(&mut self, x: i32, y: i32) {
         let p = Point::new(x as f32, y as f32);
-        let kind = match self.tool {
+        let Some(tool) = self.mode.tool() else {
+            return;
+        };
+        let kind = match tool {
             Tool::Text => {
                 self.begin_text_input(x, y);
                 return;
@@ -96,7 +100,7 @@ impl super::super::Overlay {
         // 按下即需立即重绘的情形：
         // 聚光灯——进入暗化态（选区其余区域变暗、本区域亮）；
         // 序号标记——徽标应随按下立刻出现，不等鼠标移动。
-        if matches!(self.tool, Tool::Glow | Tool::Number)
+        if matches!(tool, Tool::Glow | Tool::Number)
             && let Some(sel) = self.selection
         {
             self.repaint(sel);

@@ -61,7 +61,7 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
         }
         match *action {
             Action::Tool(tool) => {
-                let active = tool == state.tool;
+                let active = state.tool == Some(tool);
                 if active {
                     rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
                 }
@@ -75,6 +75,14 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     p.icon_dim
                 };
                 draw_icon(pixmap, tool_icon(tool), *r, color);
+            }
+            // ADR 0036：移动（指针）按钮：移动态高亮，绘制态置灰
+            Action::Move => {
+                let active = state.tool.is_none();
+                if active {
+                    rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
+                }
+                draw_icon(pixmap, Icon::Move, *r, if active { p.icon } else { p.icon_dim });
             }
             Action::Color(i) => {
                 let inset = ui.px(2.0);

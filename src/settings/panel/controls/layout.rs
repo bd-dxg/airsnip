@@ -153,7 +153,9 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
         }
         Section::Toolbar => {
             // 多列紧凑排布（EDT-16）：面板没有滚动条，五组 + 组内元素必须落在固定高内。
-            // 高度：5 个组头（GROUP_H）+ 6 行元素（ROW_H）= 406，加节标题 40 → 446 < H。
+            // 高度：5 个组头（GROUP_H=24）+ 7 行元素（ROW_H=46）= 442，加节标题 40 → 482 < 520，
+            // 页脚提示还能留 12px（有 `toolbar_page::tests::hint_sits_below_last_row` 守门）。
+            // 工具组从 10 项到 11 项（ADR 0036 新增「移动」）后是 3 行，组头行高从 26 收到 24 就是为此腾的。
             let w = (W as f32 * s) as i32;
             let nav_w = (NAV_W as f32 * s) as i32;
             let pad = (PAD as f32 * s) as i32;

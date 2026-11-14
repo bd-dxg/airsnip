@@ -24,28 +24,32 @@ impl super::Overlay {
         }
         if let Some(i) = self.hit_object(x, y) {
             self.adjust_object(i, step);
-        } else {
-            // 空白处滚动：只改默认值，供下一次绘制沿用
-            match self.tool {
-                // 描边类工具（含直线 / 椭圆 / 手绘，EDT-13/14/15）：线宽连续可调
-                crate::editor::Tool::Rect
-                | crate::editor::Tool::Arrow
-                | crate::editor::Tool::Line
-                | crate::editor::Tool::Ellipse
-                | crate::editor::Tool::Freehand => {
-                    self.line_width = (self.line_width + step).clamp(1.0, 32.0);
-                }
-                crate::editor::Tool::Text => {
-                    self.font_size = (self.font_size + step).clamp(10.0, 96.0);
-                }
-                crate::editor::Tool::Blur => self.blur_radius = (self.blur_radius + step).clamp(4.0, 64.0),
-                // EDT-12：序号徽标随字号缩放
-                crate::editor::Tool::Number => {
-                    let r = crate::editor::FONT_SIZE_RANGE;
-                    self.number_font_size = (self.number_font_size + step).clamp(r.0, r.1);
-                }
-                crate::editor::Tool::Highlight | crate::editor::Tool::Glow => {}
+            return;
+        }
+        // 空白处滚动：只改默认值，供下一次绘制沿用。
+        // 移动态（ADR 0036）没有待用工具，滚轮不调整任何东西——否则改掉的是用户看不见的值。
+        let Some(tool) = self.mode.tool() else {
+            return;
+        };
+        match tool {
+            // 描边类工具（含直线 / 椭圆 / 手绘，EDT-13/14/15）：线宽连续可调
+            crate::editor::Tool::Rect
+            | crate::editor::Tool::Arrow
+            | crate::editor::Tool::Line
+            | crate::editor::Tool::Ellipse
+            | crate::editor::Tool::Freehand => {
+                self.line_width = (self.line_width + step).clamp(1.0, 32.0);
             }
+            crate::editor::Tool::Text => {
+                self.font_size = (self.font_size + step).clamp(10.0, 96.0);
+            }
+            crate::editor::Tool::Blur => self.blur_radius = (self.blur_radius + step).clamp(4.0, 64.0),
+            // EDT-12：序号徽标随字号缩放
+            crate::editor::Tool::Number => {
+                let r = crate::editor::FONT_SIZE_RANGE;
+                self.number_font_size = (self.number_font_size + step).clamp(r.0, r.1);
+            }
+            crate::editor::Tool::Highlight | crate::editor::Tool::Glow => {}
         }
     }
 

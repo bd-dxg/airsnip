@@ -79,6 +79,8 @@ pub struct ToolKeys {
     pub ellipse: ToolKey,
     /// EDT-15 手绘自由笔画。
     pub freehand: ToolKey,
+    /// ADR 0036 移动选区（框选完成后的缺省态）：按下即回指针模式。
+    pub move_key: ToolKey,
 }
 
 /// 修饰键位掩码（与 `HotkeyConfig` 的 `*_modifiers` 一致）。
@@ -166,6 +168,7 @@ impl Default for ToolKeys {
             line: 0x38,      // 8
             ellipse: 0x39,   // 9
             freehand: 0x30,  // 0
+            move_key: 0x56,  // V
         }
     }
 }
@@ -193,10 +196,23 @@ mod tests {
             k.line,
             k.ellipse,
             k.freehand,
+            k.move_key,
         ];
         let mut uniq = all.to_vec();
         uniq.sort_unstable();
         uniq.dedup();
         assert_eq!(uniq.len(), all.len(), "工具键默认值不应重复：{all:?}");
+    }
+
+    /// ADR 0036：移动键默认 V，且不与其他工具键 / 长截图键（S）撞车。
+    #[test]
+    fn move_key_defaults_to_v() {
+        let k = ToolKeys::default();
+        assert_eq!(k.move_key, 0x56, "移动键默认应为 V");
+        assert_ne!(
+            k.move_key,
+            HotkeyConfig::default().longshot_key,
+            "不应与长截图键（S）重复"
+        );
     }
 }

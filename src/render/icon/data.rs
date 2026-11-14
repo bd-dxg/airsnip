@@ -26,6 +26,8 @@ macro_rules! icon_table {
 
 icon_table! {
     // 覆盖层工具栏（EDT-7 / EDT-1 / EDT-4 / PIN-1 / M4 / OUT-1 / OUT-2）
+    // ADR 0036：移动（指针）——四向箭头，与移动光标（IDC_SIZEALL）同形（占位几何，见 assets/icons/ui/README.md）
+    Move => "toolbar/move.svg",
     Rect => "toolbar/rect.svg",
     Arrow => "toolbar/arrow.svg",
     Text => "toolbar/text.svg",

@@ -41,6 +41,8 @@ impl App {
                 vis: &self.config.toolbar,
                 text_row: true,
                 show_output: false,
+                // 贴图编辑模式选区锁定：没有「移动」按钮
+                show_move: false,
             },
             ui,
         );
@@ -94,7 +96,6 @@ impl App {
             // 贴图编辑模式不注册「再次截图」键（选区锁定）：显式传未绑定，避免看着像生效
             recapture_key: crate::settings::UNBOUND,
             recapture_modifiers: 0,
-            default_tool: crate::settings::last_tool(),
             colors: self.config.swatch_colors,
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,
