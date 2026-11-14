@@ -3,7 +3,7 @@
 
 mod keys;
 
-pub(super) use keys::{ctrl_down, ime_string, shift_down, space_down};
+pub(super) use keys::{ctrl_down, ime_string, lbutton_down, shift_down, space_down};
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::Graphics::Gdi::{BeginPaint, EndPaint, PAINTSTRUCT};
@@ -51,6 +51,9 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
             overlay.on_mouse_move(x, y);
+            // 窗口吸附（CAP-6 / ADR 0037）：没有选区时高亮光标下的窗口矩形。
+            // 只有候选真的变了才重绘；不做时间节流（迟滞 vs. 帧开销已在 ADR 里权衡）
+            overlay.update_snap(x, y);
             // 字体面板悬停高亮（EDT-4）
             overlay.on_font_list_hover(x, y);
             // 光标随鼠标位置变：手柄→方向光标、对象/曲线控制柄→移动光标（否则系统只在
@@ -68,6 +71,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         // 二次确认提示超时自动消失（OUT-3 / issue #120）
         WM_TIMER if wparam.0 == cancel_hint::TIMER_ID => {
             overlay.on_cancel_timer();
+            LRESULT(0)
+        }
+        // 淡入（CAP-2 显示动画）：一次性定时器链，收尾即 KillTimer
+        WM_TIMER if wparam.0 == super::fade::TIMER_ID => {
+            overlay.on_fade_timer();
             LRESULT(0)
         }
         WM_LBUTTONUP => {

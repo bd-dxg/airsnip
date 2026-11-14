@@ -28,6 +28,7 @@ impl Overlay {
             recapture_key: _,
             recapture_modifiers: _,
             double_click,
+            window_snap,
             colors,
             save,
             ui_scale,
@@ -105,6 +106,9 @@ impl Overlay {
             // 开局回落（EDT-16 R5）：默认色块被隐藏时落到第一个可见色块
             mode: start_mode,
             double_click,
+            window_snap,
+            snap: super::snap::Snap::default(),
+            fade_step: 0,
             tool_keys,
             longshot_key,
             visibility,

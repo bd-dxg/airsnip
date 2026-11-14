@@ -39,6 +39,8 @@ impl App {
             recapture_key: self.config.hotkey.recapture_key,
             recapture_modifiers: self.config.hotkey.recapture_modifiers,
             double_click: self.config.double_click_action,
+            // 窗口吸附（CAP-6 / ADR 0037，issue #62）：0.12 新增，默认开
+            window_snap: self.config.window_snap,
             // 色块颜色（EDT-7，issue #73 后续）：可逐个双击改写
             colors: self.config.swatch_colors,
             // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名与初始位置

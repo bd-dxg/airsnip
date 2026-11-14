@@ -7,7 +7,7 @@ use crate::overlay::geometry::SelRect;
 use crate::overlay::objedit::ObjHandle;
 use crate::overlay::pick::{Handle, PickTarget};
 
-use super::{CLICK_SLOP, Drag, PendingClick, Phase};
+use super::{Drag, PendingClick, Phase, beyond_slop};
 
 impl super::super::Overlay {
     pub(in crate::overlay) fn on_lbutton_down(&mut self, x: i32, y: i32) {
@@ -88,6 +88,11 @@ impl super::super::Overlay {
             // 贴图编辑模式（ADR 0028）：选区锁定，点选区外不改选区
             PickTarget::None if self.locked_selection => {}
             PickTarget::None => {
+                // 窗口吸附（CAP-6 / ADR 0037）：光标下已有候选 → 先不建选区，
+                // 无位移松手就选中整窗，拖出 `CLICK_SLOP` 再退回自由框选（见 `on_mouse_move`）
+                if self.begin_snap_pending(x, y) {
+                    return;
+                }
                 self.set_selected(None);
                 let sel = self.begin_select(x, y);
                 self.set_selection(Some(sel));
@@ -100,11 +105,14 @@ impl super::super::Overlay {
         if self.on_color_panel_move(x, y) {
             return;
         }
+        // 窗口吸附的「候选待定」（CAP-6 / ADR 0037）：拖出阈值就作废候选、
+        // 从按下点开始自由框选，然后继续走下面的拖动分支
+        self.take_snap_drag(x, y);
         // Shift 约束（EDT-1/EDT-2/EDT-7）：新建与二次编辑共用同一状态
         let shift = crate::overlay::wndproc::shift_down();
         // 对象内部按下后拖出阈值：转为绘制新标注（ADR 0023）
         if let Some(p) = self.pending_click {
-            if (x - p.x).abs() > CLICK_SLOP || (y - p.y).abs() > CLICK_SLOP {
+            if beyond_slop((p.x, p.y), (x, y)) {
                 self.pending_click = None;
                 self.begin_pending_draw(p, x, y);
             }
@@ -189,6 +197,17 @@ impl super::super::Overlay {
         if self.on_color_panel_up() {
             return;
         }
+        // 窗口吸附（CAP-6 / ADR 0037）：无位移松手 → 整窗作选区，直接进标注流程。
+        // `down_started_draw` 一并置位：双击窗口就等于「双击选区空白」的完成动作（默认复制）。
+        if let Some(p) = self.snap.pending.take() {
+            // 只清状态不重绘：随后 `set_selection` 会把候选矩形整块重画成选区
+            self.snap.clear();
+            self.down_started_draw = true;
+            self.set_selected(None);
+            self.phase = Phase::Adjusting;
+            self.set_selection(Some(p.rect));
+            return;
+        }
         // 对象内部「单击」（未拖出阈值）：退化为选中，不画任何东西（ADR 0023 §3）
         if let Some(p) = self.pending_click.take() {
             self.set_selected(Some(p.index));
@@ -251,6 +270,36 @@ impl super::super::Overlay {
                 crate::settings::DoubleClickAction::Pin => self.on_pin(),
             }
         }
+    }
+
+    /// 窗口吸附（CAP-6 / ADR 0037）：左键按在候选窗口上 → 只记下待定，不立即建选区。
+    /// 直接在按下时确认会让「按下即拖」的自由框选无法开始（每按一下就跳成整窗）。
+    fn begin_snap_pending(&mut self, x: i32, y: i32) -> bool {
+        let Some(rect) = self.snap.candidate else {
+            return false;
+        };
+        if !rect.contains(x, y) {
+            return false;
+        }
+        self.snap.pending = Some(super::super::snap::Pending { x, y, rect });
+        true
+    }
+
+    /// 候选待定后拖出阈值：作废候选、从按下点开始自由框选（CAP-6 / ADR 0037）。
+    /// 返回是否发生了转换（调用方随后按常规拖动逻辑继续）。
+    fn take_snap_drag(&mut self, x: i32, y: i32) {
+        let Some(p) = self.snap.pending else {
+            return;
+        };
+        if !beyond_slop((p.x, p.y), (x, y)) {
+            return;
+        }
+        self.snap.pending = None;
+        // 候选框作废，回贴暗图；随后 1px 选区开始拉伸（与直接按空白处一致）
+        self.drop_snap();
+        self.set_selected(None);
+        let sel = self.begin_select(p.x, p.y);
+        self.set_selection(Some(sel));
     }
 
     /// 开始新的框选（返回初始 1px 选区）。

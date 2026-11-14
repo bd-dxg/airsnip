@@ -8,7 +8,7 @@ mod draw;
 use super::geometry::{SelRect, expand_rect, intersect_rect, same_rect, text_rect, union_rect};
 use super::objedit;
 use super::pick::draw_curve_handles;
-use super::surface::{blit_region, draw_info_text, restore_region};
+use super::surface::{blit_region, dim_region, draw_info_text, restore_region};
 use super::toolbar::tip;
 use super::{textinput, toolbar};
 use crate::render;
@@ -80,6 +80,16 @@ impl super::Overlay {
     /// 重绘指定区域并上屏（PRD 6.3.2 脏矩形）：
     /// 1) 底图复位（选区外恢复暗图、选区内回贴原图）2) 重绘标注 3) 选区装饰 4) 工具栏。
     pub(super) fn repaint(&mut self, r: SelRect) {
+        if let Some(region) = self.draw_region(r) {
+            self.present_region(region);
+        }
+    }
+
+    /// 只把区域画进 `display`、不上屏（ADR 0037）。
+    /// 覆盖层**尚未显示**时先把首帧内容备好：否则首帧先上一次全暗（`UpdateWindow` 的全窗 WM_PAINT）、
+    /// 紧接着窗口吸附再把候选区改成半亮，用户会看到「明亮 → 极暗 → 半暗」两步变化。
+    /// 返回实际生效的脏区（已被夹到画布内）；全在画布外时返回 `None`。
+    pub(super) fn draw_region(&mut self, r: SelRect) -> Option<SelRect> {
         let _frame = crate::perf::frame();
         let r = self.expand_for_objects(r);
         let r = self.expand_for_selected(r);
@@ -90,7 +100,7 @@ impl super::Overlay {
         let x1 = (r.x + r.w).clamp(0, w);
         let y1 = (r.y + r.h).clamp(0, h);
         if x1 <= x0 || y1 <= y0 {
-            return;
+            return None;
         }
         let region = SelRect {
             x: x0,
@@ -138,6 +148,15 @@ impl super::Overlay {
                     blit_region(&mut self.display, &self.original, overlap);
                 }
             }
+        } else if let Some(cand) = self.snap.candidate
+            && let Some(part) = intersect_rect(region, cand)
+        {
+            // 1b) 窗口吸附候选（CAP-6 / ADR 0037）：候选区回贴原图后再压暗一档，得「半亮」。
+            // 不回贴成全亮，是因为候选常常就是整屏（任务栏自动隐藏 + 窗口最大化、全屏窗口）——
+            // 那时暗化一点不剩，用户看不出覆盖层已经生效，只会以为 F1 没反应。
+            // 候选只在没有选区时存在（`Overlay::snap_enabled`），与选区互斥。
+            blit_region(&mut self.display, &self.original, part);
+            dim_region(&mut self.display, part, super::snap::CAND_K);
         }
         // 2) 标注对象（含正在拖拽的草稿）；二次编辑中的文本对象隐藏，由输入框呈现（EDT-4）
         render::draw_objects(
@@ -168,6 +187,11 @@ impl super::Overlay {
                 draw_rect(&mut self.display, sel, self.ui);
                 draw_handles(&mut self.display, sel, self.ui);
             }
+        } else if let Some(cand) = self.snap.candidate
+            && intersect_rect(expand_rect(cand, 2), region).is_some()
+        {
+            // 3b) 候选框：只有一条强调色细边，不画手柄（预览不是已确认）
+            super::snap::draw_candidate(&mut self.display, cand, self.ui);
         }
         // 4) 工具栏
         let state = self.bar_state();
@@ -198,7 +222,13 @@ impl super::Overlay {
         {
             let bar_h = self.bar.as_ref().map(|b| b.rect.h).unwrap_or(0);
             if intersect_rect(text_rect(sel, w, h, bar_h, self.ui), region).is_some() {
-                draw_info_text(&mut self.display, sel, w, h, bar_h, self.ui);
+                draw_info_text(&mut self.display, text_rect(sel, w, h, bar_h, self.ui), sel, self.ui);
+            }
+        } else if let Some(cand) = self.snap.candidate {
+            // 候选没有工具栏，避让高度按 0 算；尺寸提示夹回屏内（贴底候选也不丢，ADR 0037）
+            let r = super::snap::candidate_text_rect(cand, w, h, self.ui);
+            if intersect_rect(r, region).is_some() {
+                draw_info_text(&mut self.display, r, cand, self.ui);
             }
         }
         // 7) 悬浮提示气泡（EDT-10）：屏幕显示层、画在最上层，不进导出烘焙
@@ -213,7 +243,7 @@ impl super::Overlay {
         {
             super::cancel_hint::draw(&mut self.display, hint, self.ui);
         }
-        self.present_region(region);
+        Some(region)
     }
 
     /// 二次确认提示整条画进 `display`，脏区若只切过它一部分，未呈现的像素会在后续上屏时被重复合成；

@@ -156,6 +156,12 @@ impl Panel {
                 };
                 self.config_dirty = true;
             }
+            // 窗口吸附（CAP-6 / ADR 0037，issue #62）：下次截图生效（与双击动作、贴图位置同一写回路径）
+            RowId::WindowSnap => {
+                self.end_capture();
+                self.config.window_snap = !self.config.window_snap;
+                self.config_dirty = true;
+            }
             // 文件名模板（OUT-2）：保存对话框预填文件名用
             RowId::NameDateTime => {
                 self.end_capture();

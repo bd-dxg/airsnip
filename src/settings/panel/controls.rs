@@ -128,6 +128,8 @@ pub enum RowId {
     PinPosCenter,
     /// 双击选区空白的动作（ADR 0036）：开 = 贴到屏幕，关 = 复制截图。
     DoubleClick,
+    /// 窗口吸附（CAP-6 / ADR 0037，issue #62）：默认开，关闭后行为与未实现本项时一致。
+    WindowSnap,
     /// 主题：跟随系统。
     ThemeFollow,
     /// 主题：浅色。
@@ -321,6 +323,7 @@ mod tests {
                     RowId::Lang,
                     RowId::PinPosCenter,
                     RowId::DoubleClick,
+                    RowId::WindowSnap,
                 ],
                 Section::Hotkeys => vec![
                     RowId::HotkeyShot,

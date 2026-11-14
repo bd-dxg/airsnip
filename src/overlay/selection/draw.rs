@@ -5,15 +5,13 @@
 use tiny_skia::{Paint, PathBuilder, Pixmap, Rect, Stroke, Transform};
 
 use super::super::geometry::SelRect;
+use super::super::shape::ACCENT;
 use super::super::surface::blit_region;
 use super::super::ui::Ui;
 use crate::render::mask::FRect;
 
 /// 手柄边长基准值。
 const HANDLE_SIZE_BASE: f32 = 7.0;
-const ACCENT: u8 = 26; // 主题蓝
-const ACCENT_G: u8 = 115;
-const ACCENT_B: u8 = 232;
 
 /// 聚光区域恢复（EDT-9）：直角直接回贴原图；圆角按遮罩混合（圆周外保持暗化）。
 /// `rect` 为**完整**聚光矩形（`part` 可能已被脏区裁剪，不能用它算圆角）。
@@ -45,7 +43,7 @@ pub(super) fn draw_rect(pixmap: &mut Pixmap, sel: SelRect, ui: Ui) {
         return;
     };
     let mut paint = Paint::default();
-    paint.set_color_rgba8(ACCENT, ACCENT_G, ACCENT_B, 255);
+    paint.set_color_rgba8(ACCENT[0], ACCENT[1], ACCENT[2], 255);
     let stroke = Stroke {
         width: line,
         ..Default::default()

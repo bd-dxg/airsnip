@@ -165,6 +165,8 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
                 &mut y,
                 items,
             );
+            // 窗口吸附（CAP-6 / ADR 0037，issue #62）：单一布尔开关，文案不随状态变
+            push(RowId::WindowSnap, RowKind::Toggle, "窗口吸附", &mut y, items);
         }
         Section::Toolbar => {
             // 多列紧凑排布（EDT-16）：面板没有滚动条，五组 + 组内元素必须落在固定高内。

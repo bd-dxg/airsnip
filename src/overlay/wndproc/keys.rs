@@ -27,6 +27,11 @@ pub(in crate::overlay) fn space_down() -> bool {
     key_down(0x20)
 }
 
+/// 鼠标左键是否按住（窗口吸附的「候选待定」靠它发现丢失的 `WM_LBUTTONUP`）。
+pub(in crate::overlay) fn lbutton_down() -> bool {
+    key_down(0x01)
+}
+
 /// 从 IME 上下文读取组合串/结果串（UTF-16 → String，EDT-4）。
 pub(in crate::overlay) fn ime_string(hwnd: HWND, what: IME_COMPOSITION_STRING) -> String {
     unsafe {

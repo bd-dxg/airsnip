@@ -159,6 +159,9 @@ pub struct Config {
     pub pin_position: PinPosition,
     /// 双击选区空白的动作（ADR 0036，默认复制）。
     pub double_click_action: DoubleClickAction,
+    /// 窗口吸附（CAP-6，ADR 0037，默认开）：悬停高亮光标下的窗口矩形，单击即选中（issue #62）。
+    /// 关掉后行为与未实现本项时完全一致。
+    pub window_snap: bool,
     /// 贴图 1px 蓝色边框（M2b，默认开）。
     pub pin_border: bool,
     /// 覆盖层界面缩放（CAP-5，默认自动）：4K@100% 这类高密度屏需要手动放大。
@@ -194,6 +197,7 @@ impl Default for Config {
             hotkey_warned: false,
             pin_position: PinPosition::Original,
             double_click_action: DoubleClickAction::Copy,
+            window_snap: true,
             pin_border: true,
             ui_scale: UiScale::Auto,
             swatch_colors: crate::editor::DEFAULT_COLORS,
@@ -418,6 +422,20 @@ mod tests {
         );
         let back: Config = toml::from_str(&text).unwrap();
         assert_eq!(back.double_click_action, DoubleClickAction::Pin);
+    }
+
+    /// 窗口吸附（CAP-6 / ADR 0037，issue #62）：旧配置回退开启，关闭能往返。
+    #[test]
+    fn window_snap_defaults_and_roundtrip() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert!(old.window_snap, "旧配置应默认开启窗口吸附");
+
+        let cfg = Config {
+            window_snap: false,
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert!(!back.window_snap);
     }
 
     /// 色块颜色（EDT-7）：旧配置缺字段回退预设色，新值能往返。
