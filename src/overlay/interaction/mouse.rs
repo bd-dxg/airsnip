@@ -173,6 +173,14 @@ impl super::super::Overlay {
                 Handle::SW => SelRect::normalized(x, orig.y, orig.x + orig.w, orig.y + orig.h),
             }
         };
+        // ADR 0036：平移选区时标注跟着一起走（缩放 / 拖动框角不跟随）。
+        // 增量取「当前选区 → 新选区」：每帧从按下时的几何重算，不能用 `orig`（否则累加）。
+        if phase != Phase::Selecting
+            && handle == Handle::Move
+            && let Some(cur) = self.selection
+        {
+            self.doc.translate(new.x - cur.x, new.y - cur.y);
+        }
         self.set_selection(Some(new));
     }
 
