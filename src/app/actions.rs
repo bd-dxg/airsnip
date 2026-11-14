@@ -38,6 +38,7 @@ impl App {
             // 再次截图键（issue #118，默认 Shift+F1）：截图期间当前画面作新底图
             recapture_key: self.config.hotkey.recapture_key,
             recapture_modifiers: self.config.hotkey.recapture_modifiers,
+            double_click: self.config.double_click_action,
             // 色块颜色（EDT-7，issue #73 后续）：可逐个双击改写
             colors: self.config.swatch_colors,
             // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名与初始位置

@@ -27,6 +27,7 @@ impl Overlay {
             // 再次截图键只用于 `run` 里注册热键（`recapture::register`），覆盖层自身不保存
             recapture_key: _,
             recapture_modifiers: _,
+            double_click,
             colors,
             save,
             ui_scale,
@@ -103,6 +104,7 @@ impl Overlay {
             doc: Document::new(),
             // 开局回落（EDT-16 R5）：默认色块被隐藏时落到第一个可见色块
             mode: start_mode,
+            double_click,
             tool_keys,
             longshot_key,
             visibility,

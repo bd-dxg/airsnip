@@ -124,10 +124,10 @@ pub enum RowId {
     Widenote,
     /// 一键恢复默认快捷键（SYS-2，快捷键页底部）。
     ResetKeys,
-    /// 贴图位置：截图原位置（M2b）。
-    PinPosOriginal,
-    /// 贴图位置：屏幕中间（M2b）。
+    /// 贴图位置：屏幕中间（M2b）。开 = 居中，关 = 原位置。
     PinPosCenter,
+    /// 双击选区空白的动作（ADR 0036）：开 = 贴到屏幕，关 = 复制截图。
+    DoubleClick,
     /// 主题：跟随系统。
     ThemeFollow,
     /// 主题：浅色。
@@ -319,8 +319,8 @@ mod tests {
                     RowId::Autostart,
                     RowId::ConfirmCancel,
                     RowId::Lang,
-                    RowId::PinPosOriginal,
                     RowId::PinPosCenter,
+                    RowId::DoubleClick,
                 ],
                 Section::Hotkeys => vec![
                     RowId::HotkeyShot,

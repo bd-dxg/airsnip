@@ -84,6 +84,8 @@ pub struct Overlay {
     /// 开局为 `Move`（贴图编辑模式例外，选区锁定，直接进绘制态），
     /// 不再记忆上次工具（没有“上次工具”这件事）。
     mode: Mode,
+    /// 双击选区空白的动作（ADR 0036 / 设置面板「通用」页）：复制或贴图。
+    double_click: crate::settings::DoubleClickAction,
     /// 工具切换键配置（M3：数字键 1-5 切换标注工具）。
     tool_keys: crate::settings::ToolKeys,
     /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
