@@ -46,7 +46,7 @@ pub(super) struct PendingClick {
 
 impl super::Overlay {
     /// 方向键微调（EDT-7 / CAP-2）：有选中对象 → 移动该对象（限制在选区内）；
-    /// 否则 → 移动选区框（标注不跟随，允许落到选区外，导出以选区为准）。
+    /// 否则 → 移动选区框（标注跟随，ADR 0036；导出以选区为准）。
     /// 每次按键 = 一步撤销。
     pub(super) fn nudge(&mut self, dx: i32, dy: i32) {
         // 拖拽 / 绘制 / 单击待定中忽略：这些流程每帧从按下时的几何重算，微调会被覆盖
@@ -70,6 +70,7 @@ impl super::Overlay {
     }
 
     /// 微调选区框位置（CAP-2）：限制在虚拟屏幕内，工具栏随之重排。
+    /// ADR 0036：标注随选区一起平移（与鼠标拖动平移同一条语义）。
     fn nudge_selection(&mut self, dx: i32, dy: i32) {
         let Some(sel) = self.selection else {
             return;
@@ -80,6 +81,8 @@ impl super::Overlay {
         if x == sel.x && y == sel.y {
             return;
         }
+        // 先平移标注再挪框：用实际生效的位移（夹回屏幕后可能小于 dx/dy）
+        self.doc.translate(x - sel.x, y - sel.y);
         self.set_selection(Some(SelRect {
             x,
             y,

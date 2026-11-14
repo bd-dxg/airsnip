@@ -47,7 +47,7 @@ impl Tool {
 /// 那条规则只在 `Draw` 态成立；`Move` 态下按下对象 = 移动该对象、按下空白 = 平移选区。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
-    /// 指针语义：拖选区内空白 = 平移选区，拖对象 = 移动该对象。
+    /// 指针语义：拖选区内空白 = 平移选区（标注跟随），拖对象 = 移动该对象。
     Move,
     /// 绘制语义：用 `Draw(tool)` 画新标注（ADR 0023「绘制优先」仅在此态成立）。
     Draw(Tool),
