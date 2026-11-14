@@ -86,6 +86,8 @@ impl Overlay {
         }
         // 标注与选区：全部清空，回到「框选」阶段
         self.doc = Document::new();
+        // ADR 0036：新会话回到移动态（工具不记忆）
+        self.mode = crate::editor::Mode::Move;
         self.draft = None;
         self.pending_click = None;
         self.down_started_draw = false;

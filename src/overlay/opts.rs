@@ -5,7 +5,6 @@
 
 use tiny_skia::Pixmap;
 
-use crate::editor::Tool;
 use crate::theme::Palette;
 
 /// 覆盖层启动参数。
@@ -24,8 +23,6 @@ pub struct OverlayOpts {
     pub recapture_key: u32,
     /// 再次截图键修饰键位标志。
     pub recapture_modifiers: u32,
-    /// 本次会话的默认工具（记住上次使用，M3）。
-    pub default_tool: Tool,
     /// 色块颜色（EDT-7，issue #73 后续）：来自配置，缺省为 `DEFAULT_COLORS`。
     pub colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。

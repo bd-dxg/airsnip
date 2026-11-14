@@ -205,8 +205,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                     }
                     // 工具切换键（M3）：任意键都查映射（不限于数字键），
                     // 以便设置面板可把工具键改为字母等
-                    if let Some(t) = overlay.tool_by_key(vk) {
-                        overlay.switch_tool(t);
+                    if let Some(m) = overlay.mode_by_key(vk) {
+                        overlay.switch_mode(m);
                     }
                 }
             }

@@ -14,8 +14,10 @@ use crate::editor::{Kind, Object, Style};
 /// **或**选中对象本身就是矩形 / 椭圆（此时按钮仍需能改它的填充）。
 /// 绘制置灰（`toolbar::draw` 读 `State::fill_enabled`）与动作副作用（`apply_action`）
 /// 共用这一判据，不会各自演化。
-fn fill_enabled_for(tool: crate::editor::Tool, selected: Option<&Object>) -> bool {
-    matches!(tool, crate::editor::Tool::Rect | crate::editor::Tool::Ellipse)
+///
+/// 参数是 `Option<Tool>`：移动态（ADR 0036）没有待用工具，此时只看选中对象。
+fn fill_enabled_for(tool: Option<crate::editor::Tool>, selected: Option<&Object>) -> bool {
+    matches!(tool, Some(crate::editor::Tool::Rect | crate::editor::Tool::Ellipse))
         || selected.is_some_and(|o| matches!(o.kind, Kind::Rect { .. } | Kind::Ellipse { .. }))
 }
 
@@ -67,24 +69,38 @@ impl super::Overlay {
             self.on_pin(); // PIN-1：贴选区
         } else if outputs && vk == self.longshot_key {
             self.on_longshot();
-        } else if let Some(t) = self.tool_by_key(vk) {
-            self.switch_tool(t);
+        } else if let Some(m) = self.mode_by_key(vk) {
+            self.switch_mode(m);
         }
     }
 
-    /// 切换到指定工具（经工具栏动作统一处理，使其重绘）。
-    pub(super) fn switch_tool(&mut self, t: crate::editor::Tool) {
-        self.apply_action(toolbar::Action::Tool(t));
+    /// 切换交互模式（工具栏动作统一入口，使其重绘）。
+    pub(super) fn switch_mode(&mut self, m: crate::editor::Mode) {
+        let action = match m {
+            crate::editor::Mode::Move => toolbar::Action::Move,
+            crate::editor::Mode::Draw(t) => toolbar::Action::Tool(t),
+        };
+        self.apply_action(action);
+    }
+
+    /// 按下键对应的交互模式（移动键 / 工具切换键，ADR 0036）。
+    /// 移动键优先匹配：它是「回到指针」，不应被工具键抢走。
+    pub(super) fn mode_by_key(&self, vk: u32) -> Option<crate::editor::Mode> {
+        if vk == self.tool_keys.move_key {
+            return Some(crate::editor::Mode::Move);
+        }
+        self.tool_by_key(vk).map(crate::editor::Mode::Draw)
     }
 
     pub(super) fn bar_state(&self) -> toolbar::State {
         let (font_family, font_size, bold, italic) = self.font_state();
+        let tool = self.mode.tool();
         toolbar::State {
-            tool: self.tool,
+            tool,
             color: self.color_index,
             colors: self.colors,
             filled: self.filled,
-            fill_enabled: fill_enabled_for(self.tool, self.selected_object()),
+            fill_enabled: fill_enabled_for(tool, self.selected_object()),
             can_undo: self.doc.can_undo(),
             can_redo: self.doc.can_redo(),
             font_family,
@@ -105,7 +121,10 @@ impl super::Overlay {
         // 双击色块时第一击走这里（选用该色），第二击经 WM_LBUTTONDBLCLK 再展开面板
         self.close_color_panel();
         match action {
-            toolbar::Action::Tool(t) => self.tool = t,
+            toolbar::Action::Tool(t) => self.mode = crate::editor::Mode::Draw(t),
+            // ADR 0036：回到指针（移动选区）态；贴图编辑模式选区锁定，指针模式无意义，忽略
+            toolbar::Action::Move if self.locked_selection => {}
+            toolbar::Action::Move => self.mode = crate::editor::Mode::Move,
             toolbar::Action::Color(i) => {
                 self.color_index = i;
                 // EDT-7：颜色同时作用于选中的对象
@@ -113,7 +132,7 @@ impl super::Overlay {
             }
             toolbar::Action::ToggleFill => {
                 // 填充仅对矩形 / 椭圆有意义：文本、序号、直线、手绘无背景，忽略
-                if fill_enabled_for(self.tool, self.selected_object()) {
+                if fill_enabled_for(self.mode.tool(), self.selected_object()) {
                     self.filled = !self.filled;
                     self.style_selected();
                 }
@@ -298,8 +317,8 @@ mod tests {
         });
 
         // 工具本身可填充
-        assert!(fill_enabled_for(Tool::Rect, None));
-        assert!(fill_enabled_for(Tool::Ellipse, None));
+        assert!(fill_enabled_for(Some(Tool::Rect), None));
+        assert!(fill_enabled_for(Some(Tool::Ellipse), None));
         // 无填充概念的工具（未选中任何对象）
         for t in [
             Tool::Arrow,
@@ -309,13 +328,19 @@ mod tests {
             Tool::Line,
             Tool::Freehand,
         ] {
-            assert!(!fill_enabled_for(t, None), "{t:?} 无填充概念");
+            assert!(!fill_enabled_for(Some(t), None), "{t:?} 无填充概念");
         }
+        // 移动态（ADR 0036）没有待用工具：空白处一律不可用
+        assert!(!fill_enabled_for(None, None), "移动态下无选中对象时填充应置灰");
         // 工具不是矩形 / 椭圆，但选中了可填充对象：仍应可用（否则选中的对象没法改填充）
-        assert!(fill_enabled_for(Tool::Arrow, Some(&rect)), "选中矩形时填充应可用");
-        assert!(fill_enabled_for(Tool::Line, Some(&ellipse)), "选中椭圆时填充应可用");
-        assert!(fill_enabled_for(Tool::Highlight, Some(&rect)));
+        assert!(fill_enabled_for(Some(Tool::Arrow), Some(&rect)), "选中矩形时填充应可用");
+        assert!(
+            fill_enabled_for(Some(Tool::Line), Some(&ellipse)),
+            "选中椭圆时填充应可用"
+        );
+        assert!(fill_enabled_for(Some(Tool::Highlight), Some(&rect)));
+        assert!(fill_enabled_for(None, Some(&ellipse)), "移动态下选中的椭圆仍应能改填充");
         // 选中对象不可填充时仍返回不可用
-        assert!(!fill_enabled_for(Tool::Arrow, Some(&text)));
+        assert!(!fill_enabled_for(Some(Tool::Arrow), Some(&text)));
     }
 }

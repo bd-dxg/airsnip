@@ -33,6 +33,7 @@ impl super::Overlay {
             vis: &self.visibility,
             text_row: self.text_row_visible(),
             show_output: !self.locked_selection,
+            show_move: !self.locked_selection,
         }
     }
 

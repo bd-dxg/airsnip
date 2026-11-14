@@ -7,7 +7,7 @@
 
 ```
 ui/
-  toolbar/   # 覆盖层工具栏 22 个按钮（圆角开关已移除，改为对象上的圆角控制柄）
+  toolbar/   # 覆盖层工具栏 23 个按钮（圆角开关已移除，改为对象上的圆角控制柄；ADR 0036 新增「移动」）
   status/    # 长截图状态条
   panel/     # 设置面板行内按钮（快捷键行的清除按钮）
 ```
@@ -45,10 +45,12 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 > **待办：`line` / `ellipse` 目前是占位图标**（手写几何路径，仅满足下方文件规格与墨水率区间），
 > 尚未取自 Material Symbols。issue #134 先交付功能，图标待后续替换为同套素材，并同步更新本表。
 > `freehand` 已用 Material Symbols 的 `draw`（笔 + 手绘轨迹）。
+> ADR 0036 新增的 `move`（移动选区 / 指针模式）也是占位：手绘四向箭头，与移动光标 `IDC_SIZEALL` 同形。
 
 | 文件 | Material Symbols |
 |---|---|
 | `toolbar/rect.svg` | `crop_free` |
+| `toolbar/move.svg` | **占位**（手写四向箭头，仅满足文件规格与墨水率区间；待换 Material Symbols 的 `open_with`） |
 | `toolbar/arrow.svg` | `arrow_outward` |
 | `toolbar/text.svg` | `text_fields` |
 | `toolbar/highlight.svg` | `format_ink_highlighter`（**fill1** 变体，见下） |
@@ -81,6 +83,7 @@ v0.6.0 起整套图标统一取自 Material Symbols，它们的网格与线宽�
 | 图标 | 墨水% | 图标 | 墨水% |
 |---|---|---|---|
 | rect | 19.5 | copy | 28.6 |
+| move | 23.7 |
 | arrow | 30.9 | save | 29.6 |
 | text | 19.1 | bold | 37.6 |
 | highlight | 29.0 | italic | 25.4 |

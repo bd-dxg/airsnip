@@ -72,6 +72,8 @@ fn action_label(action: Action) -> Option<&'static str> {
         Action::Tool(Tool::Line) => Some("直线工具"),
         Action::Tool(Tool::Ellipse) => Some("椭圆工具"),
         Action::Tool(Tool::Freehand) => Some("手绘"),
+        // ADR 0036：移动态（指针）——拖选区内空白平移选区，拖对象移动该对象
+        Action::Move => Some("移动选区"),
         Action::ToggleFill => Some("填充"),
         Action::Undo => Some("撤销"),
         Action::Redo => Some("重做"),
@@ -212,6 +214,7 @@ impl Overlay {
     /// 按钮的快捷键后缀；无快捷键或已被清空（`UNBOUND`）时返回 None。
     fn key_suffix(&self, action: Action) -> Option<String> {
         let vk = match action {
+            Action::Move => self.tool_keys.move_key,
             Action::Tool(Tool::Rect) => self.tool_keys.rect,
             Action::Tool(Tool::Arrow) => self.tool_keys.arrow,
             Action::Tool(Tool::Text) => self.tool_keys.text,
@@ -303,6 +306,7 @@ mod tests {
                 vis: &vis,
                 text_row: false,
                 show_output: true,
+                show_move: true,
             },
             base(),
         )

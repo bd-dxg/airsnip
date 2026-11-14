@@ -42,7 +42,8 @@ const PAD_BASE: f32 = 5.0;
 /// 工具栏当前状态（决定高亮与可用性）。
 #[derive(Clone, PartialEq)]
 pub struct State {
-    pub tool: Tool,
+    /// 当前待用工具；`None` = 移动态（ADR 0036，高亮「移动」按钮，工具全不高亮）。
+    pub tool: Option<Tool>,
     pub color: usize,
     /// 色块颜色（EDT-7）：绘制色块用。
     pub colors: [[u8; 4]; SWATCH_COUNT],
@@ -67,6 +68,8 @@ pub struct State {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Action {
     Tool(Tool),
+    /// ADR 0036：回到移动态（指针），拖选区平移、拖对象移动。
+    Move,
     Color(usize),
     ToggleFill,
     Undo,
@@ -150,6 +153,7 @@ mod tests {
             vis,
             text_row,
             show_output: true,
+            show_move: true,
         }
     }
 
@@ -325,21 +329,23 @@ mod tests {
                 assert!(w[0].0.x + w[0].0.w <= w[1].0.x, "元素重叠：{:?} / {:?}", w[0].0, w[1].0);
             }
         }
-        // 元素顺序与数量（EDT-7 工具栏结构 + EDT-4 第二行）
+        // 元素顺序与数量（EDT-7 工具栏结构 + ADR 0036 移动按钮 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 28);
-        assert_eq!(actions[..10], Tool::ALL.map(Action::Tool));
+        assert_eq!(actions.len(), 29);
+        // ADR 0036：「移动」排在工具组首位，框选完成后高亮的就是它
+        assert_eq!(actions[0], Action::Move);
+        assert_eq!(actions[1..11], Tool::ALL.map(Action::Tool));
         // 色块：5 个，均可双击改色（issue #73 后续，不再有单独的自定义槽）
-        assert_eq!(actions[10..15], [0, 1, 2, 3, 4].map(Action::Color));
-        assert_eq!(actions[15], Action::ToggleFill);
-        assert_eq!(actions[16], Action::Undo);
-        assert_eq!(actions[17], Action::Redo);
-        assert_eq!(actions[18], Action::Pin);
-        assert_eq!(actions[19], Action::Longshot);
-        assert_eq!(actions[20], Action::Copy);
-        assert_eq!(actions[21], Action::Save);
+        assert_eq!(actions[11..16], [0, 1, 2, 3, 4].map(Action::Color));
+        assert_eq!(actions[16], Action::ToggleFill);
+        assert_eq!(actions[17], Action::Undo);
+        assert_eq!(actions[18], Action::Redo);
+        assert_eq!(actions[19], Action::Pin);
+        assert_eq!(actions[20], Action::Longshot);
+        assert_eq!(actions[21], Action::Copy);
+        assert_eq!(actions[22], Action::Save);
         assert_eq!(
-            actions[22..],
+            actions[23..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -357,7 +363,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, &all(), false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 22);
+        assert_eq!(bar.hits.len(), 23);
     }
 
     /// 隐藏的元素不再有命中区，工具栏宽度随之变窄（R1/R2）。
@@ -451,6 +457,7 @@ mod tests {
             vis: &vis,
             text_row: false,
             show_output: false,
+            show_move: false,
         };
         let edit = layout_ex(s, 2560, 1440, &editing, base()).expect("应有工具栏");
         let is_output = |a: &Action| matches!(a, Action::Pin | Action::Longshot);

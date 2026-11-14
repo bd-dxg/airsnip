@@ -22,7 +22,7 @@ pub use number::{next_number, number_arrow_start};
 pub use palette::{DEFAULT_COLORS, SWATCH_COUNT, colors_store, colors_take};
 pub use tool::{
     DEFAULT_BLUR_RADIUS, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_LINE_WIDTH, DEFAULT_NUMBER_FONT_SIZE,
-    FONT_SIZE_RANGE, Tool,
+    FONT_SIZE_RANGE, Mode, Tool,
 };
 pub use transform::{ArrowEnd, scale_factors, snap_direction, square_corner};
 

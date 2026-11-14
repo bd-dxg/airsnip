@@ -84,7 +84,7 @@ impl super::Overlay {
     /// 第二行是否展开（EDT-4）：文本工具、选中文本对象或正在输入文本。
     pub(super) fn text_row_visible(&self) -> bool {
         self.text_edit.is_some()
-            || self.tool == editor::Tool::Text
+            || self.mode.tool() == Some(editor::Tool::Text)
             || self
                 .selected_object()
                 .is_some_and(|o| matches!(o.kind, Kind::Text { .. }))

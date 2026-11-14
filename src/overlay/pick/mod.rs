@@ -6,19 +6,42 @@
 //! 左键按下走 `pick_target`，它把命中结果分流为「绘制」或「移动 / 缩放」。
 //! 滚轮与属性调整在 `wheel`。
 
-use tiny_skia::{Paint, PathBuilder, Pixmap, Stroke, Transform};
-
-use crate::editor::{Kind, Object, Point};
+use crate::editor::{Kind, Mode, Object, Point};
 
 use super::geometry::{SelRect, expand_rect};
 use super::objedit;
 use super::ui::Ui;
 
+mod draw;
+
+pub(in crate::overlay) use draw::{dashed_line, draw_curve_handles};
+
 /// 曲线控制柄半径基准值（含描边，需 ≤ 对象包围盒的余量）。
-const CTRL_RADIUS_BASE: f32 = 4.5;
-const ACCENT: u8 = 26; // 主题蓝
-const ACCENT_G: u8 = 115;
-const ACCENT_B: u8 = 232;
+pub(in crate::overlay) const CTRL_RADIUS_BASE: f32 = 4.5;
+pub(in crate::overlay) const ACCENT: u8 = 26; // 主题蓝
+pub(in crate::overlay) const ACCENT_G: u8 = 115;
+pub(in crate::overlay) const ACCENT_B: u8 = 232;
+
+/// 选区内按下时的分流（ADR 0023 §1 / ADR 0036）：模式决定「画还是拖」，命中决定拖什么。
+///
+/// - 移动态（没有待用工具）：命中对象 → 移该对象，空白 → 平移选区；
+/// - 绘制态：`Ctrl` / 选中对象框边 → 移该对象（ADR 0023 §2），其余命中对象内部 → 绘制，
+///   空白 → 绘制。
+///
+/// 抽成纯函数是为了可测：`Overlay` 需要整屏抓图才能构造，`pick_target` 本身进不了单测。
+pub(super) fn inside_target(mode: Mode, hit: Option<usize>, on_frame_edge: bool, ctrl: bool) -> PickTarget {
+    if mode.tool().is_none() {
+        return match hit {
+            Some(index) => PickTarget::ObjBody(index),
+            None => PickTarget::MoveSelection,
+        };
+    }
+    match hit {
+        Some(index) if ctrl || on_frame_edge => PickTarget::ObjBody(index),
+        Some(index) => PickTarget::Inside(index),
+        None => PickTarget::InsideEmpty,
+    }
+}
 
 /// 手柄命中半径基准值（物理像素，经 `Ui` 缩放）。
 pub(super) const PICK_RADIUS_BASE: f32 = 6.0;
@@ -77,7 +100,7 @@ pub(super) enum PickTarget {
     CurveCtrl(usize),
     /// 选区八向手柄 → 缩放选区。
     SelHandle(Handle),
-    /// 空格 + 选区内 → 移动整个选区。
+    /// 平移整个选区：按住空格拖，或移动态下直接拖选区内空白（ADR 0036）。
     MoveSelection,
     /// 对象本体（Ctrl 按下，或命中选中对象的包围框边缘）→ 移动该对象。
     ObjBody(usize),
@@ -176,7 +199,10 @@ impl super::Overlay {
         self.doc.objects().iter().rposition(|o| o.hit(q, tol))
     }
 
-    /// 左键按下时的命中目标（ADR 0023）。
+    /// 左键按下时的命中目标（ADR 0023 / ADR 0036）。
+    ///
+    /// 「画还是拖」由**模式**而非位置决定（ADR 0036）：`Move` 态下选区内按下就是移动
+    /// （对象上 = 移该对象，空白 = 平移选区），`Draw` 态才走 ADR 0023 的绘制优先。
     pub(super) fn pick_target(&self, x: i32, y: i32, ctrl: bool) -> PickTarget {
         let ui = self.ui;
         // 1) 选中对象的控制柄（EDT-7）：可能压在选区装饰或对象描边上，最优先
@@ -207,22 +233,20 @@ impl super::Overlay {
         if !self.locked_selection && super::wndproc::space_down() {
             return PickTarget::MoveSelection;
         }
-        // 5) Ctrl + 对象本体：移动该对象（ADR 0023 §2）
-        if let Some(index) = self.hit_object(x, y) {
-            if ctrl {
-                return PickTarget::ObjBody(index);
-            }
-            // 6) 选中对象的包围框边缘：移动（框外靠描边选中的箭头也走这条）
-            if let Some(i) = self.selected
-                && self.doc.objects().get(i).is_some_and(|o| hit_frame_edge(o, x, y, ui))
-            {
-                return PickTarget::ObjBody(i);
-            }
-            // 7) 其余命中对象内部：绘制优先（ADR 0023 §1）
-            return PickTarget::Inside(index);
+        // 5)~9) 选区内按下：分流规则抽在 `inside_target`（纯函数，便于单测）
+        let on_frame_edge = self
+            .selected
+            .is_some_and(|i| self.doc.objects().get(i).is_some_and(|o| hit_frame_edge(o, x, y, ui)));
+        inside_target(self.effective_mode(), self.hit_object(x, y), on_frame_edge, ctrl)
+    }
+
+    /// 有效模式（ADR 0036 / ADR 0028）：贴图编辑模式选区锁定，移动态无意义（挪不动），
+    /// 按绘制态处理——否则「拖空白」会去平移锁定选区，写回矩形就歪了。
+    fn effective_mode(&self) -> Mode {
+        match self.mode {
+            Mode::Move if self.locked_selection => Mode::Draw(crate::editor::Tool::Rect),
+            other => other,
         }
-        // 8) 选区内空白：用当前工具绘制
-        PickTarget::InsideEmpty
     }
 
     /// 选中对象占据的像素区域。
@@ -235,63 +259,6 @@ impl super::Overlay {
             h: c.3 - c.1,
         })
     }
-}
-
-/// 选中箭头的控制柄（EDT-3）：控制点处画圆点，与端点之间用虚线辅助线连接。
-pub(super) fn draw_curve_handles(pixmap: &mut Pixmap, obj: &Object, ui: Ui) {
-    let (Some(cps), Kind::Arrow { from, to, .. }) = (obj.kind.control_points(), &obj.kind) else {
-        return;
-    };
-    let [c1, c2] = cps;
-    dashed_line(pixmap, *from, c1, ui);
-    dashed_line(pixmap, c2, *to, ui);
-    for p in [c1, c2] {
-        let mut pb = PathBuilder::new();
-        pb.push_circle(p.x, p.y, ui.f(CTRL_RADIUS_BASE));
-        let Some(path) = pb.finish() else {
-            continue;
-        };
-        let mut fill = Paint::default();
-        fill.set_color_rgba8(255, 255, 255, 255);
-        pixmap.fill_path(&path, &fill, tiny_skia::FillRule::Winding, Transform::identity(), None);
-        let mut edge = Paint::default();
-        edge.set_color_rgba8(ACCENT, ACCENT_G, ACCENT_B, 255);
-        let stroke = Stroke {
-            width: ui.f(1.5),
-            ..Default::default()
-        };
-        pixmap.stroke_path(&path, &edge, &stroke, Transform::identity(), None);
-    }
-}
-
-/// 虚线辅助线（5px 实 / 4px 虚）：tiny-skia 无 dash，手动拆成小段。
-pub(super) fn dashed_line(pixmap: &mut Pixmap, a: Point, b: Point, ui: Ui) {
-    let (dx, dy) = (b.x - a.x, b.y - a.y);
-    let len = (dx * dx + dy * dy).sqrt();
-    if len < 1.0 {
-        return;
-    }
-    let (ux, uy) = (dx / len, dy / len);
-    // 实线段与周期按界面缩放，避免 4K 下虚线看起来是实线
-    let (dash, period) = (ui.f(5.0), ui.f(9.0));
-    let mut pb = PathBuilder::new();
-    let mut t = 0.0;
-    while t < len {
-        let end = (t + dash).min(len);
-        pb.move_to(a.x + ux * t, a.y + uy * t);
-        pb.line_to(a.x + ux * end, a.y + uy * end);
-        t += period;
-    }
-    let Some(path) = pb.finish() else {
-        return;
-    };
-    let mut paint = Paint::default();
-    paint.set_color_rgba8(255, 255, 255, 200);
-    let stroke = Stroke {
-        width: ui.f(1.0),
-        ..Default::default()
-    };
-    pixmap.stroke_path(&path, &paint, &stroke, Transform::identity(), None);
 }
 
 #[cfg(test)]
@@ -461,6 +428,45 @@ mod tests {
             ]),
         });
         assert!(!is_degenerate(&hand), "正常手绘不应丢弃");
+    }
+
+    /// ADR 0036：模式决定「画还是拖」，位置只决定「拖什么」。
+    #[test]
+    fn mode_decides_draw_or_drag() {
+        use crate::editor::{Mode, Tool};
+        // 移动态：对象 → 移对象；空白 → 平移选区（绝不绘制）
+        assert_eq!(inside_target(Mode::Move, Some(3), false, false), PickTarget::ObjBody(3));
+        assert_eq!(inside_target(Mode::Move, None, false, false), PickTarget::MoveSelection);
+        // 绘制态：空白 → 绘制；对象内部 → 绘制（ADR 0023 §1）；Ctrl / 框边 → 移对象
+        assert_eq!(
+            inside_target(Mode::Draw(Tool::Rect), None, false, false),
+            PickTarget::InsideEmpty
+        );
+        assert_eq!(
+            inside_target(Mode::Draw(Tool::Rect), Some(1), false, false),
+            PickTarget::Inside(1)
+        );
+        assert_eq!(
+            inside_target(Mode::Draw(Tool::Rect), Some(1), false, true),
+            PickTarget::ObjBody(1),
+            "Ctrl + 对象本体应移对象"
+        );
+        assert_eq!(
+            inside_target(Mode::Draw(Tool::Rect), Some(1), true, false),
+            PickTarget::ObjBody(1),
+            "选中对象框边应可拖动"
+        );
+        // 每个工具都走同一套分流（不因工具类型而异）
+        for t in Tool::ALL {
+            assert_eq!(
+                inside_target(Mode::Draw(t), None, false, false),
+                PickTarget::InsideEmpty
+            );
+            assert_eq!(
+                inside_target(Mode::Draw(t), Some(2), false, false),
+                PickTarget::Inside(2)
+            );
+        }
     }
 
     /// 命中半径随界面缩放放大（CAP-5）：100% 下 8px 外不命中，200% 下命中。

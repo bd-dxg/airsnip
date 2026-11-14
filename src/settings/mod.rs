@@ -11,22 +11,6 @@ use std::path::PathBuf;
 pub use hotkey::{HotkeyConfig, ToolKeys, UNBOUND};
 pub use toolbar::{GroupState, ToolbarConfig, ToolbarGroup, ToolbarSlot};
 
-use crate::editor::Tool;
-
-/// 最近一次截图会话使用的工具（下次截图默认沿用，首次为矩形，M3）。
-static LAST_TOOL: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-
-/// 上次使用的标注工具。
-pub fn last_tool() -> Tool {
-    let i = LAST_TOOL.load(std::sync::atomic::Ordering::Relaxed) as usize;
-    Tool::ALL[i.min(Tool::ALL.len() - 1)]
-}
-
-/// 记录本次会话最后使用的工具。
-pub fn last_tool_store(t: Tool) {
-    LAST_TOOL.store(t as u8, std::sync::atomic::Ordering::Relaxed);
-}
-
 /// 主题设置：跟随系统 / 浅色 / 深色。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ThemeSetting {

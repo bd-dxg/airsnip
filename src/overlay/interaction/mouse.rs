@@ -49,8 +49,11 @@ impl super::super::Overlay {
                 });
                 self.phase = Phase::Adjusting;
             }
-            // 按住空格拖动：移动整个选区（CAP-2）
+            // 平移整个选区：按住空格拖（CAP-2），或移动态下直接拖选区内空白（ADR 0036）。
+            // `down_started_draw` 也在这里置位：「双击空白完成截图」的判据（M3）靠它
+            // 区分「双击空白」与「双击对象」，与绘制态的行为一致。
             PickTarget::MoveSelection => {
+                self.down_started_draw = true;
                 self.drag = Some(Drag {
                     handle: Handle::Move,
                     orig: sel_of(self.selection),
@@ -68,7 +71,7 @@ impl super::super::Overlay {
                 // 文本工具是「点击即放置」（EDT-4），不能延迟：否则对象内部永远放不下文字。
                 // 序号标记（EDT-12）不在此列：对象内部按下走常规「绘制优先」（ADR 0023），
                 // 否则双击改编号时第一次按下会先落下一个多余徽标。
-                if self.tool == crate::editor::Tool::Text {
+                if self.mode.tool() == Some(crate::editor::Tool::Text) {
                     self.set_selected(None);
                     self.start_draw(x, y);
                 } else {

@@ -23,7 +23,9 @@ pub enum ToolbarGroup {
     File,
 }
 
-const TOOL_SLOTS: [ToolbarSlot; 10] = [
+const TOOL_SLOTS: [ToolbarSlot; 11] = [
+    // ADR 0036：指针（移动选区）排首位，框选完成后的缺省态
+    ToolbarSlot::Move,
     ToolbarSlot::Tool(Tool::Rect),
     ToolbarSlot::Tool(Tool::Arrow),
     ToolbarSlot::Tool(Tool::Text),
@@ -96,6 +98,8 @@ impl ToolbarGroup {
 /// 只留「B」会得到一个 26px 宽的第二行。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ToolbarSlot {
+    /// ADR 0036：移动选区（指针），框选完成后的缺省态。
+    Move,
     Tool(Tool),
     Color(usize),
     /// 填充开关（EDT-1/EDT-14）。
@@ -119,6 +123,7 @@ impl ToolbarSlot {
     /// 配置里的稳定键。**改这个等于改配置格式**（老用户的隐藏项会失效、退回可见）。
     pub fn key(self) -> &'static str {
         match self {
+            ToolbarSlot::Move => "tool.move",
             ToolbarSlot::Tool(Tool::Rect) => "tool.rect",
             ToolbarSlot::Tool(Tool::Arrow) => "tool.arrow",
             ToolbarSlot::Tool(Tool::Text) => "tool.text",
@@ -150,6 +155,7 @@ impl ToolbarSlot {
     /// 设置面板行标签（短，工具栏页是多列布局）。
     pub fn label(self) -> &'static str {
         match self {
+            ToolbarSlot::Move => "移动",
             ToolbarSlot::Tool(Tool::Rect) => "矩形",
             ToolbarSlot::Tool(Tool::Arrow) => "箭头",
             ToolbarSlot::Tool(Tool::Text) => "文本",
@@ -181,7 +187,7 @@ impl ToolbarSlot {
     /// 所属分组。
     pub fn group(self) -> ToolbarGroup {
         match self {
-            ToolbarSlot::Tool(_) => ToolbarGroup::Tools,
+            ToolbarSlot::Move | ToolbarSlot::Tool(_) => ToolbarGroup::Tools,
             ToolbarSlot::Color(_) => ToolbarGroup::Colors,
             ToolbarSlot::Fill | ToolbarSlot::Undo | ToolbarSlot::Redo | ToolbarSlot::TextRow => ToolbarGroup::Edit,
             ToolbarSlot::Pin | ToolbarSlot::Longshot => ToolbarGroup::Output,
@@ -246,23 +252,9 @@ impl ToolbarConfig {
         }
     }
 
-    /// 第一个可见工具（开局回落用）；全隐藏时为 `None`。
-    pub fn first_visible_tool(&self) -> Option<Tool> {
-        Tool::ALL.into_iter().find(|t| self.visible(ToolbarSlot::Tool(*t)))
-    }
-
     /// 第一个可见色块（开局回落用）；全隐藏时为 `None`。
     pub fn first_visible_color(&self) -> Option<usize> {
         (0..SWATCH_COUNT).find(|i| self.visible(ToolbarSlot::Color(*i)))
-    }
-
-    /// 开局回落（R5）：要用的工具被隐藏时落到第一个可见工具；
-    /// 一个工具都不可见时只好保留原值（会话内快捷键仍可切过去）。
-    pub fn settle_tool(&self, want: Tool) -> Tool {
-        if self.visible(ToolbarSlot::Tool(want)) {
-            return want;
-        }
-        self.first_visible_tool().unwrap_or(want)
     }
 
     /// 开局回落（R5）：当前色块被隐藏时落到第一个可见色块；
@@ -358,19 +350,10 @@ mod tests {
         assert!(cfg.hidden.is_empty(), "全显后隐藏集合应为空：{:?}", cfg.hidden);
     }
 
-    /// 开局回落（R5）：隐藏的工具 / 色块落到第一个可见项，全隐藏时保留原值。
+    /// 开局回落（R5）：隐藏的色块落到第一个可见项，全隐藏时保留原颜色。
     #[test]
     fn settle_falls_back_to_first_visible() {
         let mut cfg = ToolbarConfig::default();
-        assert_eq!(cfg.settle_tool(Tool::Ellipse), Tool::Ellipse, "可见时不应改动");
-        cfg.set_visible(ToolbarSlot::Tool(Tool::Rect), false);
-        cfg.set_visible(ToolbarSlot::Tool(Tool::Arrow), false);
-        assert_eq!(cfg.settle_tool(Tool::Rect), Tool::Text, "应落到第一个可见工具");
-
-        cfg.set_group_visible(ToolbarGroup::Tools, false);
-        assert_eq!(cfg.settle_tool(Tool::Rect), Tool::Rect, "一个工具都不可见时保留原值");
-        assert_eq!(cfg.first_visible_tool(), None);
-
         cfg.set_visible(ToolbarSlot::Color(1), false);
         assert_eq!(cfg.settle_color(1), 0, "应落到第一个可见色块");
         cfg.set_group_visible(ToolbarGroup::Colors, false);
