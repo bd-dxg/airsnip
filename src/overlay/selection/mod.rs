@@ -8,7 +8,7 @@ mod draw;
 use super::geometry::{SelRect, expand_rect, intersect_rect, same_rect, text_rect, union_rect};
 use super::objedit;
 use super::pick::draw_curve_handles;
-use super::surface::{blit_region, dim_region, draw_info_text, restore_region};
+use super::surface::{blit_region, draw_info_text, restore_region};
 use super::toolbar::tip;
 use super::{textinput, toolbar};
 use crate::render;
@@ -148,15 +148,11 @@ impl super::Overlay {
                     blit_region(&mut self.display, &self.original, overlap);
                 }
             }
-        } else if let Some(cand) = self.snap.candidate
-            && let Some(part) = intersect_rect(region, cand)
-        {
-            // 1b) 窗口吸附候选（CAP-6 / ADR 0037）：候选区回贴原图后再压暗一档，得「半亮」。
-            // 不回贴成全亮，是因为候选常常就是整屏（任务栏自动隐藏 + 窗口最大化、全屏窗口）——
-            // 那时暗化一点不剩，用户看不出覆盖层已经生效，只会以为 F1 没反应。
-            // 候选只在没有选区时存在（`Overlay::snap_enabled`），与选区互斥。
-            blit_region(&mut self.display, &self.original, part);
-            dim_region(&mut self.display, part, super::snap::CAND_K);
+        } else if self.snap.candidate.is_some() {
+            // 1b) 窗口吸附候选（CAP-6 / ADR 0037 / ADR 0039）：亮度三档
+            //     「桌面暗 < 窗口半亮 < 控件全亮」，细节见 `snap::shade_candidate`。
+            //     候选只在没有选区时存在（`Overlay::snap_enabled`），与选区互斥。
+            super::snap::shade_candidate(&mut self.display, &self.original, region, &self.snap);
         }
         // 2) 标注对象（含正在拖拽的草稿）；二次编辑中的文本对象隐藏，由输入框呈现（EDT-4）
         render::draw_objects(

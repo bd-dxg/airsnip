@@ -83,6 +83,8 @@ impl Overlay {
         unsafe {
             let _ = KillTimer(Some(self.hwnd), tip::TIMER_ID);
             let _ = KillTimer(Some(self.hwnd), cancel_hint::TIMER_ID);
+            // 候选过渡（ADR 0039）：`snap` 已重建，定时器一并停（否则会空跑一帧）
+            let _ = KillTimer(Some(self.hwnd), super::snap::ANIM_TIMER_ID);
         }
         // 标注与选区：全部清空，回到「框选」阶段
         self.doc = Document::new();

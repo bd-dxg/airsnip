@@ -38,6 +38,7 @@ mod text_edit_state;
 mod textinput;
 pub(crate) mod toolbar;
 pub(crate) mod ui;
+mod uia;
 mod wheel;
 mod wndproc;
 
@@ -92,6 +93,10 @@ pub struct Overlay {
     window_snap: bool,
     /// 吸附运行态：候选矩形 / 候选窗口句柄 / 按下待定。
     snap: snap::Snap,
+    /// 控件级捕捉（CAP-6 二级 / ADR 0039）：在整窗吸附上再下钻到 UIA 子控件。
+    control_snap: bool,
+    /// 控件级捕捉的运行态（worker 线程 / 请求代次 / 熔断）。
+    uia: uia::Uia,
     /// 淡入进度（帧数，`fade::STEPS` 即完成）：一次性定时器链的状态（`fade`）。
     fade_step: u32,
     /// 工具切换键配置（M3：数字键 1-5 切换标注工具）。
@@ -218,6 +223,11 @@ pub fn run(capture: CapturedScreen, opts: OverlayOpts, hinstance: HINSTANCE, mai
     // 否则首帧先上一次全暗（`UpdateWindow`），紧接着吸附再把候选改成半亮，
     // 用户会看到「明亮 → 极暗 → 半亮」两步闪烁。
     overlay.prime_snap_at_cursor();
+    // 控件级捕捉（ADR 0039）：worker 的 COM 初始化与预热查询放在显示前，
+    // 与淡入动画重叠，不占用户第一次悬停的时间。
+    if overlay.control_snap && !overlay.locked_selection {
+        overlay.spawn_uia_worker();
+    }
     let raw = Box::into_raw(Box::new(overlay));
 
     unsafe {

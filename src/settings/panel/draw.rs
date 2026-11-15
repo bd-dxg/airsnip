@@ -149,6 +149,8 @@ fn draw_toggle(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
         RowId::DoubleClick => panel.config.double_click_action == crate::settings::DoubleClickAction::Pin,
         // 窗口吸附（CAP-6 / ADR 0037）：开 = 悬停预览窗口矩形，关 = 只有自由框选
         RowId::WindowSnap => panel.config.window_snap,
+        // 控件级捕捉（ADR 0039）：开 = 在整窗上再下钻到 UIA 子控件
+        RowId::ControlSnap => panel.config.control_snap,
         // 工具栏元素显隐（EDT-16）：纯视觉开关，默认全开
         RowId::Toolbar(slot) => panel.config.toolbar.visible(slot),
         _ => false,

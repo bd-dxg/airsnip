@@ -20,6 +20,10 @@ use super::geometry::SelRect;
 /// 改到消息循环里执行，让画面先出现（M5 性能）。
 pub(super) const WM_FOCUS_OVERLAY: u32 = WM_APP + 1;
 
+/// 自定义消息：UIA worker 有回包了（控件级捕捉，ADR 0039）。
+/// worker 线程不碰任何 `Overlay` 状态，只投递这个信号，状态在主线程取。
+pub(super) const WM_SNAP_RESULT: u32 = WM_APP + 4;
+
 pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if msg == WM_NCCREATE {
         return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
@@ -78,6 +82,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             overlay.on_fade_timer();
             LRESULT(0)
         }
+        // 候选框过渡（ADR 0039）：小控件 → 大控件时插值边框
+        WM_TIMER if wparam.0 == super::snap::ANIM_TIMER_ID => {
+            overlay.on_snap_anim_timer();
+            LRESULT(0)
+        }
         WM_LBUTTONUP => {
             overlay.on_lbutton_up();
             LRESULT(0)
@@ -91,7 +100,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             let (ox, oy) = (sx - overlay.capture.origin_x, sy - overlay.capture.origin_y);
             // 滚轮也是用户新动作，解除取消待命（OUT-3 / issue #120）
             overlay.clear_cancel_arm();
-            if !overlay.on_font_list_wheel(ox, oy, delta) && !overlay.over_color_panel(ox, oy) {
+            // 控件级捕捉（ADR 0039）：候选窗口上有控件层级时，滚轮改为爬层级
+            if !overlay.on_font_list_wheel(ox, oy, delta)
+                && !overlay.over_color_panel(ox, oy)
+                && !overlay.climb_snap(delta > 0)
+            {
                 overlay.on_mouse_wheel(sx, sy, delta, ctrl_down());
             }
             LRESULT(0)
@@ -146,6 +159,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 let _ = SetForegroundWindow(hwnd);
                 let _ = SetFocus(Some(hwnd));
             }
+            LRESULT(0)
+        }
+        // 控件级捕捉回包（ADR 0039）：worker 算完了，主线程取结果并细化候选
+        WM_SNAP_RESULT => {
+            overlay.on_uia_reply();
             LRESULT(0)
         }
         // 光标形状随鼠标位置决定（手柄方向 / 对象移动 / 十字），见 `cursor::cursor_at`

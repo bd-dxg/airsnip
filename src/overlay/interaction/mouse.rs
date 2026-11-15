@@ -200,12 +200,15 @@ impl super::super::Overlay {
         // 窗口吸附（CAP-6 / ADR 0037）：无位移松手 → 整窗作选区，直接进标注流程。
         // `down_started_draw` 一并置位：双击窗口就等于「双击选区空白」的完成动作（默认复制）。
         if let Some(p) = self.snap.pending.take() {
-            // 只清状态不重绘：随后 `set_selection` 会把候选矩形整块重画成选区
-            self.snap.clear();
+            // 候选本身不单独重绘：随后 `set_selection` 会把候选矩形整块重画成选区。
+            let (_, window) = self.snap.clear();
             self.down_started_draw = true;
             self.set_selected(None);
             self.phase = Phase::Adjusting;
             self.set_selection(Some(p.rect));
+            // 但**窗口**那一块（半亮区）没有装饰、也不在选区脏区里（ADR 0039 三档亮度）：
+            // 选区内已回贴原图，选区外要回到暗图，否则标题栏 / 状态栏会一直是半亮。
+            self.repaint_snap(None, None, [window, None], true);
             return;
         }
         // 对象内部「单击」（未拖出阈值）：退化为选中，不画任何东西（ADR 0023 §3）
@@ -275,6 +278,8 @@ impl super::super::Overlay {
     /// 窗口吸附（CAP-6 / ADR 0037）：左键按在候选窗口上 → 只记下待定，不立即建选区。
     /// 直接在按下时确认会让「按下即拖」的自由框选无法开始（每按一下就跳成整窗）。
     fn begin_snap_pending(&mut self, x: i32, y: i32) -> bool {
+        // 过渡中的候选是插值矩形，必须先落到终点，否则会选中一个中间尺寸（ADR 0039）
+        self.snap.finish_anim();
         let Some(rect) = self.snap.candidate else {
             return false;
         };

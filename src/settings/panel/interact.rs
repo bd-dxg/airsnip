@@ -162,6 +162,12 @@ impl Panel {
                 self.config.window_snap = !self.config.window_snap;
                 self.config_dirty = true;
             }
+            // 控件级捕捉（ADR 0039）：同样立即写回
+            RowId::ControlSnap => {
+                self.end_capture();
+                self.config.control_snap = !self.config.control_snap;
+                self.config_dirty = true;
+            }
             // 文件名模板（OUT-2）：保存对话框预填文件名用
             RowId::NameDateTime => {
                 self.end_capture();

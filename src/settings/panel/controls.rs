@@ -130,6 +130,8 @@ pub enum RowId {
     DoubleClick,
     /// 窗口吸附（CAP-6 / ADR 0037，issue #62）：默认开，关闭后行为与未实现本项时一致。
     WindowSnap,
+    /// 控件级捕捉（CAP-6 二级 / ADR 0039）：在整窗吸附上再下钻到 UIA 子控件。
+    ControlSnap,
     /// 主题：跟随系统。
     ThemeFollow,
     /// 主题：浅色。
@@ -324,6 +326,7 @@ mod tests {
                     RowId::PinPosCenter,
                     RowId::DoubleClick,
                     RowId::WindowSnap,
+                    RowId::ControlSnap,
                 ],
                 Section::Hotkeys => vec![
                     RowId::HotkeyShot,
