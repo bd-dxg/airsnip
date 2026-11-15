@@ -82,7 +82,7 @@ impl KeyRowSpec {
 }
 
 /// 快捷键行元数据（顺序即界面顺序，见模块文档）。
-pub const KEY_ROWS: [KeyRowSpec; 16] = [
+pub const KEY_ROWS: [KeyRowSpec; 18] = [
     KeyRowSpec::hotkey(
         RowId::HotkeyShot,
         "截图",
@@ -129,6 +129,19 @@ pub const KEY_ROWS: [KeyRowSpec; 16] = [
         "长截图",
         |hk, _| (hk.longshot_key, 0),
         |cfg, vk, _| cfg.hotkey.longshot_key = vk,
+    ),
+    // 快速选区（ADR 0040）：全屏 / 上次区域，同样只在覆盖层内、无修饰键
+    KeyRowSpec::plain(
+        RowId::HotkeyFullscreen,
+        "全屏",
+        |hk, _| (hk.fullscreen_key, 0),
+        |cfg, vk, _| cfg.hotkey.fullscreen_key = vk,
+    ),
+    KeyRowSpec::plain(
+        RowId::HotkeyLastArea,
+        "上次区域",
+        |hk, _| (hk.last_area_key, 0),
+        |cfg, vk, _| cfg.hotkey.last_area_key = vk,
     ),
     // ADR 0036：移动（指针）键排在工具键之前——它才是框选完成后的缺省态
     KeyRowSpec::plain(
@@ -255,6 +268,8 @@ mod tests {
             ("贴图", "F3".into()),
             ("贴图边框", "Ctrl+F3".into()),
             ("长截图", "S".into()),
+            ("全屏", "F".into()),
+            ("上次区域", "R".into()),
             ("工具·移动", "V".into()),
             ("工具·矩形", "1".into()),
             ("工具·箭头", "2".into()),

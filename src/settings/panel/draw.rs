@@ -119,7 +119,11 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
     let lx = row.rect.x as f32 + row.label_pad as f32;
     // 支持项目块与组头的标签由各自的绘制函数负责，此处不重复绘制
     if !matches!(row.kind, RowKind::Qr | RowKind::Group) {
-        let ly = row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0;
+        // 快捷键单元格是叠放的（ADR 0040）：标签在上面那一行，不使用垂直居中
+        let ly = match row.kind {
+            RowKind::KeyCap => row.rect.y as f32 + (super::controls::KEY_LABEL_TOP as f32 * s),
+            _ => row.rect.y as f32 + (row.rect.h as f32 - size * 1.2) / 2.0,
+        };
         // 开关行文案跟状态走（ADR 0036）：关闭态写默认行为，开启态写被打开的那个行为，
         // 否则用户看不出「开」到底是哪个含义。
         let label = toggle_label(row.id, &panel.config).unwrap_or(row.label);

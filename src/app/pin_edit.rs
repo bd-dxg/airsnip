@@ -90,6 +90,9 @@ impl App {
             palette: crate::theme::palette(crate::theme::resolve(self.config.theme)),
             tool_keys: self.config.tool_keys.clone(),
             longshot_key: self.config.hotkey.longshot_key,
+            // 贴图编辑模式选区锁定（ADR 0028），快速选区天然不生效；照配置传即可
+            fullscreen_key: self.config.hotkey.fullscreen_key,
+            last_area_key: self.config.hotkey.last_area_key,
             visibility: self.config.toolbar.clone(),
             confirm_cancel: self.config.confirm_cancel,
             pin_key: self.config.hotkey.pin_key,

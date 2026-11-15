@@ -28,6 +28,7 @@ mod objedit;
 mod opts;
 mod pick;
 mod pin_edit;
+mod quickselect;
 mod recapture;
 mod selection;
 mod setup;
@@ -103,6 +104,10 @@ pub struct Overlay {
     tool_keys: crate::settings::ToolKeys,
     /// 长截图键（覆盖层内按下，默认 S；设置面板可改）。
     longshot_key: u32,
+    /// 全屏键（ADR 0040，默认 F）：光标所在显示器的整屏作为选区，仅无选区时生效。
+    fullscreen_key: u32,
+    /// 上次区域键（ADR 0040，默认 R）：复用本次运行的上次框选区域，仅无选区时生效。
+    last_area_key: u32,
     /// 工具栏可见性（EDT-16）：逐元素显隐；隐藏的工具 / 按钮不绘制，但快捷键与输出行为照旧。
     visibility: crate::settings::ToolbarConfig,
     /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。

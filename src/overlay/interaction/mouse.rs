@@ -205,6 +205,8 @@ impl super::super::Overlay {
             self.down_started_draw = true;
             self.set_selected(None);
             self.phase = Phase::Adjusting;
+            // 窗口吸附单击是用户自己确定的选区：计入「上次区域」（ADR 0040）
+            self.remember_selection(p.rect);
             self.set_selection(Some(p.rect));
             // 但**窗口**那一块（半亮区）没有装饰、也不在选区脏区里（ADR 0039 三档亮度）：
             // 选区内已回贴原图，选区外要回到暗图，否则标题栏 / 状态栏会一直是半亮。
@@ -235,8 +237,10 @@ impl super::super::Overlay {
         let new = match self.selection {
             Some(sel) if sel.w < 2 || sel.h < 2 => None, // 误触，放弃
             other => {
-                if other.is_some() {
+                if let Some(sel) = other {
                     self.phase = Phase::Adjusting;
+                    // 手框 / 移动 / 手柄缩放松手：用户自己确定的选区，计入「上次区域」（ADR 0040）
+                    self.remember_selection(sel);
                 }
                 other
             }

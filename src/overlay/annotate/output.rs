@@ -15,7 +15,7 @@ use crate::{output, render};
 /// 「副屏在左 / 在上」的布局里是负数。三条输出载荷（贴图 / 长截图 / OCR）都要这对
 /// 坐标，各写一遍加法迟早漏一个——贴图的 PIN-1 路径就是这么漏掉的（issue #152：
 /// 多显示器下贴图不平移，偏出一整块屏幕）。收敛到这里，改一处三处一起对。
-fn to_screen(sel: SelRect, origin_x: i32, origin_y: i32) -> (i32, i32) {
+pub(in crate::overlay) fn to_screen(sel: SelRect, origin_x: i32, origin_y: i32) -> (i32, i32) {
     (origin_x + sel.x, origin_y + sel.y)
 }
 

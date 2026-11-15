@@ -210,6 +210,10 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                 k if k == overlay.pin_key && !overlay.locked_selection => overlay.on_pin(),
                 // 长截图键（默认 S，设置面板可改）：当前选区作为滚动视口（M4）
                 k if k == overlay.longshot_key && !overlay.locked_selection => overlay.on_longshot(),
+                // 快速选区键（ADR 0040，默认 F / R）：仅在没有选区时生效，
+                // 有效条件（选区 / 贴图编辑模式）在方法内部判
+                k if k == overlay.fullscreen_key && !overlay.locked_selection => overlay.on_select_fullscreen(),
+                k if k == overlay.last_area_key && !overlay.locked_selection => overlay.on_select_last_area(),
                 0x5A if ctrl_down() => {
                     // Ctrl+Z 撤销 / Ctrl+Shift+Z 重做（EDT-7）
                     if shift_down() {
@@ -243,7 +247,11 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
         WM_SYSKEYDOWN => {
             let vk = wparam.0 as u32;
             let alt_down = (lparam.0 as u32 >> 29) & 1 != 0;
-            let action = !overlay.locked_selection && (vk == overlay.pin_key || vk == overlay.longshot_key);
+            let action = !overlay.locked_selection
+                && (vk == overlay.pin_key
+                    || vk == overlay.longshot_key
+                    || vk == overlay.fullscreen_key
+                    || vk == overlay.last_area_key);
             if alt_down || overlay.is_editing_text() || !action {
                 return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
             }

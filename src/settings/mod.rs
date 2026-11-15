@@ -354,6 +354,30 @@ mod tests {
         assert_eq!(back.hotkey.longshot_key, 0x4C);
     }
 
+    /// 快速选区键（ADR 0040）：旧配置缺字段时回退 F / R，新值能往返。
+    #[test]
+    fn quick_select_keys_defaults_and_roundtrip() {
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.hotkey.fullscreen_key, 0x46, "旧配置应回退全屏键 F");
+        assert_eq!(old.hotkey.last_area_key, 0x52, "旧配置应回退上次区域键 R");
+
+        let cfg = Config {
+            hotkey: HotkeyConfig {
+                fullscreen_key: 0x47, // G
+                last_area_key: crate::settings::UNBOUND,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.hotkey.fullscreen_key, 0x47);
+        assert_eq!(
+            back.hotkey.last_area_key,
+            crate::settings::UNBOUND,
+            "清空后应保持未绑定"
+        );
+    }
+
     /// 上次保存目录（OUT-2）：旧配置缺字段回退 None，新值能往返。
     #[test]
     fn last_save_dir_roundtrip() {

@@ -4,6 +4,9 @@
 
 mod output;
 
+// 画布 ↔ 屏幕坐标换算：贴图 / 长截图 / 快速选区（ADR 0040）共用一份
+pub(in crate::overlay) use output::to_screen;
+
 use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
 
@@ -69,6 +72,11 @@ impl super::Overlay {
             self.on_pin(); // PIN-1：贴选区
         } else if outputs && vk == self.longshot_key {
             self.on_longshot();
+        } else if outputs && vk == self.fullscreen_key {
+            // ADR 0040：F 全屏（鼠标键 / PrtScn 绑上去时也走这里）
+            self.on_select_fullscreen();
+        } else if outputs && vk == self.last_area_key {
+            self.on_select_last_area();
         } else if let Some(m) = self.mode_by_key(vk) {
             self.switch_mode(m);
         }

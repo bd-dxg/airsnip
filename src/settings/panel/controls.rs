@@ -16,8 +16,8 @@ pub use scale::*;
 /// 窗口内容总宽（横向桌面窗口，宽高比约 1.4）。
 pub const W: i32 = 720;
 /// 窗口内容总高：固定值，避免切换分类时窗口上下跳动。
-/// 最高的分类「快捷键」采用两列排布（见 `layout`），行数受控，必须落在此高内，
-/// 否则窗口会被内容撑高、变成近正方形（桌面窗口应保持宽 > 高）。
+/// 最高的分类「快捷键」采用三列叠放排布（标签在上、键帽在下，见 `layout`），
+/// 行数受控，必须落在此高内，否则窗口会被内容撑高、变成近正方形（桌面窗口应保持宽 > 高）。
 pub const H: i32 = 520;
 /// 左侧导航栏宽。
 pub const NAV_W: i32 = 124;
@@ -29,9 +29,9 @@ pub const NAV_H: i32 = 44;
 pub const CONTENT_HEADER_H: i32 = 40;
 /// 内容行高度。
 pub const ROW_H: i32 = 46;
-/// 两列排布时的列间距（快捷键页，见 `layout`）。
+/// 两列排布时的列间距（快捷键页与「工具栏」页，见 `layout`）。
 pub const GRID_GAP: i32 = 8;
-/// 单元格内容的水平内边距（两列排布：单元格比整行窄，内边距略小）。
+/// 单元格内容的水平内边距（多列排布：单元格比整行窄，内边距略小）。
 pub const CELLPAD: i32 = 16;
 /// 悬停高亮矩形相对内容外扩的距离（让高亮四周留出余量，不再紧贴控件）。
 pub const HOVER_PAD: i32 = 8;
@@ -49,6 +49,15 @@ pub const TOGGLE_W: i32 = 36;
 pub const CLEAR_BTN: i32 = 30;
 /// 键帽与清除按钮之间的间隔。
 pub const CLEAR_GAP: i32 = 8;
+/// 快捷键单元格高度（ADR 0040）：三列排布后格内改成「标签在上、键帽在下」叠放，
+/// 比标准行高 10px；18 项三列共 6 行，内容高仍落在固定高内。
+pub const KEY_CELL_H: i32 = 56;
+/// 叠放单元格里键帽的高度（比标准键帽矮，给上排标签让位）。
+pub const KEYCAP_H: i32 = 26;
+/// 叠放单元格里标签的顶部内边距。
+pub const KEY_LABEL_TOP: i32 = 5;
+/// 叠放单元格里键帽底部的留白。
+pub const KEYCAP_BOTTOM: i32 = 5;
 
 /// 分类页。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -103,6 +112,10 @@ pub enum RowId {
     HotkeyBorder,
     /// 长截图键（覆盖层内按下，默认 S）。
     HotkeyLongshot,
+    /// 全屏键（覆盖层内按下，默认 F，ADR 0040）：光标所在显示器的整屏作为选区。
+    HotkeyFullscreen,
+    /// 上次区域键（覆盖层内按下，默认 R，ADR 0040）：复用上次框选区域。
+    HotkeyLastArea,
     /// 工具切换键：移动选区（ADR 0036，框选完成后的缺省态；开 = 指针）。
     ToolMove,
     /// 工具切换键（M3）：矩形 / 箭头 / 文本 / 模糊 / 荧光笔 / 高亮。
@@ -263,7 +276,7 @@ mod tests {
     }
 
     /// 桌面窗口比例：任何分类页的内容都不得把窗口撑高（宽必须大于高），
-    /// 行数最多的快捷键页（两列排布后 6 行 + 2 行）也必须落在固定高内。
+    /// 行数最多的快捷键页（三列排布后 6 行 + 2 行）也必须落在固定高内。
     #[test]
     fn panel_stays_landscape_for_every_section() {
         for s in [1.0f32, 1.5, 2.0] {
@@ -289,9 +302,10 @@ mod tests {
         }
     }
 
-    /// 快捷键页两列排布：同一视觉行最多两项，总行数受控（不再每项独占一行）。
+    /// 快捷键页三列叠放（ADR 0040）：同一视觉行最多三项，总行数受控
+    /// （18 项 / 3 列 = 6 行，远比两列 9 行矮，窗口不会被撜高）。
     #[test]
-    fn hotkeys_use_two_columns() {
+    fn hotkeys_use_three_columns() {
         for s in [1.0f32, 1.5, 2.0] {
             let l = layout(Section::Hotkeys, s);
             let mut ys: std::collections::BTreeMap<i32, usize> = std::collections::BTreeMap::new();
@@ -304,8 +318,35 @@ mod tests {
                 }
             }
             assert_eq!(n, KEY_ROWS.len(), "@{s}x 快捷键键帽行应仍为 {} 项", KEY_ROWS.len());
-            assert!(ys.values().all(|&c| c <= 2), "@{s}x 同一行不应超过两项");
-            assert!(ys.len() <= 9, "@{s}x 两列排布后行数应受控：{}", ys.len());
+            assert!(ys.values().all(|&c| c <= 3), "@{s}x 同一行不应超过三项");
+            assert!(ys.len() <= 6, "@{s}x 三列排布后行数应受控：{}", ys.len());
+        }
+    }
+
+    /// 叠放单元格的标签与键帽不得重叠，且标签在真实字宽下放得进单元格（ADR 0040）。
+    /// 三列后格宽从 286 降到 188，标签一旦写长就会压到键帽上。
+    #[test]
+    fn keycap_cells_stack_label_above_caps() {
+        for scale in [1.0f32, 1.25, 1.5, 2.0] {
+            let l = layout(Section::Hotkeys, scale);
+            for item in &l.items {
+                let Item::Row(r) = item else { continue };
+                if r.kind != RowKind::KeyCap {
+                    continue;
+                }
+                // 标签行在键帽行之上（不重叠）
+                let cap_top = r.control.y;
+                assert!(cap_top > r.rect.y, "{:?} @{scale}x 键帽应位于标签下方", r.id);
+                // 真实字宽：标签不超过单元格可用宽度
+                let spec = crate::render::text::FontSpec::new(16.0 * scale);
+                let (label_w, _) = crate::render::text::measure(r.label, &spec);
+                let avail = (r.rect.w - r.label_pad * 2) as f32;
+                assert!(
+                    label_w <= avail,
+                    "@{scale}x「{}」宽 {label_w}px，超过单元格可用宽度 {avail}px",
+                    r.label
+                );
+            }
         }
     }
 
@@ -337,6 +378,8 @@ mod tests {
                     RowId::HotkeyPin,
                     RowId::HotkeyBorder,
                     RowId::HotkeyLongshot,
+                    RowId::HotkeyFullscreen,
+                    RowId::HotkeyLastArea,
                     RowId::ToolMove,
                     RowId::ToolRect,
                     RowId::ToolArrow,

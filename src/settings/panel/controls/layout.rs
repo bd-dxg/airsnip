@@ -5,8 +5,9 @@
 use crate::overlay::geometry::SelRect;
 
 use super::{
-    CELL_PAD, CELLPAD, CLEAR_BTN, CONTENT_HEADER_H, GRID_GAP, GROUP_H, H, HOVER_PAD, Item, KEY_ROWS, Layout, NAV_H,
-    NAV_W, PAD, QR_ROW_H, ROW_H, Row, RowId, RowKind, Section, TOGGLE_W, W, ui_scale_row,
+    CELL_PAD, CELLPAD, CLEAR_BTN, CONTENT_HEADER_H, GRID_GAP, GROUP_H, H, HOVER_PAD, Item, KEY_CELL_H, KEY_ROWS,
+    KEYCAP_BOTTOM, KEYCAP_H, Layout, NAV_H, NAV_W, PAD, QR_ROW_H, ROW_H, Row, RowId, RowKind, Section, TOGGLE_W, W,
+    ui_scale_row,
 };
 use crate::settings::ToolbarGroup;
 
@@ -20,10 +21,6 @@ fn hover_rect(left: i32, right: i32, y: i32, h: i32, s: f32) -> SelRect {
         h,
     }
 }
-
-/// 单元格内控件区宽度基准（含键帽 + 间隙 + 清除按钮）：键帽 ≈ 140 − 8 − 30 = 102，
-/// 足够显示常见组合键（如 Ctrl+F3、鼠标侧键1）。
-const CELL_CONTROL_W: f32 = 140.0;
 
 /// 内容行几何（`s` 为 DPI 缩放系数，x 从导航栏右缘开始）。
 fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row {
@@ -67,14 +64,17 @@ fn mk_row(id: RowId, kind: RowKind, label: &'static str, y: i32, s: f32) -> Row 
     }
 }
 
-/// 单元格行（两列排布用）：标签在左、键帽 + 清除按钮在右，控件区宽度按单元格收缩。
-fn mk_cell(id: RowId, label: &'static str, x: i32, y: i32, w: i32, s: f32) -> Row {
-    let h = (ROW_H as f32 * s) as i32;
+/// 快捷键单元格（三列叠放，ADR 0040）：标签在上（由 `draw` 画在单元格顶部），
+/// 键帽 + 清除按钮在下。控件区就是键帽行本身，命中 / 绘制共用同一份几何。
+fn mk_key_cell(id: RowId, label: &'static str, x: i32, y: i32, w: i32, s: f32) -> Row {
+    let h = (KEY_CELL_H as f32 * s) as i32;
     let cellpad = (CELLPAD as f32 * s) as i32;
-    let cw = (CELL_CONTROL_W * s) as i32;
     let btn = (CLEAR_BTN as f32 * s) as i32;
+    let kh = (KEYCAP_H as f32 * s) as i32;
+    let bottom = (KEYCAP_BOTTOM as f32 * s) as i32;
     // 内容区 = 单元格左右各缩进 `CELLPAD`；悬停高亮再外扩 `HOVER_PAD`
     let (content_l, content_r) = (x + cellpad, x + w - cellpad);
+    let ky = y + h - bottom - kh;
     Row {
         id,
         kind: RowKind::KeyCap,
@@ -83,16 +83,16 @@ fn mk_cell(id: RowId, label: &'static str, x: i32, y: i32, w: i32, s: f32) -> Ro
         hover: hover_rect(content_l, content_r, y, h, s),
         rect: SelRect { x, y, w, h },
         control: SelRect {
-            x: content_r - cw,
-            y,
-            w: cw,
-            h,
+            x: content_l,
+            y: ky,
+            w: content_r - content_l,
+            h: kh,
         },
         clear: SelRect {
             x: content_r - btn,
-            y: y + (h - btn) / 2,
+            y: ky,
             w: btn,
-            h: btn,
+            h: kh,
         },
     }
 }
@@ -198,25 +198,27 @@ fn section_rows(section: Section, y0: i32, s: f32, items: &mut Vec<Item>) {
             }
         }
         Section::Hotkeys => {
-            // 两列排布：快捷键不必每个独占一行，行数减半、不把窗口撑高（保持横向比例）
+            // 三列排布 + 格内上下叠放（ADR 0040）：18 项共 6 行，格宽仍能放下标签与组合键键帽。
+            // 两列并排放不下这一行数：会把窗口撑高、破坏桌面窗口的横向比例。
             let w = (W as f32 * s) as i32;
             let nav_w = (NAV_W as f32 * s) as i32;
             let pad = (PAD as f32 * s) as i32;
             let cellpad = (CELLPAD as f32 * s) as i32;
             let gap = (GRID_GAP as f32 * s) as i32;
-            let row_h = (ROW_H as f32 * s) as i32;
+            let row_h = (KEY_CELL_H as f32 * s) as i32;
             // 单元格左缘让出 CELLPAD，使单元格内标签与整行标签（NAV_W+PAD）对齐
             let cell_x0 = nav_w + pad - cellpad;
-            let cell_w = (w - pad + cellpad - cell_x0 - gap) / 2;
+            let cols = 3usize;
+            let cell_w = (w - pad + cellpad - cell_x0 - gap * (cols as i32 - 1)) / cols as i32;
             // 键帽行来自元数据表（`keyrows`）：顺序与标签都以表为准，新增一行只改表
             for (i, spec) in KEY_ROWS.iter().enumerate() {
-                let col = i % 2;
-                let row = i / 2;
-                let x = cell_x0 + col as i32 * (cell_w + gap);
-                let y = y0 + row as i32 * row_h;
-                items.push(Item::Row(mk_cell(spec.id, spec.label, x, y, cell_w, s)));
+                let col = (i % cols) as i32;
+                let row = (i / cols) as i32;
+                let x = cell_x0 + col * (cell_w + gap);
+                let y = y0 + row * row_h;
+                items.push(Item::Row(mk_key_cell(spec.id, spec.label, x, y, cell_w, s)));
             }
-            y += KEY_ROWS.len().div_ceil(2) as i32 * row_h;
+            y += KEY_ROWS.len().div_ceil(cols) as i32 * row_h;
             // 「恢复默认」做成右侧真正的按钮（标签留空，文案在按钮上）
             push(RowId::ResetKeys, RowKind::Button, "", &mut y, items);
             push(RowId::Widenote, RowKind::Readonly, "提示", &mut y, items);

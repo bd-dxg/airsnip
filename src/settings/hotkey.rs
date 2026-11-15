@@ -37,6 +37,12 @@ pub struct HotkeyConfig {
     /// 长截图键虚拟键码（截图覆盖层内按下，默认 S = 0x53；无修饰键，与工具切换键同组；
     /// `UNBOUND` = 未启用）
     pub longshot_key: u32,
+    /// 全屏键（覆盖层内按下，默认 F = 0x46；无修饰键，ADR 0040）：把光标所在显示器的
+    /// 整屏（含任务栏）作为选区，且只在当前没有选区时生效；`UNBOUND` = 未启用。
+    pub fullscreen_key: u32,
+    /// 上次区域键（覆盖层内按下，默认 R = 0x52；无修饰键，ADR 0040）：复用本次运行里
+    /// 上次框选 / 窗口吸附确定的区域，同样只在没有选区时生效；`UNBOUND` = 未启用。
+    pub last_area_key: u32,
     /// 遗留字段（旧版本两键共享修饰键，TOML 键名仍为 `modifiers`）：仅加载迁移用，不再写入。
     #[serde(default, skip_serializing, rename = "modifiers")]
     pub legacy_modifiers: u32,
@@ -54,6 +60,8 @@ impl Default for HotkeyConfig {
             border_key: 0x72,            // Ctrl+F3
             border_modifiers: 2,         // MOD_CONTROL
             longshot_key: 0x53,          // S
+            fullscreen_key: 0x46,        // F
+            last_area_key: 0x52,         // R
             legacy_modifiers: 0,
         }
     }
@@ -214,5 +222,33 @@ mod tests {
             HotkeyConfig::default().longshot_key,
             "不应与长截图键（S）重复"
         );
+    }
+
+    /// 快速选区键（ADR 0040）：默认 F / R，与长截图键、工具键互不重复。
+    /// 撞车会让「按 F 画全屏」变成「剪成自由笔画」，只能靠单测守。
+    #[test]
+    fn quick_select_keys_default_to_f_and_r() {
+        let h = HotkeyConfig::default();
+        let k = ToolKeys::default();
+        assert_eq!(h.fullscreen_key, 0x46, "全屏键默认应为 F");
+        assert_eq!(h.last_area_key, 0x52, "上次区域键默认应为 R");
+        let others = [
+            h.longshot_key,
+            k.move_key,
+            k.rect,
+            k.arrow,
+            k.text,
+            k.blur,
+            k.highlight,
+            k.glow,
+            k.number,
+            k.line,
+            k.ellipse,
+            k.freehand,
+        ];
+        for vk in [h.fullscreen_key, h.last_area_key] {
+            assert!(!others.contains(&vk), "快速选区键 {vk:#x} 与其它按键重复：{others:?}");
+        }
+        assert_ne!(h.fullscreen_key, h.last_area_key, "两个快速选区键不应相同");
     }
 }

@@ -41,13 +41,13 @@ pub(super) fn draw(pixmap: &mut Pixmap, panel: &Panel, row: &Row, hovered: bool)
     let capturing = panel.capturing == Some(row.id);
     let bound = row_key(panel, row.id) != crate::settings::UNBOUND;
     let c = &row.control;
-    let kh = (30.0 * s) as i32;
     let gap = (CLEAR_GAP as f32 * s) as i32;
+    // 键帽与控件区同高（叠放单元格的下面那一行），只把右侧让给清除按钮
     let kb = SelRect {
         x: c.x,
-        y: c.y + (c.h - kh) / 2,
+        y: c.y,
         w: c.w - row.clear.w - gap,
-        h: kh,
+        h: c.h,
     };
     let fill = if capturing {
         p.accent_soft
@@ -69,7 +69,7 @@ pub(super) fn draw(pixmap: &mut Pixmap, panel: &Panel, row: &Row, hovered: bool)
     let (w, _) = dwrite::measure(&text, &dwrite::FontSpec::new(size));
     // 文字水平居中于键帽（减去按钮后的可用区）
     let x = kb.x as f32 + (kb.w as f32 - w) / 2.0;
-    let y = kb.y as f32 + (kh as f32 - size * 1.2) / 2.0;
+    let y = kb.y as f32 + (kb.h as f32 - size * 1.2) / 2.0;
     draw_text(pixmap, x, y, &text, size, color);
 
     // 清除按钮：悬停该行或该行处于捕获态时才出现（等于键帽高度，右侧对齐）

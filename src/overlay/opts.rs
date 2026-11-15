@@ -13,6 +13,10 @@ pub struct OverlayOpts {
     pub tool_keys: crate::settings::ToolKeys,
     /// 长截图键（默认 S，设置面板可改）。
     pub longshot_key: u32,
+    /// 全屏键（ADR 0040，默认 F）：光标所在显示器的整屏作为选区。
+    pub fullscreen_key: u32,
+    /// 上次区域键（ADR 0040，默认 R）：复用上次框选区域。
+    pub last_area_key: u32,
     /// 工具栏可见性（EDT-16，issue #143）：逐元素显隐，纯视觉偏好（隐藏 ≠ 禁用）。
     pub visibility: crate::settings::ToolbarConfig,
     /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。
