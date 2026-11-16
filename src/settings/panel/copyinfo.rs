@@ -88,13 +88,13 @@ pub(super) fn toast_rects(panel: &Panel, height: i32) -> Option<(SelRect, SelRec
 
 /// 通知是否在鼠标下（命中时不上报行悬停，避免通知下面的行跟着高亮）。
 pub(super) fn is_over(panel: &Panel, x: i32, y: i32) -> bool {
-    let height = super::controls::layout(panel.section, panel.scale).height;
+    let height = panel.layout().height;
     toast_rects(panel, height).is_some_and(|(toast, _)| in_rect(toast, x, y))
 }
 
 /// 点击通知：按钮区打开反馈页，其余区域只吞掉事件。返回是否已处理。
 pub(super) fn on_click(panel: &mut Panel, x: i32, y: i32) -> bool {
-    let height = super::controls::layout(panel.section, panel.scale).height;
+    let height = panel.layout().height;
     let Some((toast, btn)) = toast_rects(panel, height) else {
         return false;
     };

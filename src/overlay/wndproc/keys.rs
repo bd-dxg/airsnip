@@ -27,6 +27,11 @@ pub(in crate::overlay) fn space_down() -> bool {
     key_down(0x20)
 }
 
+/// Win 键是否按下（保存 / 快速保存的组合键判定用，ADR 0041：左右任一均可）。
+pub(in crate::overlay) fn win_down() -> bool {
+    key_down(0x5B) || key_down(0x5C)
+}
+
 /// 鼠标左键是否按住（窗口吸附的「候选待定」靠它发现丢失的 `WM_LBUTTONUP`）。
 pub(in crate::overlay) fn lbutton_down() -> bool {
     key_down(0x01)

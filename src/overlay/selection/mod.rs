@@ -4,12 +4,12 @@
 //! 选区边框、手柄与聚光恢复的绘制见 `draw`。
 
 mod draw;
+mod overlays;
 
 use super::geometry::{SelRect, expand_rect, intersect_rect, same_rect, text_rect, union_rect};
 use super::objedit;
 use super::pick::draw_curve_handles;
 use super::surface::{blit_region, draw_info_text, restore_region};
-use super::toolbar::tip;
 use super::{textinput, toolbar};
 use crate::render;
 
@@ -227,28 +227,25 @@ impl super::Overlay {
                 draw_info_text(&mut self.display, r, cand, self.ui);
             }
         }
-        // 7) 悬浮提示气泡（EDT-10）：屏幕显示层、画在最上层，不进导出烘焙
-        if let Some(bubble) = &self.tip.bubble
-            && intersect_rect(expand_rect(bubble.rect, 2), region).is_some()
-        {
-            tip::draw(&mut self.display, bubble, self.palette, self.ui);
-        }
-        // 7b) 取消二次确认提示（OUT-3 / issue #120）：同样只在屏幕显示层
-        if let Some(hint) = &self.cancel_hint
-            && intersect_rect(expand_rect(hint.rect, 2), region).is_some()
-        {
-            super::cancel_hint::draw(&mut self.display, hint, self.ui);
-        }
+        // 7) 屏显悬浮元素（提示气泡 / 二次确认 / 快速保存轻提示）：见 `overlays`
+        self.draw_floaters(region);
         Some(region)
     }
 
     /// 二次确认提示整条画进 `display`，脏区若只切过它一部分，未呈现的像素会在后续上屏时被重复合成；
     /// 故与提示相交时把脏区扩到整条提示矩形（OUT-3 / issue #120）。
     fn expand_for_hint(&self, r: SelRect) -> SelRect {
-        match &self.cancel_hint {
+        let mut r = match &self.cancel_hint {
             Some(h) if intersect_rect(h.rect, r).is_some() => union_rect(Some(r), Some(h.rect)).unwrap_or(r),
             _ => r,
+        };
+        // 快速保存提示同理（ADR 0041）：只切过一部分会把残余像素留在屏上
+        if let Some(t) = &self.quick.toast
+            && intersect_rect(t.rect, r).is_some()
+        {
+            r = union_rect(Some(r), Some(t.rect)).unwrap_or(r);
         }
+        r
     }
 
     /// 选中对象的手柄画在包围盒之外，脏区需一并覆盖（否则手柄残缺或残留）。

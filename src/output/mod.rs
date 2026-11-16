@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 输出（OUT-1/2/3）：剪贴板 `CF_DIB` + `PNG` 格式、PNG/JPEG 文件保存。
 //! 编码调用方负责放到后台线程执行（OUT-2）。
+//! 快速保存（模板渲染 + 同名策略）在 `quick`（ADR 0041）。
 
+pub mod clipboard;
+pub mod quick;
 pub mod recent;
+
+// 文本剪贴板（SYS-8 / ADR 0041）实现在 `clipboard`，这里保留原有调用路径
+pub use clipboard::{copy_text_to_clipboard, read_text_from_clipboard};
 
 use std::mem::size_of;
 use std::path::{Path, PathBuf};
@@ -14,7 +20,7 @@ use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, OpenClipboard, RegisterClipboardFormatW, SetClipboardData,
 };
 use windows::Win32::System::Memory::{GMEM_MOVEABLE, GlobalAlloc, GlobalLock, GlobalUnlock};
-use windows::Win32::System::Ole::{CF_DIB, CF_UNICODETEXT};
+use windows::Win32::System::Ole::CF_DIB;
 use windows::core::w;
 
 /// 复制到剪贴板：写入 CF_DIB（BGRA）与 "PNG" 注册格式（OUT-1）。
@@ -96,51 +102,6 @@ pub fn copy_to_clipboard(pixmap: &Pixmap) -> Result<(), String> {
             return Err(fail("SetClipboardData PNG 失败".into()));
         }
 
-        let _ = CloseClipboard();
-        Ok(())
-    }
-}
-
-/// `CF_UNICODETEXT` 的字节序列：UTF-16 码元 + 结尾 NUL（漏了 NUL，粘贴方会读到垃圾）。
-pub(crate) fn text_units(text: &str) -> Vec<u16> {
-    let mut units: Vec<u16> = text.encode_utf16().collect();
-    units.push(0);
-    units
-}
-
-/// 复制纯文本到剪贴板（`CF_UNICODETEXT`，SYS-8「复制系统信息」用）。
-///
-/// 与图片路径同样的句柄规矩：`SetClipboardData` 成功后剪贴板接管 HGLOBAL，不可再释放；
-/// 失败时必须自己释放，否则每次点击都漏一块。
-pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
-    let units = text_units(text);
-    let bytes = units.len() * size_of::<u16>();
-    unsafe {
-        let h = GlobalAlloc(GMEM_MOVEABLE, bytes).map_err(|e| format!("GlobalAlloc 文本失败：{e}"))?;
-        let ptr = GlobalLock(h);
-        if ptr.is_null() {
-            let _ = GlobalFree(Some(h));
-            return Err("GlobalLock 文本失败".into());
-        }
-        std::ptr::copy_nonoverlapping(units.as_ptr(), ptr as *mut u16, units.len());
-        let _ = GlobalUnlock(h);
-
-        if OpenClipboard(None).is_err() {
-            let _ = GlobalFree(Some(h));
-            return Err("OpenClipboard 失败".into());
-        }
-        let fail = |msg: String| {
-            let _ = CloseClipboard();
-            msg
-        };
-        if EmptyClipboard().is_err() {
-            let _ = GlobalFree(Some(h));
-            return Err(fail("EmptyClipboard 失败".into()));
-        }
-        if SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(h.0))).is_err() {
-            let _ = GlobalFree(Some(h));
-            return Err(fail("SetClipboardData CF_UNICODETEXT 失败".into()));
-        }
         let _ = CloseClipboard();
         Ok(())
     }
@@ -268,6 +229,8 @@ mod tests {
 
     #[test]
     fn clipboard_roundtrip() {
+        // 与文本剪贴板用例共用一把锁（OUT-2 回归：并行时互相把 HGLOBAL 弄成悬野指针会坏堆）
+        let _guard = clipboard::test_lock();
         let pixmap = Pixmap::new(8, 8).unwrap();
         match copy_to_clipboard(&pixmap) {
             Ok(()) => println!("clipboard ok"),
@@ -277,26 +240,7 @@ mod tests {
 
     /// 文本剪贴板（SYS-8）：编码为 UTF-16 且以 NUL 结尾；写入失败只打印（
     /// 剪贴板可能与其它测试/程序竞争，不在这里做强断言）。
-    #[test]
-    fn text_units_end_with_nul() {
-        let text = "AirSnip 轻截 v0.12.0 · 多显示器";
-        let units = text_units(text);
-        assert_eq!(units.last(), Some(&0), "必须以 NUL 结尾：{units:?}");
-        assert_eq!(
-            &units[..units.len() - 1],
-            &text.encode_utf16().collect::<Vec<_>>()[..],
-            "正文应是原串的 UTF-16 码元"
-        );
-    }
-
-    #[test]
-    fn text_clipboard_write() {
-        match copy_text_to_clipboard("AirSnip 轻截 v0.12.0") {
-            Ok(()) => println!("text clipboard ok"),
-            Err(e) => println!("text clipboard err: {e}"),
-        }
-    }
-
+    // 注：文本剪贴板的用例已随实现搬到 `output::clipboard`。
     /// WebP 无损编码（OUT-5）：输出应是合法的 RIFF/WEBP 容器。
     #[test]
     fn webp_encode_produces_riff_container() {

@@ -82,6 +82,8 @@ pub enum Action {
     Copy,
     /// OUT-2：按配置的目录与格式保存（Ctrl+S 同效）。
     Save,
+    /// OUT-2 / ADR 0041：按模板路径直接落盘（快速保存键同效，默认 Alt+S）。
+    QuickSave,
     /// EDT-4：展开/收起字体列表面板。
     FontPick,
     /// EDT-4：粗体开关。
@@ -331,7 +333,7 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构 + ADR 0036 移动按钮 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 29);
+        assert_eq!(actions.len(), 30);
         // ADR 0036：「移动」排在工具组首位，框选完成后高亮的就是它
         assert_eq!(actions[0], Action::Move);
         assert_eq!(actions[1..11], Tool::ALL.map(Action::Tool));
@@ -344,8 +346,10 @@ mod tests {
         assert_eq!(actions[20], Action::Longshot);
         assert_eq!(actions[21], Action::Copy);
         assert_eq!(actions[22], Action::Save);
+        // OUT-2 / ADR 0041：文件组末尾新增快速保存
+        assert_eq!(actions[23], Action::QuickSave);
         assert_eq!(
-            actions[23..],
+            actions[24..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -363,7 +367,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, &all(), false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 23);
+        assert_eq!(bar.hits.len(), 24);
     }
 
     /// 隐藏的元素不再有命中区，工具栏宽度随之变窄（R1/R2）。

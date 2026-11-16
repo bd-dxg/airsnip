@@ -3,8 +3,10 @@
 //! 的一张表驱动，替代原先散在 5 个文件的平行 match —— 那种写法漏改一处就会**静默出错**
 //! （例如漏了 `row_key` → 该行清除按钮永远置灰），且 `pairs` 的数组长度还要手改。
 //!
-//! 新增一个键帽行只需两处：`RowId` 加变体、本表加一项。
-//! **表顺序即界面顺序**（两列按此顺序从左到右、从上到下），同时也决定冲突提示先报哪一项。
+//! 新增一个键帽行只需两处：`RowId` 加变体、本表加一项（**并填上它的 `group`**，
+//! 漏填会被 `every_key_row_belongs_to_exactly_one_group` 拦下）。
+//! **表顺序即界面顺序**：同组内相邻排列，组与组之间由子页签分隔（ADR 0041），
+//! 同时也决定冲突提示先报哪一项。
 
 use crate::settings::{Config, HotkeyConfig, ToolKeys};
 
@@ -18,6 +20,34 @@ pub enum KeyBind {
     /// 覆盖层内按键（长截图）与工具切换键：按下即触发，只认虚拟键，修饰键恒为 0
     /// （捕获时按住的 Ctrl 不记录，比较时也不看）。
     Plain,
+    /// 覆盖层内**带修饰键**的键（保存 / 快速保存，ADR 0041）：不注册全局热键，
+    /// 但按键与修饰键一起写回、一起参与冲突比较（`Ctrl+S` 与 `Alt+S` 与无修饰的 `S` 各管一事）。
+    OverlayCombo,
+}
+
+/// 快捷键页的子页签分组（ADR 0041）：20 行平铺太难扫，按「我现在想干什么」分成三组。
+/// 组归元数据表（`KeyRowSpec::group`）唯一决定，布局 / 绘制 / 命中都从表里读。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum KeyGroup {
+    /// 截图相关：截图、再次截图、全屏、上次区域。
+    Capture,
+    /// 输出相关：保存、快速保存、贴图、贴图边框、长截图。
+    Output,
+    /// 工具切换：移动 + 10 个标注工具。
+    Tools,
+}
+
+impl KeyGroup {
+    /// 页签顺序即界面顺序。
+    pub const ALL: [KeyGroup; 3] = [KeyGroup::Capture, KeyGroup::Output, KeyGroup::Tools];
+
+    pub fn title(self) -> &'static str {
+        match self {
+            KeyGroup::Capture => "截图",
+            KeyGroup::Output => "输出",
+            KeyGroup::Tools => "工具",
+        }
+    }
 }
 
 /// 一个快捷键行的全部元数据。
@@ -25,6 +55,8 @@ pub struct KeyRowSpec {
     pub id: RowId,
     /// 行标签，同时用作冲突提示名（「按键 {label} 已被其他快捷键使用」）——两者本就同字。
     pub label: &'static str,
+    /// 所属子页签（ADR 0041），决定它出现在哪一组里。
+    pub group: KeyGroup,
     pub bind: KeyBind,
     /// 读当前键位 `(虚拟键, 修饰键)`；`Plain` 行的修饰键恒为 0。
     pub get: fn(&HotkeyConfig, &ToolKeys) -> (u32, u32),
@@ -39,6 +71,7 @@ impl KeyRowSpec {
     const fn hotkey(
         id: RowId,
         label: &'static str,
+        group: KeyGroup,
         confirm_clear: bool,
         get: fn(&HotkeyConfig, &ToolKeys) -> (u32, u32),
         set: fn(&mut Config, u32, u32),
@@ -46,6 +79,7 @@ impl KeyRowSpec {
         Self {
             id,
             label,
+            group,
             bind: KeyBind::Hotkey,
             get,
             set,
@@ -57,13 +91,34 @@ impl KeyRowSpec {
     const fn plain(
         id: RowId,
         label: &'static str,
+        group: KeyGroup,
         get: fn(&HotkeyConfig, &ToolKeys) -> (u32, u32),
         set: fn(&mut Config, u32, u32),
     ) -> Self {
         Self {
             id,
             label,
+            group,
             bind: KeyBind::Plain,
+            get,
+            set,
+            confirm_clear: false,
+        }
+    }
+
+    /// 覆盖层内组合键（保存 / 快速保存，ADR 0041）：键 + 修饰键一起记录。
+    const fn combo(
+        id: RowId,
+        label: &'static str,
+        group: KeyGroup,
+        get: fn(&HotkeyConfig, &ToolKeys) -> (u32, u32),
+        set: fn(&mut Config, u32, u32),
+    ) -> Self {
+        Self {
+            id,
+            label,
+            group,
+            bind: KeyBind::OverlayCombo,
             get,
             set,
             confirm_clear: false,
@@ -81,137 +136,13 @@ impl KeyRowSpec {
     }
 }
 
-/// 快捷键行元数据（顺序即界面顺序，见模块文档）。
-pub const KEY_ROWS: [KeyRowSpec; 18] = [
-    KeyRowSpec::hotkey(
-        RowId::HotkeyShot,
-        "截图",
-        true,
-        |hk, _| (hk.screenshot_key, hk.screenshot_modifiers),
-        |cfg, vk, mods| {
-            cfg.hotkey.screenshot_key = vk;
-            cfg.hotkey.screenshot_modifiers = mods;
-        },
-    ),
-    KeyRowSpec::hotkey(
-        RowId::HotkeyRecapture,
-        "再次截图",
-        false,
-        |hk, _| (hk.recapture_key, hk.recapture_modifiers),
-        |cfg, vk, mods| {
-            cfg.hotkey.recapture_key = vk;
-            cfg.hotkey.recapture_modifiers = mods;
-        },
-    ),
-    KeyRowSpec::hotkey(
-        RowId::HotkeyPin,
-        "贴图",
-        true,
-        |hk, _| (hk.pin_key, hk.pin_modifiers),
-        |cfg, vk, mods| {
-            cfg.hotkey.pin_key = vk;
-            cfg.hotkey.pin_modifiers = mods;
-        },
-    ),
-    KeyRowSpec::hotkey(
-        RowId::HotkeyBorder,
-        "贴图边框",
-        false,
-        |hk, _| (hk.border_key, hk.border_modifiers),
-        |cfg, vk, mods| {
-            cfg.hotkey.border_key = vk;
-            cfg.hotkey.border_modifiers = mods;
-        },
-    ),
-    // 长截图键在覆盖层内按下即触发，与工具键同组
-    KeyRowSpec::plain(
-        RowId::HotkeyLongshot,
-        "长截图",
-        |hk, _| (hk.longshot_key, 0),
-        |cfg, vk, _| cfg.hotkey.longshot_key = vk,
-    ),
-    // 快速选区（ADR 0040）：全屏 / 上次区域，同样只在覆盖层内、无修饰键
-    KeyRowSpec::plain(
-        RowId::HotkeyFullscreen,
-        "全屏",
-        |hk, _| (hk.fullscreen_key, 0),
-        |cfg, vk, _| cfg.hotkey.fullscreen_key = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::HotkeyLastArea,
-        "上次区域",
-        |hk, _| (hk.last_area_key, 0),
-        |cfg, vk, _| cfg.hotkey.last_area_key = vk,
-    ),
-    // ADR 0036：移动（指针）键排在工具键之前——它才是框选完成后的缺省态
-    KeyRowSpec::plain(
-        RowId::ToolMove,
-        "工具·移动",
-        |_, tk| (tk.move_key, 0),
-        |cfg, vk, _| cfg.tool_keys.move_key = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolRect,
-        "工具·矩形",
-        |_, tk| (tk.rect, 0),
-        |cfg, vk, _| cfg.tool_keys.rect = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolArrow,
-        "工具·箭头",
-        |_, tk| (tk.arrow, 0),
-        |cfg, vk, _| cfg.tool_keys.arrow = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolText,
-        "工具·文本",
-        |_, tk| (tk.text, 0),
-        |cfg, vk, _| cfg.tool_keys.text = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolBlur,
-        "工具·模糊",
-        |_, tk| (tk.blur, 0),
-        |cfg, vk, _| cfg.tool_keys.blur = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolHighlight,
-        "工具·荧光笔",
-        |_, tk| (tk.highlight, 0),
-        |cfg, vk, _| cfg.tool_keys.highlight = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolGlow,
-        "工具·聚光灯",
-        |_, tk| (tk.glow, 0),
-        |cfg, vk, _| cfg.tool_keys.glow = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolNumber,
-        "工具·序号",
-        |_, tk| (tk.number, 0),
-        |cfg, vk, _| cfg.tool_keys.number = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolLine,
-        "工具·直线",
-        |_, tk| (tk.line, 0),
-        |cfg, vk, _| cfg.tool_keys.line = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolEllipse,
-        "工具·椭圆",
-        |_, tk| (tk.ellipse, 0),
-        |cfg, vk, _| cfg.tool_keys.ellipse = vk,
-    ),
-    KeyRowSpec::plain(
-        RowId::ToolFreehand,
-        "工具·手绘",
-        |_, tk| (tk.freehand, 0),
-        |cfg, vk, _| cfg.tool_keys.freehand = vk,
-    ),
-];
+mod table;
+pub use table::KEY_ROWS;
 
+/// 某一组的全部行（子页签只画自己那组）。
+pub fn rows_of(group: KeyGroup) -> impl Iterator<Item = &'static KeyRowSpec> {
+    KEY_ROWS.iter().filter(move |s| s.group == group)
+}
 /// 按控件 ID 取元数据；非快捷键行返回 `None`。
 pub fn spec(id: RowId) -> Option<&'static KeyRowSpec> {
     KEY_ROWS.iter().find(|s| s.id == id)
@@ -242,7 +173,7 @@ mod tests {
         for spec in &KEY_ROWS {
             let mut cfg = Config::default();
             spec.apply(&mut cfg, vk, MOD_ALT_BIT);
-            let want_mods = if spec.bind == KeyBind::Hotkey { MOD_ALT_BIT } else { 0 };
+            let want_mods = if spec.bind == KeyBind::Plain { 0 } else { MOD_ALT_BIT };
             assert_eq!(spec.current(&cfg), (vk, want_mods), "{:?} 写回后读不回原值", spec.id);
             // 清空也必须落在同一个字段上
             spec.apply(&mut cfg, UNBOUND, 0);
@@ -263,43 +194,76 @@ mod tests {
             })
             .collect();
         let want: Vec<(&str, String)> = vec![
+            // 顺序 = 元数据表顺序 = 各子页签内的界面顺序（ADR 0041）
             ("截图", "F1".into()),
             ("再次截图", "Shift+F1".into()),
+            ("全屏", "F".into()),
+            ("上次区域", "R".into()),
+            ("保存", "Ctrl+S".into()),
+            ("快速保存", "Alt+S".into()),
             ("贴图", "F3".into()),
             ("贴图边框", "Ctrl+F3".into()),
             ("长截图", "S".into()),
-            ("全屏", "F".into()),
-            ("上次区域", "R".into()),
-            ("工具·移动", "V".into()),
-            ("工具·矩形", "1".into()),
-            ("工具·箭头", "2".into()),
-            ("工具·文本", "3".into()),
-            ("工具·模糊", "4".into()),
-            ("工具·荧光笔", "5".into()),
-            ("工具·聚光灯", "6".into()),
-            ("工具·序号", "7".into()),
-            ("工具·直线", "8".into()),
-            ("工具·椭圆", "9".into()),
-            ("工具·手绘", "0".into()),
+            ("移动", "V".into()),
+            ("矩形", "1".into()),
+            ("箭头", "2".into()),
+            ("文本", "3".into()),
+            ("模糊", "4".into()),
+            ("荧光笔", "5".into()),
+            ("聚光灯", "6".into()),
+            ("序号", "7".into()),
+            ("直线", "8".into()),
+            ("椭圆", "9".into()),
+            ("手绘", "0".into()),
         ];
         assert_eq!(got, want);
     }
 
     /// 冲突检测与写回共用同一张表（不会出现「检测算了 A、写回算成 B」）：
-    /// 把任一项的键位填进另一项，必须报出前者的标签。
+    /// 把任一项的键位填进另一项，必须报出第一个（按**实际写回形态**）真会撞上它的项。
+    /// 注意跨类情形：目标是 `Plain` 行时修饰键会被丢弃，期望值也要按裸键算——
+    /// 这正是一一对应关系不能写成「总是报 a 的标签」的原因。
     #[test]
     fn conflicts_cover_every_pair() {
         let cfg = Config::default();
+        // 写回形态：`Plain` 行不记录修饰键
+        let written_mods = |id: RowId, mods: u32| {
+            if spec(id).is_some_and(|s| s.bind == KeyBind::Plain) {
+                0
+            } else {
+                mods
+            }
+        };
+        // 独立的期望值：扫全表取第一个撞车项（不复用 `conflict_for` 的实现）
+        let expect = |skip: RowId, vk: u32, mods: u32| -> Option<&'static str> {
+            KEY_ROWS
+                .iter()
+                .find(|c| {
+                    if c.id == skip {
+                        return false;
+                    }
+                    let (cv, cm) = c.current(&cfg);
+                    if cv == crate::settings::UNBOUND {
+                        return false;
+                    }
+                    match c.bind {
+                        KeyBind::Hotkey | KeyBind::OverlayCombo => cv == vk && cm == mods,
+                        KeyBind::Plain => cv == vk && mods == 0,
+                    }
+                })
+                .map(|c| c.label)
+        };
         for a in &KEY_ROWS {
             let (vk, mods) = a.current(&cfg);
             for b in &KEY_ROWS {
                 if a.id == b.id {
                     continue;
                 }
+                let want = expect(b.id, vk, written_mods(b.id, mods));
                 assert_eq!(
                     super::super::conflict_for(&cfg, b.id, vk, mods),
-                    Some(a.label),
-                    "{:?} 占用 {:?} 的键位时应报冲突",
+                    want,
+                    "{:?} 占用 {:?} 的键位时应报 {want:?}",
                     a.id,
                     b.id
                 );

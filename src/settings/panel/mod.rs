@@ -8,13 +8,20 @@
 mod controls;
 mod copyinfo;
 mod draw;
+mod editkeys;
 mod interact;
 mod keycap;
 mod link;
+// 离屏渲染测试（ADR 0041）：只在测试构建里编译
+#[cfg(test)]
+mod render_tests;
 mod reward;
+mod savepage;
+mod textbox;
 mod theme_watch;
 mod toolbar_page;
 mod update;
+mod widgets;
 mod window;
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
@@ -61,10 +68,66 @@ pub struct Panel {
     pub(super) config_dirty: bool,
     /// 「我要反馈」的通知（SYS-8）：文案；存在期间面板底部显示一条带「打开反馈页」按钮的提示。
     pub(super) toast: Option<String>,
+    /// 路径模板的输入态（OUT-2 / ADR 0041）：`Some` 时面板吃掉字符与方向键。
+    pub(super) editing: Option<textbox::Editing>,
+    /// 「变量说明」浮层是否展开（OUT-2 / ADR 0041）。
+    pub(super) var_help: bool,
+    /// 快捷键页当前的子页签（ADR 0041）：纯视图状态，不落配置。
+    pub(super) hotkey_group: controls::KeyGroup,
+    /// 子页签悬停项（与行悬停分开：页签不是行）。
+    pub(super) tab_hover: Option<controls::KeyGroup>,
+    /// 展开中的下拉列表（OUT-2 / ADR 0041）：`格式` / `如果文件存在`。
+    /// 有值时点击**只**用于选选项或关闭，绝不穿透到其它控件。
+    pub(super) open_select: Option<controls::RowId>,
+    /// 下拉列表的悬停项下标。
+    pub(super) select_hover: Option<usize>,
+    /// 预览用的时间样本（OUT-2 / ADR 0041）：**只在打开面板时采样一次**，不随重绘重算——
+    /// 鼠标一动就重绘，若每次都取新时间，`$ss$` / `$ts$` 会让预览文字乱跳。
+    /// 代价：改完模板后 `$ts$` 的预览仍是打开面板那一刻的值（真实保存时才取当前时间）；
+    /// 预览的用途是「看模板拼出来长什么样」，不需要逐秒精确。
+    pub(super) preview_time: crate::output::quick::TimeParts,
     /// 上屏缓冲（DIB section）。
     pub(super) dib_bmp: HBITMAP,
     pub(super) mem_dc: HDC,
     pub(super) dib_bits: *mut u8,
+}
+
+impl Panel {
+    /// 当前页的布局（带快捷键页当前子页签）：绘制、命中、高度全走这一份，
+    /// 避免「画的是 A 组、点的是 B 组」这种错位。
+    pub(super) fn layout(&self) -> controls::Layout {
+        controls::layout_with(self.section, self.scale, self.hotkey_group)
+    }
+
+    /// 测试用：不依赖窗口的 `Panel`（离屏渲染与控件逻辑的用例共用）。
+    #[cfg(test)]
+    pub(super) fn for_test(section: Section, theme: theme::Theme) -> Panel {
+        Panel {
+            palette: theme::palette(theme),
+            config: crate::settings::Config::default(),
+            scale: 1.0,
+            hover: None,
+            nav_hover: None,
+            section,
+            capturing: None,
+            hwnd: HWND::default(),
+            main_hwnd: HWND::default(),
+            ime_old: HIMC(std::ptr::null_mut()),
+            autostart_on: false,
+            config_dirty: false,
+            toast: None,
+            editing: None,
+            var_help: false,
+            hotkey_group: controls::KeyGroup::Capture,
+            tab_hover: None,
+            open_select: None,
+            select_hover: None,
+            preview_time: crate::output::quick::TimeParts::now(),
+            dib_bmp: Default::default(),
+            mem_dc: Default::default(),
+            dib_bits: std::ptr::null_mut(),
+        }
+    }
 }
 
 impl Drop for Panel {
@@ -98,6 +161,13 @@ pub fn run(app: &mut App) {
         autostart_on: crate::app::autostart::autostart_enabled(),
         config_dirty: false,
         toast: None,
+        editing: None,
+        var_help: false,
+        hotkey_group: controls::KeyGroup::Capture,
+        tab_hover: None,
+        open_select: None,
+        select_hover: None,
+        preview_time: crate::output::quick::TimeParts::now(),
         dib_bmp: Default::default(),
         mem_dc: Default::default(),
         dib_bits: std::ptr::null_mut(),
@@ -148,6 +218,9 @@ pub fn run(app: &mut App) {
     // 兜底：恢复输入法 + 最后同步一次配置（如改完直接关窗）
     let mut panel = panel;
     panel.restore_ime();
+    // 关面板时正在编辑路径模板（OUT-2 / ADR 0041）：先把输入内容写回工作副本，
+    // 否则用户敲完直接按 Alt+F4 关窗会丢掉刚改的模板
+    textbox::commit(&mut panel);
     app.apply_panel_config(&panel.config);
     unsafe {
         let _ = DestroyWindow(hwnd);
@@ -187,6 +260,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     let Some(panel) = window::app_from(hwnd) else {
         return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
     };
+    // 路径模板输入态（OUT-2 / ADR 0041）：字符 / 编辑键 / IME 消息全给输入框，
+    // 命中即重绘并吞掉（不再进热键捕获或默认处理）
+    if editkeys::on_message(panel, msg, wparam.0, lparam.0) {
+        window::repaint_full(hwnd, panel);
+        return LRESULT(0);
+    }
     match msg {
         WM_PAINT => {
             let mut ps = PAINTSTRUCT::default();
@@ -214,9 +293,25 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
             let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
             let (nav_hover, hover) = panel.hover_at(x, y);
-            if nav_hover != panel.nav_hover || hover != panel.hover {
+            // 下拉列表展开时行悬停无意义（改跟选项悬停，否则下层行会跟着亮）。
+            // **比较也要用过滤后的值**：否则面板里存的是 `None`、每次比到 `Some(..)` 都算「变了」，
+            // 鼠标在行上滑一次就全量重绘一次。
+            let hover = if panel.open_select.is_some() { None } else { hover };
+            let tab_hover = panel.hit_tab(x, y);
+            let select_hover = if panel.open_select.is_some() {
+                savepage::list_hover_at(panel, &panel.layout(), x, y)
+            } else {
+                None
+            };
+            if nav_hover != panel.nav_hover
+                || hover != panel.hover
+                || tab_hover != panel.tab_hover
+                || select_hover != panel.select_hover
+            {
                 panel.nav_hover = nav_hover;
                 panel.hover = hover;
+                panel.tab_hover = tab_hover;
+                panel.select_hover = select_hover;
                 window::repaint_full(hwnd, panel);
             }
             LRESULT(0)
@@ -247,6 +342,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             LRESULT(1) // XBUTTON 已处理，TRUE 阻止继续分发
         }
         WM_SYSKEYDOWN | WM_KEYDOWN => {
+            // 下拉列表展开时：Esc 收起（其余键不处理，交默认）
+            if panel.open_select.is_some() && (wparam.0 as u32) == 0x1B {
+                panel.open_select = None;
+                panel.select_hover = None;
+                window::repaint_full(hwnd, panel);
+                return LRESULT(0);
+            }
             // WM_SYSKEYDOWN：Alt 组合键走系统键路径，同样进入热键捕获（否则 Alt+A 捕获不到）
             if panel.capturing.is_some() {
                 panel.on_key(wparam.0 as u32);

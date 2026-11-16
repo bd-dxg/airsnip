@@ -46,6 +46,8 @@ icon_table! {
     Longshot => "toolbar/longshot.svg",
     Copy => "toolbar/copy.svg",
     Save => "toolbar/save.svg",
+    // OUT-2 / ADR 0041：快速保存（箭头落入托盘，与「保存（另存为）」的磁盘图标区分开）
+    QuickSave => "toolbar/quick_save.svg",
     Bold => "toolbar/bold.svg",
     Italic => "toolbar/italic.svg",
     Minus => "toolbar/minus.svg",

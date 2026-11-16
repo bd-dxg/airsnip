@@ -110,9 +110,14 @@ impl super::super::Overlay {
         let Some(sel) = self.selection else {
             return;
         };
-        // 预填文件名按设置里的命名模板；格式用上次保存的（首次为 PNG）
+        // 预填文件名：优先用快速保存的文件名模板（OUT-2 / ADR 0041，只取文件名段），
+        // 没配置时回退到遗留命名模板；格式用上次保存的（首次为 PNG）
         let ext = self.save.last_ext.as_deref().unwrap_or("png").to_string();
-        let name = format!("{}.{ext}", output::base_name(self.save.name_style));
+        let name = match self.save.name_template.as_deref() {
+            Some(t) => crate::output::quick::file_stem(t, &crate::output::quick::TimeParts::now()),
+            None => output::base_name(self.save.name_style),
+        };
+        let name = format!("{name}.{ext}");
         // 初始目录：上次保存过的目录优先（OUT-2），否则默认截图目录；
         // 都不存在时传 None，交给系统自己记住的位置。
         let dir = self

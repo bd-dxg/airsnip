@@ -11,13 +11,16 @@ use windows::Win32::System::Com::{
 };
 use windows::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
 use windows::Win32::UI::Shell::{
-    FOS_FORCEFILESYSTEM, FOS_OVERWRITEPROMPT, FOS_PATHMUSTEXIST, IFileSaveDialog, IShellItem,
-    SHCreateItemFromParsingName, SIGDN_FILESYSPATH,
+    FOS_FORCEFILESYSTEM, FOS_OVERWRITEPROMPT, FOS_PATHMUSTEXIST, FOS_PICKFOLDERS, IFileOpenDialog, IFileSaveDialog,
+    IShellItem, SHCreateItemFromParsingName, SIGDN_FILESYSPATH,
 };
 use windows::core::{GUID, HSTRING, PCWSTR, w};
 
 /// `CLSID_FileSaveDialog`。
 const CLSID_FILE_SAVE_DIALOG: GUID = GUID::from_u128(0xC0B4E2F3_BA21_4773_8DBA_335EC946EB8B);
+
+/// `CLSID_FileOpenDialog`（目录选择器，ADR 0041）。
+const CLSID_FILE_OPEN_DIALOG: GUID = GUID::from_u128(0xDC1C5A9C_E88A_4DDE_A5A1_60F82A20AEF7);
 
 /// COM 初始化守卫：`RPC_E_CHANGED_MODE` 表示线程已按其它模式初始化，不重复反初始化。
 struct ComGuard {
@@ -105,6 +108,26 @@ pub fn pick_save_file(owner: HWND, dir: Option<&Path>, name: &str, default_ext: 
         let n = wide(name);
         let _ = dlg.SetFileName(PCWSTR(n.as_ptr()));
         if let Some(item) = dir.and_then(shell_item) {
+            let _ = dlg.SetFolder(&item);
+        }
+        dlg.Show(Some(owner)).ok()?;
+        item_path(&dlg.GetResult().ok()?)
+    }
+}
+
+/// 目录选择器（OUT-2 / ADR 0041）：返回用户选定的目录；取消或失败返回 `None`。
+/// 用 `IFileOpenDialog` + `FOS_PICKFOLDERS`（Win7 起才有文件夹模式）。
+/// 已知边界：`FOS_PICKFOLDERS` 支持选文件夹本身，但不能像旧版那样「选文件夹里的某一项」，
+/// 对本需求（选保存目录）足够。
+pub fn pick_folder(owner: HWND, initial: Option<&Path>) -> Option<PathBuf> {
+    let _com = ComGuard::new();
+    unsafe {
+        let dlg: IFileOpenDialog = CoCreateInstance(&CLSID_FILE_OPEN_DIALOG, None, CLSCTX_ALL).ok()?;
+        if let Ok(opts) = dlg.GetOptions() {
+            let _ = dlg.SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+        }
+        let _ = dlg.SetTitle(w!("选择保存文件夹"));
+        if let Some(item) = initial.and_then(shell_item) {
             let _ = dlg.SetFolder(&item);
         }
         dlg.Show(Some(owner)).ok()?;

@@ -37,6 +37,15 @@ pub struct HotkeyConfig {
     /// 长截图键虚拟键码（截图覆盖层内按下，默认 S = 0x53；无修饰键，与工具切换键同组；
     /// `UNBOUND` = 未启用）
     pub longshot_key: u32,
+    /// 保存（另存为对话框）键（OUT-2 / ADR 0041，默认 Ctrl+S）：覆盖层内按下，弹原生另存为对话框。
+    /// 此前硬编码在 `overlay::wndproc`，0.13 起与其它键一同可配。
+    pub save_key: u32,
+    /// 保存键修饰键位标志（默认 `MOD_CTRL_BIT`）。
+    pub save_modifiers: u32,
+    /// 快速保存键（OUT-2 / ADR 0041，默认 Alt+S）：按模板路径直接落盘，不弹对话框。
+    pub quick_save_key: u32,
+    /// 快速保存键修饰键位标志（默认 `MOD_ALT_BIT`）。
+    pub quick_save_modifiers: u32,
     /// 全屏键（覆盖层内按下，默认 F = 0x46；无修饰键，ADR 0040）：把光标所在显示器的
     /// 整屏（含任务栏）作为选区，且只在当前没有选区时生效；`UNBOUND` = 未启用。
     pub fullscreen_key: u32,
@@ -60,6 +69,10 @@ impl Default for HotkeyConfig {
             border_key: 0x72,            // Ctrl+F3
             border_modifiers: 2,         // MOD_CONTROL
             longshot_key: 0x53,          // S
+            save_key: 0x53,              // Ctrl+S
+            save_modifiers: 2,           // MOD_CONTROL
+            quick_save_key: 0x53,        // Alt+S
+            quick_save_modifiers: 1,     // MOD_ALT
             fullscreen_key: 0x46,        // F
             last_area_key: 0x52,         // R
             legacy_modifiers: 0,
@@ -250,5 +263,22 @@ mod tests {
             assert!(!others.contains(&vk), "快速选区键 {vk:#x} 与其它按键重复：{others:?}");
         }
         assert_ne!(h.fullscreen_key, h.last_area_key, "两个快速选区键不应相同");
+    }
+
+    /// 保存 / 快速保存（ADR 0041）：同一虚拟键 S、靠修饰键区分（Ctrl / Alt），
+    /// 与无修饰的「长截图 S」互不冲突（三者分属不同消息路径与不同判定）。
+    #[test]
+    fn save_keys_share_vk_s_but_differ_by_modifiers() {
+        let h = HotkeyConfig::default();
+        assert_eq!((h.save_key, h.save_modifiers), (0x53, MOD_CTRL_BIT), "保存默认 Ctrl+S");
+        assert_eq!(
+            (h.quick_save_key, h.quick_save_modifiers),
+            (0x53, MOD_ALT_BIT),
+            "快速保存默认 Alt+S"
+        );
+        assert_ne!(h.save_modifiers, h.quick_save_modifiers, "两个键不能是同一组合");
+        assert_eq!(key_name(h.save_key, h.save_modifiers), "Ctrl+S");
+        assert_eq!(key_name(h.quick_save_key, h.quick_save_modifiers), "Alt+S");
+        assert_eq!(h.longshot_key, 0x53, "长截图键仍是无修饰的 S");
     }
 }

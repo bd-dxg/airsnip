@@ -17,6 +17,7 @@ use super::keycap::Zone;
 
 impl Panel {
     /// 命中：导航区 → (分类, None)；内容区 → (None, 行下标)。
+    /// 子页签不算行（它有自己的悬停状态 `tab_hover`）。
     pub(super) fn hover_at(&self, x: i32, y: i32) -> (Option<Section>, Option<usize>) {
         // 通知覆盖区域不报行悬停：否则通知下面的行会跟着亮（SYS-8）
         if super::copyinfo::is_over(self, x, y) {
@@ -29,9 +30,17 @@ impl Panel {
         (None, self.hit_line(x, y).map(|(i, _, _)| i))
     }
 
+    /// 命中的子页签（ADR 0041）：快捷键页顶部那一排。
+    pub(super) fn hit_tab(&self, x: i32, y: i32) -> Option<super::controls::KeyGroup> {
+        self.layout().items.iter().find_map(|it| match it {
+            Item::Tab(t) if in_rect(t.rect, x, y) => Some(t.group),
+            _ => None,
+        })
+    }
+
     /// 命中当前节的内容行：返回 (行下标, 控件 ID, 行内区域)。
     fn hit_line(&self, x: i32, y: i32) -> Option<(usize, RowId, Zone)> {
-        let layout = super::controls::layout(self.section, self.scale);
+        let layout = self.layout();
         let mut idx = 0usize;
         for item in &layout.items {
             if let Item::Row(r) = item {
@@ -72,6 +81,18 @@ impl Panel {
         if super::copyinfo::on_click(self, x, y) {
             return;
         }
+        // 下拉列表展开时：点击**只**用于选项或关闭，不穿透到其它控件（OUT-2 / ADR 0041）
+        if self.open_select.is_some() {
+            super::savepage::on_list_click(self, x, y);
+            return;
+        }
+        // 变量说明浮层展开时：任意点击先收起它，并吞掉这次点击（防止误触后面的控件）
+        if self.var_help {
+            self.var_help = false;
+            return;
+        }
+        // 文本编辑中：任何点击先提交（输入框外点击 = 结束编辑）
+        super::textbox::commit(self);
         // 左侧导航：切换分类
         if x < self.nav_w() {
             let nh = (NAV_H as f32 * self.scale) as i32;
@@ -79,6 +100,17 @@ impl Panel {
                 self.section = sec;
                 self.capturing = None;
                 self.hover = None;
+            }
+            return;
+        }
+        // 快捷键页的子页签（ADR 0041）：切换当前组；切组先结束捕获，否则捕获态会挂在
+        // 一个即将消失的键帽行上。
+        if let Some(group) = self.hit_tab(x, y) {
+            if self.hotkey_group != group {
+                self.end_capture();
+                self.hotkey_group = group;
+                self.hover = None;
+                self.tab_hover = Some(group);
             }
             return;
         }
@@ -102,6 +134,10 @@ impl Panel {
         // 一键恢复默认（SYS-2，快捷键页底部）
         if id == RowId::ResetKeys {
             self.reset_keys();
+            return;
+        }
+        // 「保存」页的新控件（OUT-2 / ADR 0041）：开关 / 下拉 / 预览 / 按钮 / 变量说明
+        if super::savepage::on_click(self, id) {
             return;
         }
         match id {
@@ -185,19 +221,6 @@ impl Panel {
                 self.end_capture();
                 self.config.control_snap = !self.config.control_snap;
                 self.config_dirty = true;
-            }
-            // 文件名模板（OUT-2）：保存对话框预填文件名用
-            RowId::NameDateTime => {
-                self.end_capture();
-                self.config.name_style = crate::settings::NameStyle::DateTime;
-            }
-            RowId::NameTimestamp => {
-                self.end_capture();
-                self.config.name_style = crate::settings::NameStyle::Timestamp;
-            }
-            RowId::NameDate => {
-                self.end_capture();
-                self.config.name_style = crate::settings::NameStyle::Date;
             }
             // 项目主页（关于页）：用浏览器打开
             RowId::Repo => {

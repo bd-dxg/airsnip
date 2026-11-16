@@ -93,6 +93,12 @@ impl App {
             // 贴图编辑模式选区锁定（ADR 0028），快速选区天然不生效；照配置传即可
             fullscreen_key: self.config.hotkey.fullscreen_key,
             last_area_key: self.config.hotkey.last_area_key,
+            // 保存 / 快速保存键（ADR 0041）：贴图编辑模式选区锁定，两者内部均不生效，照配置传即可
+            save_key: self.config.hotkey.save_key,
+            save_modifiers: self.config.hotkey.save_modifiers,
+            quick_save_key: self.config.hotkey.quick_save_key,
+            quick_save_modifiers: self.config.hotkey.quick_save_modifiers,
+            quick_save: self.config.quick_save.clone(),
             visibility: self.config.toolbar.clone(),
             confirm_cancel: self.config.confirm_cancel,
             pin_key: self.config.hotkey.pin_key,
@@ -106,6 +112,8 @@ impl App {
             colors: self.config.swatch_colors,
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,
+                // 贴图「另存为」也用同一份模板预填文件名（OUT-2 / ADR 0041）
+                name_template: Some(self.config.quick_save.name_or_default()),
                 last_ext: self.config.last_save_ext.clone(),
                 last_dir: self.config.last_save_dir.clone(),
             },

@@ -51,7 +51,7 @@ const EDIT_SLOTS: [ToolbarSlot; 4] = [
     ToolbarSlot::TextRow,
 ];
 const OUTPUT_SLOTS: [ToolbarSlot; 2] = [ToolbarSlot::Pin, ToolbarSlot::Longshot];
-const FILE_SLOTS: [ToolbarSlot; 2] = [ToolbarSlot::Copy, ToolbarSlot::Save];
+const FILE_SLOTS: [ToolbarSlot; 3] = [ToolbarSlot::Copy, ToolbarSlot::Save, ToolbarSlot::QuickSave];
 
 impl ToolbarGroup {
     pub const ALL: [ToolbarGroup; 5] = [
@@ -112,6 +112,8 @@ pub enum ToolbarSlot {
     Longshot,
     Copy,
     Save,
+    /// 快速保存（OUT-2 / ADR 0041）：按模板路径直接落盘。
+    QuickSave,
 }
 
 impl ToolbarSlot {
@@ -149,6 +151,8 @@ impl ToolbarSlot {
             ToolbarSlot::Longshot => "output.longshot",
             ToolbarSlot::Copy => "file.copy",
             ToolbarSlot::Save => "file.save",
+            // ADR 0041 新元素：新增的稳定键，旧配置里不会出现（自动可见）
+            ToolbarSlot::QuickSave => "file.quicksave",
         }
     }
 
@@ -181,6 +185,8 @@ impl ToolbarSlot {
             ToolbarSlot::Longshot => "长截图",
             ToolbarSlot::Copy => "复制",
             ToolbarSlot::Save => "保存",
+            // 5 列单元格只放得下 3 个字，「快速保存」会撑破标签区（有量宽单测守门），故用短名
+            ToolbarSlot::QuickSave => "快存",
         }
     }
 
@@ -191,7 +197,7 @@ impl ToolbarSlot {
             ToolbarSlot::Color(_) => ToolbarGroup::Colors,
             ToolbarSlot::Fill | ToolbarSlot::Undo | ToolbarSlot::Redo | ToolbarSlot::TextRow => ToolbarGroup::Edit,
             ToolbarSlot::Pin | ToolbarSlot::Longshot => ToolbarGroup::Output,
-            ToolbarSlot::Copy | ToolbarSlot::Save => ToolbarGroup::File,
+            ToolbarSlot::Copy | ToolbarSlot::Save | ToolbarSlot::QuickSave => ToolbarGroup::File,
         }
     }
 }

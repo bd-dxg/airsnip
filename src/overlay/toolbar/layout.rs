@@ -69,6 +69,7 @@ fn item_of(slot: ToolbarSlot, ui: Ui) -> Option<(Action, i32, i32)> {
         ToolbarSlot::Longshot => (Action::Longshot, btn, btn),
         ToolbarSlot::Copy => (Action::Copy, btn, btn),
         ToolbarSlot::Save => (Action::Save, btn, btn),
+        ToolbarSlot::QuickSave => (Action::QuickSave, btn, btn),
         ToolbarSlot::TextRow => return None,
     })
 }

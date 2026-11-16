@@ -3,12 +3,14 @@
 
 pub mod hotkey;
 pub mod panel;
+pub mod quick_save;
 pub mod toolbar;
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub use hotkey::{HotkeyConfig, ToolKeys, UNBOUND};
+pub use quick_save::{ExistingFile, QuickSaveConfig, SaveFormat};
 pub use toolbar::{GroupState, ToolbarConfig, ToolbarGroup, ToolbarSlot};
 
 /// 双击选区空白的动作（ADR 0036，设置面板「通用」页）。
@@ -135,6 +137,8 @@ impl UiScale {
 pub struct SavePrefs {
     /// 保存文件名模板。
     pub name_style: NameStyle,
+    /// 快速保存的文件名模板（OUT-2 / ADR 0041）：另存为对话框的文件名预填也从它取。
+    pub name_template: Option<String>,
     /// 上次保存的格式扩展名（下次对话框默认选中该格式）。
     pub last_ext: Option<String>,
     /// 上次保存的目录（下次对话框初始位置；目录已不存在时回退默认目录）。
@@ -175,8 +179,11 @@ pub struct Config {
     pub confirm_cancel: bool,
     /// 工具栏可见性（EDT-16，issue #143）：纯视觉偏好，只存隐藏集合、默认全可见。
     pub toolbar: ToolbarConfig,
-    /// 保存文件名模板（OUT-2）。
+    /// 保存文件名模板（OUT-2）。**0.13 起只为老配置迁移服务**（`quick_save.template` 的
+    /// 缺省来源）；另存为对话框的文件名预填也仍按它的等价模板取值。
     pub name_style: NameStyle,
+    /// 快速保存（OUT-2 / ADR 0041）：路径模板、格式、同名策略与通知 / 剪贴板开关。
+    pub quick_save: QuickSaveConfig,
     /// 上次保存用的格式扩展名（OUT-2，运行时记忆）：保存对话框下次默认选中该格式。
     pub last_save_ext: Option<String>,
     /// 上次保存的目录（OUT-2，运行时记忆）：保存对话框下次的初始位置。
@@ -208,6 +215,7 @@ impl Default for Config {
             confirm_cancel: true,
             toolbar: ToolbarConfig::default(),
             name_style: NameStyle::DateTime,
+            quick_save: QuickSaveConfig::default(),
             last_save_ext: None,
             last_save_dir: None,
             longshot_max_height: 30000,
@@ -241,6 +249,8 @@ impl Config {
             h.screenshot_modifiers = h.legacy_modifiers;
             h.pin_modifiers = h.legacy_modifiers;
         }
+        // 迁移：0.13 开发期的整条路径模板 → 目录 + 文件名（ADR 0041）
+        cfg.quick_save.migrate();
         cfg
     }
 

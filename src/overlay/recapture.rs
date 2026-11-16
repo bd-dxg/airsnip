@@ -80,9 +80,14 @@ impl Overlay {
         self.tip = tip::Tip::default();
         self.cancel_arm = None;
         self.cancel_hint = None;
+        // 快速保存的提示与在途标记（ADR 0041）：重新截图后不应残留上一轮的提示
+        self.quick.toast = None;
+        self.quick.pending = false;
+        self.quick.saved_path = None;
         unsafe {
             let _ = KillTimer(Some(self.hwnd), tip::TIMER_ID);
             let _ = KillTimer(Some(self.hwnd), cancel_hint::TIMER_ID);
+            let _ = KillTimer(Some(self.hwnd), super::toast::TIMER_ID);
             // 候选过渡（ADR 0039）：`snap` 已重建，定时器一并停（否则会空跑一帧）
             let _ = KillTimer(Some(self.hwnd), super::snap::ANIM_TIMER_ID);
         }

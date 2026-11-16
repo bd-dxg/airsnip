@@ -8,6 +8,7 @@ mod keyrows;
 mod keys;
 mod layout;
 mod scale;
+mod sections;
 pub use keyrows::*;
 pub use keys::*;
 pub use layout::*;
@@ -16,8 +17,8 @@ pub use scale::*;
 /// 窗口内容总宽（横向桌面窗口，宽高比约 1.4）。
 pub const W: i32 = 720;
 /// 窗口内容总高：固定值，避免切换分类时窗口上下跳动。
-/// 最高的分类「快捷键」采用三列叠放排布（标签在上、键帽在下，见 `layout`），
-/// 行数受控，必须落在此高内，否则窗口会被内容撑高、变成近正方形（桌面窗口应保持宽 > 高）。
+/// 最高的分类「工具栏」内容高 482；快捷键页在 ADR 0041 拆成三个子页签后回到 388，
+/// 因此面板高回到 520（ADR 0040 为 20 项铺开时的 524 已不需要）。
 pub const H: i32 = 520;
 /// 左侧导航栏宽。
 pub const NAV_W: i32 = 124;
@@ -49,15 +50,20 @@ pub const TOGGLE_W: i32 = 36;
 pub const CLEAR_BTN: i32 = 30;
 /// 键帽与清除按钮之间的间隔。
 pub const CLEAR_GAP: i32 = 8;
-/// 快捷键单元格高度（ADR 0040）：三列排布后格内改成「标签在上、键帽在下」叠放，
-/// 比标准行高 10px；18 项三列共 6 行，内容高仍落在固定高内。
-pub const KEY_CELL_H: i32 = 56;
-/// 叠放单元格里键帽的高度（比标准键帽矮，给上排标签让位）。
-pub const KEYCAP_H: i32 = 26;
-/// 叠放单元格里标签的顶部内边距。
-pub const KEY_LABEL_TOP: i32 = 5;
-/// 叠放单元格里键帽底部的留白。
-pub const KEYCAP_BOTTOM: i32 = 5;
+/// 快捷键单元格高度（ADR 0041 回归「标签左、键帽右」并排后与标准行同高）。
+pub const KEY_ROW_H: i32 = 46;
+/// 键帽框宽度：能装下 `Shift+F1` 与「按下新键…」即可（右侧固定宽，标签区才稳定）。
+pub const KEYCAP_W: i32 = 100;
+/// 键帽框高度（与清除按钮同高，视觉上齐平）。
+pub const KEYCAP_H: i32 = 30;
+/// 路径模板输入框的高度（OUT-2 / ADR 0041）：比行矮，留出上下呼吸空间。
+pub const INPUT_H: i32 = 34;
+/// 快捷键页子页签行的高度（ADR 0041）。
+pub const TAB_H: i32 = 32;
+/// 子页签左右内边距（文字之外）。
+pub const TAB_PAD: i32 = 16;
+/// 分段控件内选中胶囊相对单元格的内缩：有内缩 + 外框才看得出「这是一排可点的按钮」。
+pub const TAB_INSET: i32 = 3;
 
 /// 分类页。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -108,6 +114,10 @@ pub enum RowId {
     HotkeyPin,
     /// 再次截图键（覆盖层内按下，默认 Shift+F1，issue #118）：当前画面作为新底图重新框选。
     HotkeyRecapture,
+    /// 保存（另存为对话框）键（OUT-2 / ADR 0041，默认 Ctrl+S）：覆盖层内带修饰键的组合键。
+    HotkeySave,
+    /// 快速保存键（OUT-2 / ADR 0041，默认 Alt+S）：按模板路径直接落盘。
+    HotkeyQuickSave,
     /// 贴图边框切换热键（M2b，默认 Ctrl+F3）。
     HotkeyBorder,
     /// 长截图键（覆盖层内按下，默认 S）。
@@ -163,12 +173,7 @@ pub enum RowId {
     UiScale175,
     /// 界面缩放：固定 200%。
     UiScale200,
-    /// 文件名模板：日期 + 时间（OUT-2）。
-    NameDateTime,
-    /// 文件名模板：Unix 毫秒时间戳（OUT-2）。
-    NameTimestamp,
-    /// 文件名模板：仅日期（OUT-2）。
-    NameDate,
+    // 旧版只有一个「整条路径模板」输入框（`QuickTemplate`），ADR 0041 改成目录 + 文件名。
     /// 关于（版本与许可）。
     About,
     /// 项目地址（关于页，点击用浏览器打开）。
@@ -184,6 +189,25 @@ pub enum RowId {
     AutoCheckUpdate,
     /// 支持项目（关于页：文案 + 微信赞赏码）。
     Reward,
+    /// 快速保存后显示通知（OUT-2 / ADR 0041，默认开）。
+    SaveNotify,
+    /// 快速保存同时复制到剪贴板（OUT-2 / ADR 0041，默认关）。
+    SaveCopy,
+    /// 保存目录（OUT-2 / ADR 0041）：只读一行，点击 = 用资源管理器选目录。
+    QuickDir,
+    /// 文件名模板（OUT-2 / ADR 0041）：自绘输入框（不含扩展名，可含变量）。
+    QuickName,
+    /// 保存格式下拉（PNG / JPEG / WebP）。
+    QuickFormat,
+    /// 同名策略下拉（自动加序号 / 覆盖）。
+    QuickOnExist,
+    /// 模板预览（只读）：渲染后的真实路径。**纯展示、不可点**（ADR 0041 修订：
+    /// 曾经点它会弹资源管理器，误点代价大且不是用户预期）。
+    QuickPreview,
+    /// 打开模板目录。
+    SaveOpenFolder,
+    /// 变量说明（展开浮层，列出所有可用变量）。
+    VarHelp,
     /// 工具栏元素显隐开关（EDT-16）：一个元素一行（多列排布）。
     Toolbar(ToolbarSlot),
     /// 工具栏组头（EDT-16）：整组全显 / 全隐，部分可见时半选。
@@ -211,13 +235,26 @@ pub enum RowKind {
     Button,
     /// 支持项目块：高行（左侧文案 + 右侧赞赏码）。
     Qr,
+    /// 文本输入框（OUT-2 / ADR 0041：「保存」页的路径模板）。
+    TextInput,
+    /// 下拉选择（OUT-2 / ADR 0041）：点开一层真列表（`Panel::open_select`），点选项生效。
+    Select,
 }
 
-/// 布局项：导航项或内容行。
+/// 布局项：导航项、快捷键页的子页签、或内容行。
 #[derive(Debug)]
 pub enum Item {
     Nav(Section),
+    /// 快捷键页的子页签（ADR 0041）：点它切换当前组的键帽行。
+    Tab(Tab),
     Row(Row),
+}
+
+/// 一个子页签的几何与归属（绘制 / 命中共用）。
+#[derive(Debug)]
+pub struct Tab {
+    pub group: KeyGroup,
+    pub rect: SelRect,
 }
 
 /// 单行控件几何与标识。
@@ -244,6 +281,9 @@ pub struct Row {
 pub struct Layout {
     pub items: Vec<Item>,
     pub height: i32,
+    /// 快捷键页子页签的整条分段控件外框（`None` = 当前页没有页签）。
+    /// 绘制时先画这层容器，再画各项。
+    pub tab_bar: Option<SelRect>,
 }
 
 #[cfg(test)]
@@ -302,31 +342,88 @@ mod tests {
         }
     }
 
-    /// 快捷键页三列叠放（ADR 0040）：同一视觉行最多三项，总行数受控
-    /// （18 项 / 3 列 = 6 行，远比两列 9 行矮，窗口不会被撜高）。
+    /// 快捷键页两列（ADR 0041：标签左、键帽右）：同一视觉行最多两项，且每组只排自己的项。
     #[test]
-    fn hotkeys_use_three_columns() {
+    fn hotkeys_use_two_columns() {
         for s in [1.0f32, 1.5, 2.0] {
-            let l = layout(Section::Hotkeys, s);
-            let mut ys: std::collections::BTreeMap<i32, usize> = std::collections::BTreeMap::new();
-            let mut n = 0;
-            for item in &l.items {
-                let Item::Row(r) = item else { continue };
-                if r.kind == RowKind::KeyCap {
-                    n += 1;
-                    *ys.entry(r.rect.y).or_insert(0) += 1;
+            for g in KeyGroup::ALL {
+                let l = layout_with(Section::Hotkeys, s, g);
+                let mut ys: std::collections::BTreeMap<i32, usize> = std::collections::BTreeMap::new();
+                let mut n = 0;
+                for item in &l.items {
+                    let Item::Row(r) = item else { continue };
+                    if r.kind == RowKind::KeyCap {
+                        n += 1;
+                        *ys.entry(r.rect.y).or_insert(0) += 1;
+                    }
                 }
+                let want = rows_of(g).count();
+                assert_eq!(n, want, "@{s}x {:?} 组应有 {want} 项", g);
+                assert!(ys.values().all(|&c| c <= 2), "@{s}x {:?} 同一行不应超过两项", g);
+                assert!(ys.len() <= 6, "@{s}x {:?} 行数应受控：{}", g, ys.len());
             }
-            assert_eq!(n, KEY_ROWS.len(), "@{s}x 快捷键键帽行应仍为 {} 项", KEY_ROWS.len());
-            assert!(ys.values().all(|&c| c <= 3), "@{s}x 同一行不应超过三项");
-            assert!(ys.len() <= 6, "@{s}x 三列排布后行数应受控：{}", ys.len());
         }
     }
 
-    /// 叠放单元格的标签与键帽不得重叠，且标签在真实字宽下放得进单元格（ADR 0040）。
-    /// 三列后格宽从 286 降到 188，标签一旦写长就会压到键帽上。
+    /// 子页签（ADR 0041）：三个页签同在一行、互不重叠、向右递增，且都落在内容区内。
     #[test]
-    fn keycap_cells_stack_label_above_caps() {
+    fn tabs_sit_in_one_row() {
+        for s in [1.0f32, 1.5, 2.0] {
+            let l = layout(Section::Hotkeys, s);
+            let tabs: Vec<&Tab> = l
+                .items
+                .iter()
+                .filter_map(|it| match it {
+                    Item::Tab(t) => Some(t),
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(tabs.len(), KeyGroup::ALL.len(), "@{s}x 应有三个子页签");
+            assert_eq!(
+                tabs.iter().map(|t| t.group).collect::<Vec<_>>(),
+                KeyGroup::ALL.to_vec(),
+                "@{s}x 页签顺序应与 ALL 一致"
+            );
+            let h = (TAB_H as f32 * s) as i32;
+            assert!(tabs.iter().all(|t| t.rect.h == h), "@{s}x 页签高度应一致");
+            assert!(tabs.iter().all(|t| t.rect.y == tabs[0].rect.y), "@{s}x 应同一行");
+            for w in tabs.windows(2) {
+                assert!(
+                    w[0].rect.x + w[0].rect.w <= w[1].rect.x,
+                    "@{s}x 页签重叠：{:?} / {:?}",
+                    w[0].rect,
+                    w[1].rect
+                );
+            }
+            let nav_w = (NAV_W as f32 * s) as i32;
+            let right = (W as f32 * s) as i32;
+            for t in &tabs {
+                assert!(t.rect.x >= nav_w, "@{s}x 页签应在导航栏右侧：{:?}", t.rect);
+                assert!(t.rect.x + t.rect.w <= right, "@{s}x 页签越出面板：{:?}", t.rect);
+            }
+        }
+    }
+
+    /// 分组完整性（ADR 0041）：三组合集必须恰好盖住 `KEY_ROWS`，且一行只属一组。
+    /// 漏归组的新行会在面板上直接消失（改表忘填 group 的静默错）。
+    #[test]
+    fn every_key_row_belongs_to_exactly_one_group() {
+        let mut seen: Vec<RowId> = Vec::new();
+        for g in KeyGroup::ALL {
+            for spec in rows_of(g) {
+                assert!(!seen.contains(&spec.id), "{:?} 同时出现在多个组里", spec.id);
+                seen.push(spec.id);
+            }
+        }
+        assert_eq!(seen.len(), KEY_ROWS.len(), "有行没归组（或归了不存在的组）");
+        for spec in &KEY_ROWS {
+            assert!(seen.contains(&spec.id), "{:?} 没有被任何子页签收录", spec.id);
+        }
+    }
+
+    /// 快捷键单元格（ADR 0041）：标签左、键帽右，两者同一行；键帽框垂直居中且不高出单元格。
+    #[test]
+    fn keycap_label_and_caps_side_by_side() {
         for scale in [1.0f32, 1.25, 1.5, 2.0] {
             let l = layout(Section::Hotkeys, scale);
             for item in &l.items {
@@ -334,18 +431,49 @@ mod tests {
                 if r.kind != RowKind::KeyCap {
                     continue;
                 }
-                // 标签行在键帽行之上（不重叠）
-                let cap_top = r.control.y;
-                assert!(cap_top > r.rect.y, "{:?} @{scale}x 键帽应位于标签下方", r.id);
-                // 真实字宽：标签不超过单元格可用宽度
-                let spec = crate::render::text::FontSpec::new(16.0 * scale);
-                let (label_w, _) = crate::render::text::measure(r.label, &spec);
-                let avail = (r.rect.w - r.label_pad * 2) as f32;
+                let top_gap = r.control.y - r.rect.y;
+                let bottom_gap = r.rect.y + r.rect.h - (r.control.y + r.control.h);
+                assert!((top_gap - bottom_gap).abs() <= 2, "{:?} @{scale}x 键帽应垂直居中", r.id);
+                assert!(r.control.h <= r.rect.h, "{:?} @{scale}x 键帽不应高出单元格", r.id);
+                assert!(r.control.x > r.rect.x, "{:?} @{scale}x 键帽应在标签右侧", r.id);
+            }
+        }
+    }
+
+    /// 底部两行（全部恢复默认 / 提示）**固定在右下角**（ADR 0041）：
+    /// 三组行数不同（2/3/6 行），但两行的 y 必须完全一致——否则切页签时会上下跳。
+    #[test]
+    fn hotkey_footer_is_pinned_across_groups() {
+        for s in [1.0f32, 1.25, 1.5, 2.0] {
+            let mut seen: Vec<((i32, i32), (i32, i32))> = Vec::new();
+            for g in KeyGroup::ALL {
+                let l = layout_with(Section::Hotkeys, s, g);
+                let mut btn = None;
+                let mut hint = None;
+                for item in &l.items {
+                    let Item::Row(r) = item else { continue };
+                    match r.id {
+                        RowId::ResetKeys => btn = Some((r.rect.x, r.rect.y)),
+                        RowId::Widenote => hint = Some((r.rect.x, r.rect.y)),
+                        _ => {}
+                    }
+                }
+                let (btn, hint) = (btn.expect("应有全部恢复默认"), hint.expect("应有提示行"));
+                // 右对齐到内容区右缘、贴底部（两行 + 下边距）
+                assert_eq!(btn.0 + 0, hint.0, "@{s}x 两行应同一左缘（整行行）");
+                assert_eq!(btn.0, (NAV_W as f32 * s) as i32, "@{s}x 底块应占整行宽度");
+                let row_h = (ROW_H as f32 * s) as i32;
+                assert_eq!(hint.1, btn.1 + row_h, "@{s}x 提示行应在按钮下方一行");
+                let bottom = hint.1 + row_h;
+                assert!(bottom <= (H as f32 * s) as i32, "@{s}x 底块超出面板：{bottom}");
                 assert!(
-                    label_w <= avail,
-                    "@{scale}x「{}」宽 {label_w}px，超过单元格可用宽度 {avail}px",
-                    r.label
+                    bottom >= (H as f32 * s) as i32 - (PAD as f32 * s) as i32 - 2,
+                    "@{s}x 底块应贴底而不是跟着内容走：{bottom}"
                 );
+                seen.push((btn, hint));
+            }
+            for w in seen.windows(2) {
+                assert_eq!(w[0], w[1], "@{s}x 切组后底块位置变了：{:?} vs {:?}", w[0], w[1]);
             }
         }
     }
@@ -372,29 +500,24 @@ mod tests {
                     RowId::WindowSnap,
                     RowId::ControlSnap,
                 ],
-                Section::Hotkeys => vec![
-                    RowId::HotkeyShot,
-                    RowId::HotkeyRecapture,
-                    RowId::HotkeyPin,
-                    RowId::HotkeyBorder,
-                    RowId::HotkeyLongshot,
-                    RowId::HotkeyFullscreen,
-                    RowId::HotkeyLastArea,
-                    RowId::ToolMove,
-                    RowId::ToolRect,
-                    RowId::ToolArrow,
-                    RowId::ToolText,
-                    RowId::ToolBlur,
-                    RowId::ToolHighlight,
-                    RowId::ToolGlow,
-                    RowId::ToolNumber,
-                    RowId::ToolLine,
-                    RowId::ToolEllipse,
-                    RowId::ToolFreehand,
-                    RowId::ResetKeys,
-                    RowId::Widenote,
+                Section::Hotkeys => {
+                    // 子页签当前组（默认「截图」）的键帽 + 底部两行
+                    let mut want: Vec<RowId> = rows_of(KeyGroup::Capture).map(|s| s.id).collect();
+                    want.push(RowId::ResetKeys);
+                    want.push(RowId::Widenote);
+                    want
+                }
+                Section::Save => vec![
+                    RowId::SaveNotify,
+                    RowId::SaveCopy,
+                    RowId::QuickDir,
+                    RowId::QuickName,
+                    RowId::QuickFormat,
+                    RowId::QuickOnExist,
+                    RowId::QuickPreview,
+                    RowId::SaveOpenFolder,
+                    RowId::VarHelp,
                 ],
-                Section::Save => vec![RowId::NameDateTime, RowId::NameTimestamp, RowId::NameDate],
                 Section::Appearance => vec![
                     RowId::ThemeFollow,
                     RowId::ThemeLight,
@@ -428,41 +551,56 @@ mod tests {
         }
     }
 
-    /// 快捷键行的清除按钮（SYS-2）：只有键帽行有，且不压键帽、不越出控件区。
+    /// 快捷键行（ADR 0041：标签左、键帽右）：键帽框固定宽、清除按钮在框外侧不压键帽；
+    /// 标签在框左且不与键帽重叠。
     #[test]
     fn keycap_rows_have_clear_button() {
-        let l = layout(Section::Hotkeys, 1.0);
-        let mut caps = 0;
-        for item in &l.items {
-            let Item::Row(r) = item else { continue };
-            if r.kind == RowKind::KeyCap {
-                caps += 1;
-                assert!(r.clear.w > 0 && r.clear.h > 0, "{:?} 应有清除按钮", r.id);
-                assert!(r.clear.x > r.control.x, "{:?} 清除按钮应在键帽右侧", r.id);
-                assert!(
-                    r.clear.x + r.clear.w <= r.control.x + r.control.w,
-                    "{:?} 清除按钮不应越出控件区",
-                    r.id
-                );
-            } else {
-                assert_eq!(r.clear.w, 0, "{:?} 非键帽行不应有清除按钮", r.id);
+        for scale in [1.0f32, 1.5, 2.0] {
+            for g in KeyGroup::ALL {
+                let l = layout_with(Section::Hotkeys, scale, g);
+                for item in &l.items {
+                    let Item::Row(r) = item else { continue };
+                    if r.kind == RowKind::KeyCap {
+                        assert!(r.clear.w > 0 && r.clear.h > 0, "{:?} 应有清除按钮", r.id);
+                        assert!(
+                            r.control.x + r.control.w <= r.clear.x,
+                            "@{scale}x {:?} 键帽框不应与清除按钮重叠",
+                            r.id
+                        );
+                        assert!(r.clear.x + r.clear.w <= r.rect.x + r.rect.w, "清除按钮越出单元格");
+                        // 标签区：从单元格左内缘到键帽框左缘，必须放得下真实字宽
+                        let spec = crate::render::text::FontSpec::new(16.0 * scale);
+                        let (lw, _) = crate::render::text::measure(r.label, &spec);
+                        let avail = (r.control.x - (r.rect.x + r.label_pad)) as f32;
+                        assert!(lw <= avail, "@{scale}x「{}」宽 {lw}px，超过标签区 {avail}px", r.label);
+                    } else {
+                        assert_eq!(r.clear.w, 0, "{:?} 非键帽行不应有清除按钮", r.id);
+                    }
+                }
             }
         }
-        assert_eq!(caps, KEY_ROWS.len(), "快捷键页应有 {} 个键帽行", KEY_ROWS.len());
     }
 
-    /// 任意缩放下键帽仍有足够宽度显示组合键文本。
+    /// 任意缩放下键帽框都能装下最长的组合键文本（`Shift+F1`）与捕获提示（`按下新键…`）。
     #[test]
     fn keycap_keeps_usable_width_at_any_scale() {
         for scale in [1.0f32, 1.25, 1.5, 2.0] {
+            let spec = crate::render::text::FontSpec::new(16.0 * scale);
+            let need = ["Shift+F1", "按下新键…"]
+                .iter()
+                .map(|t| crate::render::text::measure(t, &spec).0)
+                .fold(0.0f32, f32::max);
             let l = layout(Section::Hotkeys, scale);
             for item in &l.items {
                 if let Item::Row(r) = item
                     && r.kind == RowKind::KeyCap
                 {
-                    let gap = (CLEAR_GAP as f32 * scale) as i32;
-                    let kb_w = r.control.w - r.clear.w - gap;
-                    assert!(kb_w > 100, "{:?} 在 {scale}x 下键帽过窄：{kb_w}", r.id);
+                    assert!(
+                        r.control.w as f32 >= need + 8.0 * scale,
+                        "{:?} 在 {scale}x 下键帽过窄：{} < {need}",
+                        r.id,
+                        r.control.w
+                    );
                     assert!(r.clear.w >= 20, "{:?} 在 {scale}x 下清除按钮过小", r.id);
                 }
             }

@@ -136,7 +136,7 @@ impl Panel {
     /// 界面缩放变大后可能超出屏幕，夹回工作区内。
     pub(super) fn fit_window(&mut self, hwnd: HWND) {
         let w = self.content_w();
-        let ch = controls::layout(self.section, self.scale).height;
+        let ch = self.layout().height;
         unsafe {
             if !self.dib_bmp.0.is_null() {
                 let _ = windows::Win32::Graphics::Gdi::DeleteObject(self.dib_bmp.into());
@@ -188,7 +188,7 @@ pub(super) fn app_from(hwnd: HWND) -> Option<&'static mut Panel> {
 
 /// 全量重绘：tiny-skia 绘制 → RGBA→BGRA → BitBlt 上屏。
 pub(super) fn repaint_full(hwnd: HWND, panel: &Panel) {
-    let layout = controls::layout(panel.section, panel.scale);
+    let layout = panel.layout();
     let pw = (W as f32 * panel.scale) as u32;
     let Some(mut pixmap) = Pixmap::new(pw, layout.height as u32) else {
         return;

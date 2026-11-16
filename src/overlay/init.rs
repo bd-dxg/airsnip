@@ -23,6 +23,11 @@ impl Overlay {
             longshot_key,
             fullscreen_key,
             last_area_key,
+            save_key,
+            save_modifiers,
+            quick_save_key,
+            quick_save_modifiers,
+            quick_save,
             visibility,
             confirm_cancel,
             pin_key,
@@ -38,6 +43,9 @@ impl Overlay {
             pin_edit,
         } = opts;
         let (w, h) = (capture.width, capture.height);
+        // 上一轮快速保存的回包可能因覆盖层提前关闭而没人取走（OUT-2 / ADR 0041）：
+        // 开新一张截图时清掉静态槽，避免陈旧结果与本次保存混在一起。
+        super::quicksave::discard_reply();
         let Some(size) = tiny_skia::IntSize::from_wh(w, h) else {
             return Err("虚拟屏幕尺寸非法".into());
         };
@@ -118,6 +126,17 @@ impl Overlay {
             longshot_key,
             fullscreen_key,
             last_area_key,
+            // 保存 / 快速保存（OUT-2 / ADR 0041）：键位、配置、在途与提示收在一个字段里
+            quick: super::quicksave::QuickSave {
+                save_key,
+                save_modifiers,
+                key: quick_save_key,
+                modifiers: quick_save_modifiers,
+                config: quick_save,
+                pending: false,
+                saved_path: None,
+                toast: None,
+            },
             visibility,
             confirm_cancel,
             cancel_arm: None,

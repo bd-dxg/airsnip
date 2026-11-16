@@ -28,6 +28,7 @@ mod objedit;
 mod opts;
 mod pick;
 mod pin_edit;
+mod quicksave;
 mod quickselect;
 mod recapture;
 mod selection;
@@ -37,6 +38,7 @@ mod snap;
 pub(crate) mod surface;
 mod text_edit_state;
 mod textinput;
+mod toast;
 pub(crate) mod toolbar;
 pub(crate) mod ui;
 mod uia;
@@ -108,6 +110,8 @@ pub struct Overlay {
     fullscreen_key: u32,
     /// 上次区域键（ADR 0040，默认 R）：复用本次运行的上次框选区域，仅无选区时生效。
     last_area_key: u32,
+    /// 保存 / 快速保存的运行时状态（OUT-2 / ADR 0041）：键位、配置、在途与轻提示。
+    quick: quicksave::QuickSave,
     /// 工具栏可见性（EDT-16）：逐元素显隐；隐藏的工具 / 按钮不绘制，但快捷键与输出行为照旧。
     visibility: crate::settings::ToolbarConfig,
     /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。

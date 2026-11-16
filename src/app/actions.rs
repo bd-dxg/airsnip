@@ -34,6 +34,13 @@ impl App {
             // 快速选区键（ADR 0040，默认 F / R）：全屏 / 上次区域
             fullscreen_key: self.config.hotkey.fullscreen_key,
             last_area_key: self.config.hotkey.last_area_key,
+            // 保存 / 快速保存键（OUT-2 / ADR 0041，默认 Ctrl+S / Alt+S）
+            save_key: self.config.hotkey.save_key,
+            save_modifiers: self.config.hotkey.save_modifiers,
+            quick_save_key: self.config.hotkey.quick_save_key,
+            quick_save_modifiers: self.config.hotkey.quick_save_modifiers,
+            // 快速保存配置（模板 / 格式 / 同名策略 / 通知与剪贴板开关）
+            quick_save: self.config.quick_save.clone(),
             visibility: self.config.toolbar.clone(),
             confirm_cancel: self.config.confirm_cancel,
             // 贴图键（覆盖层内贴选区，默认 F3；ADR 0019：可改为鼠标键）
@@ -50,6 +57,8 @@ impl App {
             // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名与初始位置
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,
+                // 另存为对话框的文件名也从快速保存模板预填（OUT-2 / ADR 0041）
+                name_template: Some(self.config.quick_save.name_or_default()),
                 last_ext: self.config.last_save_ext.clone(),
                 last_dir: self.config.last_save_dir.clone(),
             },

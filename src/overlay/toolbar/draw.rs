@@ -113,6 +113,8 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
             Action::Longshot => draw_icon(pixmap, Icon::Longshot, *r, p.icon),
             Action::Copy => draw_icon(pixmap, Icon::Copy, *r, p.icon),
             Action::Save => draw_icon(pixmap, Icon::Save, *r, p.icon),
+            // OUT-2 / ADR 0041：快速保存（箭头落入托盘，与磁盘图标区分）
+            Action::QuickSave => draw_icon(pixmap, Icon::QuickSave, *r, p.icon),
             // EDT-4：字体族按钮（展开/收起字体列表），名字过长截断加省略号
             Action::FontPick => {
                 if state.font_open {

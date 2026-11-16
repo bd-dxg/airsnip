@@ -7,13 +7,12 @@
 
 use tiny_skia::Pixmap;
 
-use crate::overlay::geometry::SelRect;
 use crate::overlay::shape::{rounded_rect, rounded_rect_outline};
 use crate::render::icon::{self, Icon};
 use crate::render::text as dwrite;
 
 use super::Panel;
-use super::controls::{CLEAR_GAP, KEY_ROWS, Row, RowId, spec};
+use super::controls::{KEY_ROWS, Row, RowId, spec};
 use super::draw::draw_text;
 
 /// 行内命中区域：键帽区与清除按钮区分开，点击行为不同。
@@ -41,14 +40,8 @@ pub(super) fn draw(pixmap: &mut Pixmap, panel: &Panel, row: &Row, hovered: bool)
     let capturing = panel.capturing == Some(row.id);
     let bound = row_key(panel, row.id) != crate::settings::UNBOUND;
     let c = &row.control;
-    let gap = (CLEAR_GAP as f32 * s) as i32;
-    // 键帽与控件区同高（叠放单元格的下面那一行），只把右侧让给清除按钮
-    let kb = SelRect {
-        x: c.x,
-        y: c.y,
-        w: c.w - row.clear.w - gap,
-        h: c.h,
-    };
+    // ADR 0041：键帽框就是 `control`（两者不再重叠，清除按钮在框外侧）
+    let kb = *c;
     let fill = if capturing {
         p.accent_soft
     } else {

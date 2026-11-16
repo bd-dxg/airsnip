@@ -17,6 +17,16 @@ pub struct OverlayOpts {
     pub fullscreen_key: u32,
     /// 上次区域键（ADR 0040，默认 R）：复用上次框选区域。
     pub last_area_key: u32,
+    /// 保存（另存为对话框）键（OUT-2 / ADR 0041，默认 Ctrl+S）。
+    pub save_key: u32,
+    /// 保存键修饰键位标志。
+    pub save_modifiers: u32,
+    /// 快速保存键（OUT-2 / ADR 0041，默认 Alt+S）。
+    pub quick_save_key: u32,
+    /// 快速保存键修饰键位标志。
+    pub quick_save_modifiers: u32,
+    /// 快速保存配置（OUT-2 / ADR 0041）：模板 / 格式 / 同名策略 / 通知与剪贴板开关。
+    pub quick_save: crate::settings::QuickSaveConfig,
     /// 工具栏可见性（EDT-16，issue #143）：逐元素显隐，纯视觉偏好（隐藏 ≠ 禁用）。
     pub visibility: crate::settings::ToolbarConfig,
     /// 有未保存标注时取消先确认（OUT-3 / ADR 0027，设置项，issue #120）。

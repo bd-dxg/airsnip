@@ -12,7 +12,10 @@ use crate::overlay::Overlay;
 use crate::overlay::geometry::{SelRect, expand_rect, union_rect};
 use crate::overlay::objedit;
 use crate::overlay::pick::pick_radius;
-use crate::settings::{UNBOUND, hotkey::vk_name};
+use crate::settings::{
+    UNBOUND,
+    hotkey::{key_name, vk_name},
+};
 
 use super::Action;
 
@@ -80,9 +83,15 @@ fn action_label(action: Action) -> Option<&'static str> {
         Action::Pin => Some("贴图"),
         Action::Longshot => Some("长截图"),
         Action::Copy => Some("复制"),
-        Action::Save => Some("保存"),
+        Action::Save => Some("保存（另存为）"),
+        Action::QuickSave => Some("快速保存"),
         _ => None,
     }
+}
+
+/// 组合键的显示名：`UNBOUND` → `None`（气泡里就不带快捷键那一段）。
+fn combo_key_name(vk: u32, mods: u32) -> Option<String> {
+    (vk != UNBOUND).then(|| key_name(vk, mods))
 }
 
 /// 控件是否显示悬停提示：`None` 表示不提示（第二行字体控件，ADR 0020）。
@@ -231,7 +240,10 @@ impl Overlay {
             Action::Undo => return Some("Ctrl+Z".into()),
             Action::Redo => return Some("Ctrl+Y".into()),
             Action::Copy => return Some("Ctrl+C".into()),
-            Action::Save => return Some("Ctrl+S".into()),
+            // 保存 / 快速保存的键已可配（ADR 0041）：提示必须读配置，
+            // 写死的 `Ctrl+S` 在用户改键后就是谎报。`UNBOUND` 时不出后缀。
+            Action::Save => return combo_key_name(self.quick.save_key, self.quick.save_modifiers),
+            Action::QuickSave => return combo_key_name(self.quick.key, self.quick.modifiers),
             _ => return None,
         };
         (vk != UNBOUND).then(|| vk_name(vk))
@@ -328,6 +340,9 @@ mod tests {
             Action::Longshot,
             Action::Copy,
             Action::Save,
+            // OUT-2 / ADR 0041：「快存」也得有提示（否则鼠标悬停什么也不说，
+            // 用户只能从设置页才知道 `Alt+S` 存在）
+            Action::QuickSave,
             Action::Color(0),
         ]);
         for a in first_row {
@@ -349,6 +364,20 @@ mod tests {
     fn compose_appends_hotkey() {
         assert_eq!(compose("矩形工具", Some("1")), "矩形工具 · 1");
         assert_eq!(compose("填充", None), "填充");
+    }
+
+    /// 保存 / 快速保存的快捷键后缀（OUT-2 / ADR 0041）：读配置的键 + 修饰键，
+    /// `UNBOUND` 时不出后缀（否则气泡里会出现「未设置」）。
+    /// 映射本身（`Action::Save → self.quick.save_key`）靠代码直接读字段，这里只钉住渲染规则。
+    #[test]
+    fn save_suffixes_read_key_and_modifiers() {
+        use crate::settings::hotkey::{MOD_ALT_BIT, MOD_CTRL_BIT};
+        assert_eq!(combo_key_name(0x53, MOD_CTRL_BIT).as_deref(), Some("Ctrl+S"));
+        assert_eq!(combo_key_name(0x53, MOD_ALT_BIT).as_deref(), Some("Alt+S"));
+        assert_eq!(combo_key_name(UNBOUND, 0), None, "清空后不应出现后缀");
+        assert_eq!(compose("快速保存", combo_key_name(UNBOUND, 0).as_deref()), "快速保存");
+        assert_eq!(action_label(Action::QuickSave), Some("快速保存"));
+        assert!(hintable(Action::QuickSave), "快存按钮必须有悬浮提示");
     }
 
     /// 色块气泡：第一段为十六进制色值（与色块颜色一致），第二段为「双击改色」；

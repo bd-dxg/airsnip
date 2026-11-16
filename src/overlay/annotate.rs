@@ -154,8 +154,10 @@ impl super::Overlay {
             toolbar::Action::Longshot => return self.on_longshot(),
             // OUT-1：复制按钮 → 复制到剪贴板并关闭覆盖层（不复绘）
             toolbar::Action::Copy => return self.on_copy(),
-            // OUT-2：保存按钮 → 按配置保存并关闭覆盖层（不复绘）
+            // OUT-2：保存按钮 → 弹另存为对话框并关闭覆盖层（不复绘）
             toolbar::Action::Save => return self.on_save(),
+            // OUT-2 / ADR 0041：快速保存按钮 → 按模板路径直接落盘（不复绘）
+            toolbar::Action::QuickSave => return self.on_quick_save(),
             // EDT-4：文本第二行（字体族 / 粗斜体 / 字号）见 `font`
             toolbar::Action::FontPick
             | toolbar::Action::ToggleBold
@@ -204,6 +206,12 @@ impl super::Overlay {
     /// 二次确认是**同一键连按两次**（非模态提示，见 `cancel_hint`，issue #120），不再弹系统确认框；
     /// 设置里关掉「连按两次退出」后，有标注也直接退出。
     pub(super) fn on_cancel(&mut self, key: u32) {
+        // 快速保存在途（OUT-2 / ADR 0041）：编码在后台线程里跑，这时关掉覆盖层只会让
+        // 文件照旧落盘、回包没人接——「我取消了，但文件还是出现了」。直接不响应，
+        // 几十毫秒后就出结果（成功 → 提示或直接收尾；失败 → 错误框）。
+        if self.quick.pending {
+            return;
+        }
         match cancel_step(
             self.color_panel_open(),
             self.font_list_open(),

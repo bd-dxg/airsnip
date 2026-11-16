@@ -23,14 +23,30 @@ pub(super) fn draw_link(pixmap: &mut Pixmap, panel: &Panel, row: &super::control
     draw_trailing(pixmap, panel, row, text, panel.palette.accent);
 }
 
-/// 按钮行（`RowKind::Button`）的按钮文案与状态：「恢复默认」为固定文案，其余随更新状态变。
+/// 按钮行（`RowKind::Button`）的按钮文案与状态：固定文案的行走 `fixed_button_text`，
+/// 其余只有「版本更新」一行，随更新状态变。
 fn button_state(row: &super::controls::Row) -> (String, bool, bool) {
-    if row.id == RowId::ResetKeys {
-        return ("恢复默认".to_string(), true, false);
+    if let Some(t) = fixed_button_text(row.id) {
+        return (t.to_string(), true, false);
     }
     let phase = state::phase();
     let (text, enabled) = state::button(&phase);
     (text, enabled, state::button_emphasis(&phase))
+}
+
+/// 按钮行的固定文案（不随更新状态变）：快捷键页的「恢复默认」与「保存」页的
+/// 三个按钮（OUT-2 / ADR 0041）。
+///
+/// 注意：这里必须列出**所有**固定文案的按钮行。漏一项会让那个按钮落到
+/// 「随更新状态变」分支，显示成「检查更新 / 已是最新」之类——快捷键页的
+/// 「恢复默认」就这样被误显示成「已是最新」过一次。
+pub(super) fn fixed_button_text(id: RowId) -> Option<&'static str> {
+    match id {
+        RowId::ResetKeys => Some("全部恢复默认"),
+        RowId::SaveOpenFolder => Some("打开文件夹"),
+        RowId::VarHelp => Some("变量说明"),
+        _ => None,
+    }
 }
 
 /// 「关于」行右侧的反馈按钮文案（SYS-8）。
@@ -154,6 +170,32 @@ fn draw_trailing(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row,
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::panel::controls::{Item, Section, layout};
+
+    /// 固定文案的按钮不能被更新状态盖掉（回归：快捷键页「恢复默认」曾显示成「已是最新」）。
+    #[test]
+    fn fixed_buttons_keep_their_text() {
+        let mut seen = Vec::new();
+        for sec in Section::ALL {
+            for item in layout(sec, 1.0).items {
+                let Item::Row(r) = item else { continue };
+                if r.kind != super::super::controls::RowKind::Button {
+                    continue;
+                }
+                let text = button_state(&r).0;
+                match r.id {
+                    RowId::ResetKeys => assert_eq!(text, "全部恢复默认", "快捷键页按钮文案错位"),
+                    RowId::SaveOpenFolder => assert_eq!(text, "打开文件夹"),
+                    RowId::VarHelp => assert_eq!(text, "变量说明"),
+                    // 「版本更新」随状态变，允许是任何非空文案
+                    _ => assert!(!text.is_empty(), "{:?} 按钮文案为空", r.id),
+                }
+                seen.push(r.id);
+            }
+        }
+        assert!(seen.contains(&RowId::ResetKeys), "快捷键页应有「全部恢复默认」按钮");
+        assert!(seen.contains(&RowId::SaveOpenFolder), "保存页应有「打开文件夹」按钮");
+    }
 
     /// 按钮矩形不占满行（否则会出现「按钮外一点就触发」）：右对齐、比行矮、比控件区窄。
     #[test]
