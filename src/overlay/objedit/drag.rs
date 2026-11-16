@@ -156,6 +156,7 @@ impl super::super::Overlay {
         };
         let color = self.current_color();
         let filled = self.filled;
+        let line = self.line_style;
         let before = self.selected_clip();
         self.doc.begin();
         let changed = {
@@ -172,6 +173,12 @@ impl super::super::Overlay {
                 && *f != filled
             {
                 *f = filled;
+                changed = true;
+            }
+            // 线型（EDT-18）：只给有可见描边的对象换——填充矩形 / 文本 / 效果类不描边，
+            // 改了也看不见，还会白白进一次撤销
+            if super::super::annotate::has_stroke(&obj.kind) && obj.style.line != line {
+                obj.style.line = line;
                 changed = true;
             }
             changed

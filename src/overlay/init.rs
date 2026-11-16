@@ -40,6 +40,7 @@ impl Overlay {
             colors,
             save,
             ui_scale,
+            line_style,
             pin_edit,
         } = opts;
         let (w, h) = (capture.width, capture.height);
@@ -146,6 +147,8 @@ impl Overlay {
             color_index: start_color, // 默认红色；被隐藏时落到第一个可见色块
             colors,
             line_width: editor::DEFAULT_LINE_WIDTH,
+            line_style,
+            line_menu: None,
             blur_radius: editor::DEFAULT_BLUR_RADIUS,
             font_size: editor::DEFAULT_FONT_SIZE,
             number_font_size: editor::DEFAULT_NUMBER_FONT_SIZE,

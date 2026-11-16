@@ -7,6 +7,7 @@ mod corner;
 mod curve;
 mod document;
 mod hit;
+mod linestyle;
 mod number;
 pub(crate) mod palette;
 pub(crate) mod text;
@@ -18,6 +19,7 @@ pub use curve::{
     split_left, t_at_arc_from_end,
 };
 pub use document::{Document, MAX_HISTORY};
+pub use linestyle::{LineStyle, line_store, line_take};
 pub use number::{next_number, number_arrow_start};
 pub use palette::{DEFAULT_COLORS, SWATCH_COUNT, colors_store, colors_take};
 pub use tool::{
@@ -61,18 +63,29 @@ impl Bounds {
     }
 }
 
-/// 对象样式（EDT-7：颜色、线宽）。
+/// 对象样式（EDT-7：颜色、线宽；EDT-18：线型）。
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Style {
     /// 描边/填充色（RGBA，alpha 支持矩形透明度，EDT-1）。
     pub color: [u8; 4],
     /// 线宽（物理像素）。
     pub width: f32,
+    /// 线型（EDT-18）：只对有描边的对象有意义。
+    pub line: LineStyle,
 }
 
 impl Style {
     pub fn new(color: [u8; 4], width: f32) -> Self {
-        Self { color, width }
+        Self {
+            color,
+            width,
+            line: LineStyle::Solid,
+        }
+    }
+
+    /// 换线型（构造当前样式时用，保留颜色与线宽）。
+    pub fn with_line(self, line: LineStyle) -> Self {
+        Self { line, ..self }
     }
 }
 

@@ -2,9 +2,9 @@
 //! 描边类基础图形渲染（EDT-13/14/15）：直线、椭圆、手绘自由笔画。
 //! 从 `render::mod` 拆出，控制单文件规模；共同点是都用 `Stroke` 描边（椭圆可填充）。
 
-use tiny_skia::{FillRule, LineCap, LineJoin, PathBuilder, Pixmap, Rect, Stroke, Transform};
+use tiny_skia::{FillRule, LineCap, LineJoin, PathBuilder, Pixmap, Rect, Transform};
 
-use super::paint_of;
+use super::{paint_of, stroke_of};
 use crate::editor::{Point, Style};
 
 /// EDT-13 直线：无箭头的纯线段，端点用圆端帽（避免描边超出端点的生硬截断）。
@@ -20,11 +20,7 @@ pub(super) fn draw_line(pixmap: &mut Pixmap, from: Point, to: Point, style: &Sty
         return;
     };
     let paint = paint_of(style.color);
-    let stroke = Stroke {
-        width: style.width,
-        line_cap: LineCap::Round,
-        ..Default::default()
-    };
+    let stroke = stroke_of(style, LineCap::Round, LineJoin::Round);
     pixmap.stroke_path(&path, &paint, &stroke, tr, None);
 }
 
@@ -48,10 +44,7 @@ pub(super) fn draw_ellipse(pixmap: &mut Pixmap, a: Point, b: Point, filled: bool
         pixmap.fill_path(&path, &paint, FillRule::Winding, tr, None);
         return;
     }
-    let stroke = Stroke {
-        width: style.width,
-        ..Default::default()
-    };
+    let stroke = stroke_of(style, LineCap::Butt, LineJoin::Miter);
     pixmap.stroke_path(&path, &paint, &stroke, tr, None);
 }
 
@@ -89,11 +82,6 @@ pub(super) fn draw_freehand(pixmap: &mut Pixmap, pts: &[Point], style: &Style, t
         return;
     };
     let paint = paint_of(style.color);
-    let stroke = Stroke {
-        width: style.width,
-        line_cap: LineCap::Round,
-        line_join: LineJoin::Round,
-        ..Default::default()
-    };
+    let stroke = stroke_of(style, LineCap::Round, LineJoin::Round);
     pixmap.stroke_path(&path, &paint, &stroke, tr, None);
 }

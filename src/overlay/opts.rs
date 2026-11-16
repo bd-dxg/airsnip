@@ -45,6 +45,8 @@ pub struct OverlayOpts {
     pub control_snap: bool,
     /// 色块颜色（EDT-7，issue #73 后续）：来自配置，缺省为 `DEFAULT_COLORS`。
     pub colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
+    /// 当前线型（EDT-18，issue #168）：来自配置，缺省为实线。
+    pub line_style: crate::editor::LineStyle,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
     pub save: crate::settings::SavePrefs,
     /// 界面缩放（CAP-5）。

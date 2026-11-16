@@ -68,6 +68,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             overlay.update_snap(x, y);
             // 字体面板悬停高亮（EDT-4）
             overlay.on_font_list_hover(x, y);
+            // 线型下拉悬停高亮（EDT-18）
+            overlay.on_line_menu_hover(x, y);
             // 光标随鼠标位置变：手柄→方向光标、对象/曲线控制柄→移动光标（否则系统只在
             // 位置变化且命中窗口时发 WM_SETCURSOR，拖动手柄途中光标不会更新）
             overlay.apply_cursor_at(x, y);
@@ -109,6 +111,7 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             // 控件级捕捉（ADR 0039）：候选窗口上有控件层级时，滚轮改为爬层级
             if !overlay.on_font_list_wheel(ox, oy, delta)
                 && !overlay.over_color_panel(ox, oy)
+                && !overlay.over_line_menu(ox, oy)
                 && !overlay.climb_snap(delta > 0)
             {
                 overlay.on_mouse_wheel(sx, sy, delta, ctrl_down());

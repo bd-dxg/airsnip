@@ -63,6 +63,9 @@ fn item_of(slot: ToolbarSlot, ui: Ui) -> Option<(Action, i32, i32)> {
         ToolbarSlot::Tool(t) => (Action::Tool(t), btn, btn),
         ToolbarSlot::Color(i) => (Action::Color(i), sw, sw),
         ToolbarSlot::Fill => (Action::ToggleFill, btn, btn),
+        // EDT-18：线型格子占两个按钮宽（52 基准像素）——要能在里面看出「段 + 隙」，
+        // 单格 26px 画虚线时只剩一两个周期，三档区分不开
+        ToolbarSlot::Line => (Action::LineMenu, btn * 2, btn),
         ToolbarSlot::Undo => (Action::Undo, btn, btn),
         ToolbarSlot::Redo => (Action::Redo, btn, btn),
         ToolbarSlot::Pin => (Action::Pin, btn, btn),

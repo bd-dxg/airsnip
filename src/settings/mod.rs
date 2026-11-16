@@ -175,6 +175,8 @@ pub struct Config {
     pub ui_scale: UiScale,
     /// 工具栏 5 个色块的颜色（EDT-7，issue #73 后续）：双击色块取色改写，缺省为预设色。
     pub swatch_colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
+    /// 当前线型（EDT-18，issue #168）：跨截图记忆，缺省为实线。
+    pub line_style: crate::editor::LineStyle,
     /// 有未保存标注时取消截图先弹确认框（OUT-3 / ADR 0027，默认开）；关闭后直接退出（issue #120）。
     pub confirm_cancel: bool,
     /// 工具栏可见性（EDT-16，issue #143）：纯视觉偏好，只存隐藏集合、默认全可见。
@@ -212,6 +214,7 @@ impl Default for Config {
             pin_border: true,
             ui_scale: UiScale::Auto,
             swatch_colors: crate::editor::DEFAULT_COLORS,
+            line_style: crate::editor::LineStyle::Solid,
             confirm_cancel: true,
             toolbar: ToolbarConfig::default(),
             name_style: NameStyle::DateTime,
@@ -504,5 +507,24 @@ mod tests {
         };
         let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
         assert_eq!(back.swatch_colors, colors);
+    }
+
+    /// 线型（EDT-18）：默认实线；旧配置（缺字段）回退实线；新值能往返。
+    #[test]
+    fn line_style_defaults_and_roundtrip() {
+        assert_eq!(Config::default().line_style, crate::editor::LineStyle::Solid);
+
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.line_style, crate::editor::LineStyle::Solid, "旧配置应回退实线");
+
+        let cfg = Config {
+            line_style: crate::editor::LineStyle::DashDot,
+            ..Default::default()
+        };
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.line_style, crate::editor::LineStyle::DashDot);
+        // 配置值是稳定的小写串（改名等于改配置格式，ADR 0042）
+        assert!(text.contains("line_style = \"dash_dot\""), "{text}");
     }
 }

@@ -110,6 +110,7 @@ impl App {
             window_snap: self.config.window_snap,
             control_snap: self.config.control_snap,
             colors: self.config.swatch_colors,
+            line_style: self.config.line_style,
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,
                 // 贴图「另存为」也用同一份模板预填文件名（OUT-2 / ADR 0041）

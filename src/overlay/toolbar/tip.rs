@@ -78,6 +78,7 @@ fn action_label(action: Action) -> Option<&'static str> {
         // ADR 0036：移动态（指针）——拖选区内空白平移选区，拖对象移动该对象
         Action::Move => Some("移动选区"),
         Action::ToggleFill => Some("填充"),
+        Action::LineMenu => Some("线型"),
         Action::Undo => Some("撤销"),
         Action::Redo => Some("重做"),
         Action::Pin => Some("贴图"),
@@ -334,6 +335,8 @@ mod tests {
     fn labels_cover_first_row_only() {
         let first_row = Tool::ALL.map(Action::Tool).into_iter().chain([
             Action::ToggleFill,
+            // EDT-18：线型格子也得有提示（否则用户只能从下拉猜这一格是什么）
+            Action::LineMenu,
             Action::Undo,
             Action::Redo,
             Action::Pin,

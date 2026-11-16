@@ -2,7 +2,12 @@
 //! 标注状态与输出（EDT-1/2/7、OUT-1/2/3）：当前工具与样式、工具栏动作、
 //! 撤销/重做、复制与保存。
 
+mod cancel;
 mod output;
+pub(super) mod style;
+
+use cancel::{CancelStep, cancel_step};
+pub(in crate::overlay) use style::{fill_enabled_for, has_stroke, line_enabled_for};
 
 // 画布 ↔ 屏幕坐标换算：贴图 / 长截图 / 快速选区（ADR 0040）共用一份
 pub(in crate::overlay) use output::to_screen;
@@ -11,18 +16,7 @@ use windows::Win32::Foundation::{LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_CLOSE};
 
 use super::{geometry::SelRect, toolbar};
-use crate::editor::{Kind, Object, Style};
-
-/// 填充开关是否可用（EDT-1/EDT-14）：当前工具能画可填充形状，
-/// **或**选中对象本身就是矩形 / 椭圆（此时按钮仍需能改它的填充）。
-/// 绘制置灰（`toolbar::draw` 读 `State::fill_enabled`）与动作副作用（`apply_action`）
-/// 共用这一判据，不会各自演化。
-///
-/// 参数是 `Option<Tool>`：移动态（ADR 0036）没有待用工具，此时只看选中对象。
-fn fill_enabled_for(tool: Option<crate::editor::Tool>, selected: Option<&Object>) -> bool {
-    matches!(tool, Some(crate::editor::Tool::Rect | crate::editor::Tool::Ellipse))
-        || selected.is_some_and(|o| matches!(o.kind, Kind::Rect { .. } | Kind::Ellipse { .. }))
-}
+use crate::editor::Style;
 
 impl super::Overlay {
     /// 当前标注色（EDT-7）：当前色块的颜色。
@@ -30,9 +24,9 @@ impl super::Overlay {
         self.colors[self.color_index]
     }
 
-    /// 当前样式（EDT-7：颜色 + 连续线宽）。
+    /// 当前样式（EDT-7：颜色 + 连续线宽；EDT-18：线型）。
     pub(super) fn current_style(&self) -> Style {
-        Style::new(self.current_color(), self.line_width)
+        Style::new(self.current_color(), self.line_width).with_line(self.line_style)
     }
 
     /// 按下键对应的标注工具（工具切换键配置，M3）。
@@ -109,6 +103,9 @@ impl super::Overlay {
             colors: self.colors,
             filled: self.filled,
             fill_enabled: fill_enabled_for(tool, self.selected_object()),
+            line_style: self.line_style,
+            line_enabled: line_enabled_for(tool, self.selected_object(), self.filled),
+            line_open: self.line_menu.is_some(),
             can_undo: self.doc.can_undo(),
             can_redo: self.doc.can_redo(),
             font_family,
@@ -125,9 +122,13 @@ impl super::Overlay {
     /// 隐藏的工具仍可由工具切换键切过来，隐藏的按钮对应的快捷键也照旧生效。
     /// （可见性只有 `overlay::toolbar::layout` 与设置面板两个消费方）
     pub(super) fn apply_action(&mut self, action: toolbar::Action) {
-        // 任何工具栏动作都收起取色面板（EDT-7，issue #73）；
-        // 双击色块时第一击走这里（选用该色），第二击经 WM_LBUTTONDBLCLK 再展开面板
+        // 任何工具栏动作都收起取色面板（EDT-7，issue #73）与线型下拉（EDT-18）；
+        // 双击色块时第一击走这里（选用该色），第二击经 WM_LBUTTONDBLCLK 再展开面板。
+        // 线型格子自己走 toggle，不能被这里先关掉（否则永远只能打开、无法收起）。
         self.close_color_panel();
+        if action != toolbar::Action::LineMenu {
+            self.close_line_menu();
+        }
         match action {
             toolbar::Action::Tool(t) => self.mode = crate::editor::Mode::Draw(t),
             // ADR 0036：回到指针（移动选区）态；贴图编辑模式选区锁定，指针模式无意义，忽略
@@ -142,6 +143,17 @@ impl super::Overlay {
                 // 填充仅对矩形 / 椭圆有意义：文本、序号、直线、手绘无背景，忽略
                 if fill_enabled_for(self.mode.tool(), self.selected_object()) {
                     self.filled = !self.filled;
+                    self.style_selected();
+                }
+            }
+            // EDT-18：线型格子只是展开 / 收起下拉，取值在 `LineStyle` 分支（由下拉点击分发）
+            toolbar::Action::LineMenu => return self.toggle_line_menu(),
+            toolbar::Action::LineStyle(style) => {
+                // 只有存在可见描边时才有意义（填充矩形 / 文本 / 效果类对象置灰，见 `line_enabled_for`）
+                if line_enabled_for(self.mode.tool(), self.selected_object(), self.filled) {
+                    self.line_style = style;
+                    // 跨截图记忆（EDT-18）：主线程在 WM_OVERLAY_DONE 写回配置
+                    crate::editor::line_store(style);
                     self.style_selected();
                 }
             }
@@ -214,11 +226,13 @@ impl super::Overlay {
         }
         match cancel_step(
             self.color_panel_open(),
+            self.line_menu_open(),
             self.font_list_open(),
             self.is_editing_text(),
             self.confirm_cancel && !self.doc.is_empty(),
         ) {
             CancelStep::ColorPanel => self.close_color_panel(),
+            CancelStep::LineMenu => self.close_line_menu(),
             CancelStep::FontPanel => self.close_font_list(),
             // 文本 / 序号输入中右键 = 完成本次输入（保留文字），而非丢弃；
             // Esc 取消输入走 `on_text_key`（键盘路径），不经过这里。
@@ -249,53 +263,62 @@ impl super::Overlay {
     }
 }
 
-/// 取消截图的分层步骤（OUT-3 / ADR 0027）：由内向外逐层回退，
-/// 只有会丢标注时才需确认。
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub(super) enum CancelStep {
-    /// 收起取色面板。
-    ColorPanel,
-    /// 收起字体面板。
-    FontPanel,
-    /// 完成当前文本 / 序号输入（右键语义：保留已输入内容）。
-    CommitText,
-    /// 有未保存标注，进入二次确认（同键连按两次，见 `cancel_hint`）。
-    Confirm,
-    /// 直接退出。
-    Exit,
-}
-
-/// 取消分层决策（纯函数，便于单测）：面板优先于输入，输入优先于退出；
-/// 有标注时进入二次确认。
-pub(super) fn cancel_step(color_panel: bool, font_panel: bool, editing: bool, has_annotations: bool) -> CancelStep {
-    if color_panel {
-        CancelStep::ColorPanel
-    } else if font_panel {
-        CancelStep::FontPanel
-    } else if editing {
-        CancelStep::CommitText
-    } else if has_annotations {
-        CancelStep::Confirm
-    } else {
-        CancelStep::Exit
-    }
-}
-
+/// 取消截图的分层步骤与决策见 `cancel`（OUT-3 / ADR 0027）。
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::{Kind, Object};
 
-    /// 分层优先级：取色面板 > 字体面板 > 文本输入 > （有标注？确认）> 退出。
+    /// 线型可用性（EDT-18）：有可见描边才能切换——填充矩形 / 椭圆、文本、效果类都不行。
     #[test]
-    fn cancel_step_recedes_layer_by_layer() {
-        assert_eq!(cancel_step(true, true, true, true), CancelStep::ColorPanel);
-        assert_eq!(cancel_step(false, true, true, true), CancelStep::FontPanel);
-        assert_eq!(cancel_step(false, false, true, true), CancelStep::CommitText);
-        // 无面板 / 无输入：有标注需确认，否则直接退出
-        assert_eq!(cancel_step(false, false, false, true), CancelStep::Confirm);
-        assert_eq!(cancel_step(false, false, false, false), CancelStep::Exit);
-        // 有标注不会绕过前面的层
-        assert_eq!(cancel_step(false, true, false, true), CancelStep::FontPanel);
+    fn line_enabled_needs_visible_stroke() {
+        use crate::editor::{Point, Tool};
+        let mk = |filled: bool| {
+            obj(Kind::Rect {
+                a: Point::new(0.0, 0.0),
+                b: Point::new(10.0, 10.0),
+                radius: 0.0,
+                filled,
+            })
+        };
+        let text = obj(Kind::Text {
+            pos: Point::new(0.0, 0.0),
+            text: "a".into(),
+            size: (8.0, 8.0),
+            font_size: 16.0,
+            font_family: "x".into(),
+            bold: false,
+            italic: false,
+        });
+        let arrow = obj(Kind::arrow(Point::new(0.0, 0.0), Point::new(10.0, 10.0)));
+
+        // 工具本身会画出描边
+        for t in [
+            Tool::Rect,
+            Tool::Arrow,
+            Tool::Line,
+            Tool::Ellipse,
+            Tool::Freehand,
+            Tool::Number,
+        ] {
+            assert!(line_enabled_for(Some(t), None, false), "{t:?} 应有描边");
+        }
+        // 无描边工具：置灰
+        for t in [Tool::Text, Tool::Highlight, Tool::Blur, Tool::Glow] {
+            assert!(!line_enabled_for(Some(t), None, false), "{t:?} 无描边");
+        }
+        // 填充的矩形 / 椭圆不描边，工具开着填充时线型无处可见
+        assert!(!line_enabled_for(Some(Tool::Rect), None, true));
+        assert!(!line_enabled_for(Some(Tool::Ellipse), None, true));
+        assert!(!line_enabled_for(None, None, false), "移动态无选中对象时置灰");
+        // 选中对象自己有没有描边（与当前工具无关）
+        assert!(line_enabled_for(Some(Tool::Arrow), Some(&mk(false)), false));
+        assert!(
+            !line_enabled_for(Some(Tool::Arrow), Some(&mk(true)), false),
+            "填充矩形无描边"
+        );
+        assert!(!line_enabled_for(None, Some(&text), false));
+        assert!(line_enabled_for(None, Some(&arrow), false));
     }
 
     fn obj(kind: Kind) -> Object {

@@ -52,6 +52,7 @@ impl super::Overlay {
         let old_chrome = self.chrome_rect();
         self.font_list = None;
         self.color_panel = None;
+        self.line_menu = None;
         self.bar = new.and_then(|s| toolbar::layout_ex(s, vw, vh, &self.toolbar_shown(), self.ui));
         let new_chrome = self.chrome_rect();
 
@@ -210,6 +211,13 @@ impl super::Overlay {
             && let Some(panel) = self.color_panel.as_ref()
         {
             toolbar::colorpanel::render(&mut self.display, panel, self.palette);
+        }
+        // 5c) 线型下拉（EDT-18）：在工具栏上方 / 下方，需单独覆盖
+        if let Some(rect) = self.line_menu.as_ref().map(|m| m.rect)
+            && intersect_rect(expand_rect(rect, 2), region).is_some()
+            && let Some(menu) = self.line_menu.as_ref()
+        {
+            toolbar::linemenu::render(&mut self.display, menu, self.line_style, self.palette);
         }
         // 6) 选区尺寸提示（HUD）：走 DirectWrite 栅格化，与工具栏文字同一套渲染。
         //    贴图编辑模式（ADR 0028）不需要尺寸提示；工具栏也不再为它预留空间（见 toolbar::layout_ex）

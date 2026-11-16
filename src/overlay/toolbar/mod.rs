@@ -7,13 +7,15 @@ mod draw;
 pub(crate) mod fontlist;
 mod label;
 mod layout;
+mod line;
+pub(crate) mod linemenu;
 pub(crate) mod tip;
 
 use std::sync::Arc;
 
 use tiny_skia::Pixmap;
 
-use crate::editor::{SWATCH_COUNT, Tool};
+use crate::editor::{LineStyle, SWATCH_COUNT, Tool};
 use crate::overlay::geometry::SelRect;
 use crate::overlay::ui::Ui;
 use crate::theme::Palette;
@@ -52,6 +54,12 @@ pub struct State {
     /// 填充开关是否可用（EDT-1/EDT-14）：当前工具能画可填充形状，或选中对象是矩形 / 椭圆。
     /// 由此处统一裁决，绘制侧不再自己判一遍（见 `Overlay::fill_available`）。
     pub fill_enabled: bool,
+    /// 当前线型（EDT-18）：工具栏格子画它的样本。
+    pub line_style: LineStyle,
+    /// 线型是否可用（EDT-18）：当前工具 / 选中对象有可见描边。
+    pub line_enabled: bool,
+    /// 线型下拉是否展开。
+    pub line_open: bool,
     pub can_undo: bool,
     pub can_redo: bool,
     /// 第二行（EDT-4）：当前字体族、粗体/斜体、字号与字体面板是否展开。
@@ -72,6 +80,10 @@ pub enum Action {
     Move,
     Color(usize),
     ToggleFill,
+    /// EDT-18：展开 / 收起线型下拉（实线 / 虚线 / 点划线）。
+    LineMenu,
+    /// EDT-18：下拉里选定的线型（由下拉点击分发，不直接命中工具栏）。
+    LineStyle(LineStyle),
     Undo,
     Redo,
     /// PIN-1：把选区（含标注）贴为置顶窗口。
@@ -284,8 +296,8 @@ mod tests {
     /// 已知限制（EDT-16）：工具栏比屏幕还宽时只能从左边距开始画，右侧被裁（**不**引入换行、
     /// 也**不**改为右对齐）。这是「工具栏元素全可见」的副作用，已写入 README「已知限制」
     /// 与 ADR 0033：用户的出路是隐藏不用的元素（见下一条测试）。
-    /// 用 1280×720@200%：移除 OCR 按钮后 1366×768@200% 已经放得下（宽 1332），
-    /// 但更小的屏仍然会超。
+    /// 用 1280×720@200%：加线型格子（EDT-18）后 1366×768@200% 也会超出一格
+    /// （维护者明确不考虑该组合），更小的屏更是必超。
     #[test]
     fn bar_wider_than_screen_is_left_aligned() {
         let (vw, vh) = (1280, 720);
@@ -333,23 +345,28 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构 + ADR 0036 移动按钮 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 30);
+        assert_eq!(actions.len(), 31);
         // ADR 0036：「移动」排在工具组首位，框选完成后高亮的就是它
         assert_eq!(actions[0], Action::Move);
         assert_eq!(actions[1..11], Tool::ALL.map(Action::Tool));
         // 色块：5 个，均可双击改色（issue #73 后续，不再有单独的自定义槽）
         assert_eq!(actions[11..16], [0, 1, 2, 3, 4].map(Action::Color));
         assert_eq!(actions[16], Action::ToggleFill);
-        assert_eq!(actions[17], Action::Undo);
-        assert_eq!(actions[18], Action::Redo);
-        assert_eq!(actions[19], Action::Pin);
-        assert_eq!(actions[20], Action::Longshot);
-        assert_eq!(actions[21], Action::Copy);
-        assert_eq!(actions[22], Action::Save);
+        // EDT-18：线型紧跟在填充之后，且占**两个按钮宽**（单格 26px 画虚线只剩一两个周期）
+        assert_eq!(actions[17], Action::LineMenu);
+        let line = &bar.hits[17].0;
+        assert_eq!(line.w, base().px(BTN_BASE) * 2, "线型格子应占两格宽：{line:?}");
+        assert_eq!(line.h, base().px(BTN_BASE), "高度仍与其它按钮一致");
+        assert_eq!(actions[18], Action::Undo);
+        assert_eq!(actions[19], Action::Redo);
+        assert_eq!(actions[20], Action::Pin);
+        assert_eq!(actions[21], Action::Longshot);
+        assert_eq!(actions[22], Action::Copy);
+        assert_eq!(actions[23], Action::Save);
         // OUT-2 / ADR 0041：文件组末尾新增快速保存
-        assert_eq!(actions[23], Action::QuickSave);
+        assert_eq!(actions[24], Action::QuickSave);
         assert_eq!(
-            actions[24..],
+            actions[25..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -367,7 +384,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, &all(), false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 24);
+        assert_eq!(bar.hits.len(), 25);
     }
 
     /// 隐藏的元素不再有命中区，工具栏宽度随之变窄（R1/R2）。

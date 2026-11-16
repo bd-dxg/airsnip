@@ -44,8 +44,9 @@ const COLOR_SLOTS: [ToolbarSlot; SWATCH_COUNT] = [
     ToolbarSlot::Color(3),
     ToolbarSlot::Color(4),
 ];
-const EDIT_SLOTS: [ToolbarSlot; 4] = [
+const EDIT_SLOTS: [ToolbarSlot; 5] = [
     ToolbarSlot::Fill,
+    ToolbarSlot::Line,
     ToolbarSlot::Undo,
     ToolbarSlot::Redo,
     ToolbarSlot::TextRow,
@@ -104,6 +105,8 @@ pub enum ToolbarSlot {
     Color(usize),
     /// 填充开关（EDT-1/EDT-14）。
     Fill,
+    /// 线型（EDT-18）：实线 / 虚线 / 点划线。
+    Line,
     Undo,
     Redo,
     /// 文本第二行（EDT-4，字体族 / 粗体 / 斜体 / 字号）。
@@ -144,6 +147,7 @@ impl ToolbarSlot {
             // 色块数量变了也不该 panic：多余的落一个不会命中的键（默认可见）
             ToolbarSlot::Color(_) => "color.unused",
             ToolbarSlot::Fill => "edit.fill",
+            ToolbarSlot::Line => "edit.line",
             ToolbarSlot::Undo => "edit.undo",
             ToolbarSlot::Redo => "edit.redo",
             ToolbarSlot::TextRow => "edit.text_row",
@@ -177,6 +181,7 @@ impl ToolbarSlot {
             ToolbarSlot::Color(4) => "颜色5",
             ToolbarSlot::Color(_) => "颜色",
             ToolbarSlot::Fill => "填充",
+            ToolbarSlot::Line => "线型",
             ToolbarSlot::Undo => "撤销",
             ToolbarSlot::Redo => "重做",
             // 第二行整行（字体族 / B / I / 字号）：多列布局里只能取短名，组头「编辑」提供上下文
@@ -195,7 +200,9 @@ impl ToolbarSlot {
         match self {
             ToolbarSlot::Move | ToolbarSlot::Tool(_) => ToolbarGroup::Tools,
             ToolbarSlot::Color(_) => ToolbarGroup::Colors,
-            ToolbarSlot::Fill | ToolbarSlot::Undo | ToolbarSlot::Redo | ToolbarSlot::TextRow => ToolbarGroup::Edit,
+            ToolbarSlot::Fill | ToolbarSlot::Line | ToolbarSlot::Undo | ToolbarSlot::Redo | ToolbarSlot::TextRow => {
+                ToolbarGroup::Edit
+            }
             ToolbarSlot::Pin | ToolbarSlot::Longshot => ToolbarGroup::Output,
             ToolbarSlot::Copy | ToolbarSlot::Save | ToolbarSlot::QuickSave => ToolbarGroup::File,
         }

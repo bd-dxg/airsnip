@@ -107,6 +107,24 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                 }
                 draw_icon(pixmap, Icon::Fill, *r, toggle_color(enabled, state.filled, p));
             }
+            // 线型（EDT-18）：格子里画当前线型的真实样本 + 右侧下拉箭头；无描边对象时置灰
+            Action::LineMenu => {
+                let enabled = state.line_enabled;
+                let on = !state.line_style.is_solid();
+                if enabled && on {
+                    rounded_rect(pixmap, *r, ui.f(5.0), p.accent_soft, None);
+                }
+                let color = toggle_color(enabled, on, p);
+                // 样本让出右侧的箭头区（挤在一起会把线尾读成一个小点）
+                let sample = SelRect {
+                    w: r.w - ui.px(9.0),
+                    ..*r
+                };
+                super::line::draw_sample(pixmap, sample, state.line_style, color, ui);
+                super::line::draw_chevron(pixmap, *r, color, ui);
+            }
+            // 下拉选定的线型只经过 `apply_action` 落地，不会出现在工具栏命中区里
+            Action::LineStyle(_) => {}
             Action::Undo => draw_icon(pixmap, Icon::Undo, *r, if state.can_undo { p.icon } else { p.icon_dim }),
             Action::Redo => draw_icon(pixmap, Icon::Redo, *r, if state.can_redo { p.icon } else { p.icon_dim }),
             Action::Pin => draw_icon(pixmap, Icon::Pin, *r, p.icon),

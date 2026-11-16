@@ -6,7 +6,7 @@ use crate::editor::{
     Bounds, Kind, Object, Point, Style, arrow_head_len, end_tangent, flatten, head_entry_t, polyline_len, split_left,
     t_at_arc_from_end,
 };
-use tiny_skia::{FillRule, LineCap, Paint, Path, PathBuilder, Pixmap, Rect, Stroke, Transform};
+use tiny_skia::{FillRule, LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
 mod bake;
 pub use bake::bake_objects;
@@ -98,10 +98,23 @@ pub fn bounds_to_clip(b: &Bounds) -> Clip {
 }
 
 /// 荧光笔透明度（HIGHLIGHT_ALPHA）与高亮/模糊绘制见 `region`（EDT-5/EDT-6）。
-fn paint_of(color: [u8; 4]) -> Paint<'static> {
+pub(crate) fn paint_of(color: [u8; 4]) -> Paint<'static> {
     let mut paint = Paint::default();
     paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
     paint
+}
+
+/// 描边参数（EDT-18）：线型按 `style.line` 换成 tiny-skia 的 dash 数组；
+/// 虚线一律用平头端点（圆头会把每段包成胶囊、间隙视觉上缩一半，ADR 0042）。
+pub(super) fn stroke_of(style: &Style, cap: LineCap, join: LineJoin) -> Stroke {
+    let dash = style.line.dash_array(style.width).and_then(|a| StrokeDash::new(a, 0.0));
+    Stroke {
+        width: style.width,
+        line_cap: if dash.is_some() { LineCap::Butt } else { cap },
+        line_join: join,
+        dash,
+        ..Default::default()
+    }
 }
 
 /// EDT-1 矩形：描边 + 可选填充、圆角、透明度（由颜色 alpha 控制）。
@@ -121,10 +134,7 @@ fn draw_rect(pixmap: &mut Pixmap, a: Point, b: Point, radius: f32, filled: bool,
         pixmap.fill_path(&path, &paint, FillRule::Winding, tr, None);
         return;
     }
-    let stroke = Stroke {
-        width: style.width,
-        ..Default::default()
-    };
+    let stroke = stroke_of(style, LineCap::Butt, LineJoin::Miter);
     pixmap.stroke_path(&path, &paint, &stroke, tr, None);
 }
 
@@ -182,11 +192,7 @@ fn draw_arrow(pixmap: &mut Pixmap, from: Point, c1: Point, c2: Point, to: Point,
     line.move_to(from.x, from.y);
     line.cubic_to(seg[1].x, seg[1].y, seg[2].x, seg[2].y, line_end.x, line_end.y);
     if let Some(path) = line.finish() {
-        let stroke = Stroke {
-            width: style.width,
-            line_cap: LineCap::Butt,
-            ..Default::default()
-        };
+        let stroke = stroke_of(style, LineCap::Butt, LineJoin::Miter);
         pixmap.stroke_path(&path, &paint, &stroke, tr, None);
     }
 
@@ -280,6 +286,41 @@ mod tests {
         let mut p = Pixmap::new(w, h).unwrap();
         p.fill(tiny_skia::Color::TRANSPARENT);
         p
+    }
+
+    /// 某一行上「连续有墨」的段数（虚线判据：有空隙就会多于一段）。
+    fn ink_runs(pm: &Pixmap, y: u32) -> usize {
+        let mut runs = 0;
+        let mut prev = false;
+        for x in 0..pm.width() {
+            let ink = pm.pixel(x, y).is_some_and(|p| p.alpha() > 0);
+            if ink && !prev {
+                runs += 1;
+            }
+            prev = ink;
+        }
+        runs
+    }
+
+    /// EDT-18：虚线真的切开了——同一条 8px 粗直线，实线连续一段、虚线 / 点划线分成多段。
+    #[test]
+    fn dashed_stroke_has_gaps() {
+        let style = Style::new([255, 0, 0, 255], 8.0);
+        let (a, b) = (Point::new(10.0, 20.0), Point::new(190.0, 20.0));
+        let mut solid = new_pixmap(200, 40);
+        stroke::draw_line(&mut solid, a, b, &style, Transform::identity());
+        assert_eq!(ink_runs(&solid, 20), 1, "实线应是一整段");
+
+        let mut dashed = new_pixmap(200, 40);
+        let style = style.with_line(crate::editor::LineStyle::Dashed);
+        stroke::draw_line(&mut dashed, a, b, &style, Transform::identity());
+        let runs = ink_runs(&dashed, 20);
+        assert!(runs >= 4, "虚线应分成多段，实际 {runs} 段");
+
+        let mut dot = new_pixmap(200, 40);
+        let style = style.with_line(crate::editor::LineStyle::DashDot);
+        stroke::draw_line(&mut dot, a, b, &style, Transform::identity());
+        assert!(ink_runs(&dot, 20) >= 3, "点划线同样应有空隙");
     }
 
     fn alpha_at(p: &Pixmap, x: u32, y: u32) -> u8 {
