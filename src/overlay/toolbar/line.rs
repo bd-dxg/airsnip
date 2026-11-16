@@ -7,7 +7,7 @@ use tiny_skia::{LineCap, LineJoin, PathBuilder, Pixmap, Transform};
 use crate::editor::{LineStyle, Style};
 use crate::overlay::SelRect;
 use crate::overlay::ui::Ui;
-use crate::render::{paint_of, stroke_of};
+use crate::render::{solid_paint, stroke_of};
 
 /// 在矩形内画一段水平线型样本（左右留边、垂直居中）。
 /// 线宽固定约 2 个基准像素：样本是「符号」，不跟真实线宽走，否则 20px 粗线在 26px 格子里看不出虚实。
@@ -26,7 +26,7 @@ pub(super) fn draw_sample(pixmap: &mut Pixmap, r: SelRect, line: LineStyle, colo
     };
     let style = Style::new(color, ui.f(2.0)).with_line(line);
     let stroke = stroke_of(&style, LineCap::Butt, LineJoin::Miter);
-    pixmap.stroke_path(&path, &paint_of(color), &stroke, Transform::identity(), None);
+    pixmap.stroke_path(&path, &solid_paint(color), &stroke, Transform::identity(), None);
 }
 
 /// 格子右侧的下拉指示箭头（▾）：告诉用户这一格点得开。
@@ -48,7 +48,7 @@ pub(super) fn draw_chevron(pixmap: &mut Pixmap, r: SelRect, color: [u8; 4], ui: 
         line_join: LineJoin::Round,
         ..Default::default()
     };
-    pixmap.stroke_path(&path, &paint_of(color), &stroke, Transform::identity(), None);
+    pixmap.stroke_path(&path, &solid_paint(color), &stroke, Transform::identity(), None);
 }
 
 #[cfg(test)]

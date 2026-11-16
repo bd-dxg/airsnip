@@ -3,9 +3,9 @@
 //! 按钮图标统一由 `crate::render::icon` 绘制（资源见 `assets/icons/ui/`），
 //! 这里只负责背景、选中态与文字类控件。
 
-use tiny_skia::Pixmap;
+use tiny_skia::{FillRule, GradientStop, Paint, Pixmap, RadialGradient, SpreadMode, Stroke, Transform};
 
-use crate::editor::Tool;
+use crate::editor::{Gradient, Tool};
 use crate::overlay::SelRect;
 use crate::overlay::shape::rounded_rect;
 use crate::overlay::toolbar::{Action, State, Toolbar};
@@ -92,6 +92,24 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
                     w: r.w - inset * 2,
                     h: r.h - inset * 2,
                 };
+                // EDT-19：第 3 格是渐变色块（2 个纯色 + 1 个渐变）
+                if i >= crate::editor::GRADIENT_SWATCH {
+                    let g = state.gradient;
+                    // 选中时同样用自身颜色发光（渐变的代表色）
+                    if i == state.color {
+                        draw_glow(pixmap, swatch, ui.f(4.0), g.representative(), ui);
+                    }
+                    // 不可用（文本 / 荧光笔 / 效果类）时整条色带转灰，一眼看出点不了
+                    let g = if state.gradient_enabled {
+                        g
+                    } else {
+                        Gradient {
+                            stops: [p.icon_dim; crate::editor::GRADIENT_STOPS],
+                        }
+                    };
+                    draw_gradient_swatch(pixmap, swatch, ui.f(4.0), &g, p.swatch_border);
+                    continue;
+                }
                 let color = state.colors[i];
                 // 正在使用的颜色：色块以自身颜色发光，替代早期的蓝色描边（EDT-7 后续）
                 if i == state.color {
@@ -154,6 +172,42 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
             }
         }
     }
+}
+
+/// 渐变色块的色带：三色标水平渐变填满圆角矩形（与真实渲染同一套 stop 颜色）+ 细边框。
+fn draw_gradient_swatch(pixmap: &mut Pixmap, r: SelRect, radius: f32, g: &Gradient, border: [u8; 4]) {
+    let Some(path) = crate::overlay::shape::rounded_path(r, radius) else {
+        return;
+    };
+    // 用户口径：色块用**径向渐变，中心白、边缘彩色**（22px 宽里线性色带看不出色标变化）
+    let edge = g.edge();
+    let stops = vec![
+        GradientStop::new(0.0, tiny_skia::Color::from_rgba8(255, 255, 255, 255)),
+        GradientStop::new(1.0, tiny_skia::Color::from_rgba8(edge[0], edge[1], edge[2], edge[3])),
+    ];
+    let center = tiny_skia::Point {
+        x: r.x as f32 + r.w as f32 / 2.0,
+        y: r.y as f32 + r.h as f32 / 2.0,
+    };
+    let rad = ((r.w * r.w + r.h * r.h) as f32).sqrt() / 2.0;
+    if let Some(shader) = RadialGradient::new(center, 0.0, center, rad, stops, SpreadMode::Pad, Transform::identity()) {
+        let paint = Paint {
+            shader,
+            ..Default::default()
+        };
+        pixmap.fill_path(&path, &paint, FillRule::Winding, Transform::identity(), None);
+    }
+    let stroke = Stroke {
+        width: 1.0,
+        ..Default::default()
+    };
+    pixmap.stroke_path(
+        &path,
+        &crate::overlay::shape::paint_of(border),
+        &stroke,
+        Transform::identity(),
+        None,
+    );
 }
 
 /// 选中色块的光晕：用色块自身的颜色叠几层低透明度圆角矩形，

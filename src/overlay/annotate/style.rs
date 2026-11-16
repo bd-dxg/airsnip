@@ -24,6 +24,40 @@ pub(in crate::overlay) fn has_stroke(kind: &Kind) -> bool {
     }
 }
 
+/// 渐变是否可用（EDT-19）：只有**真能涂渐变**的对象——文本（DirectWrite 单色混色）与
+/// 荧光笔（低对比标记工具）保持纯色，模糊 / 聚光无涂色。
+/// 有选中对象时看它；没有选中时看当前工具，**移动态（`None`）视为可用**——
+/// 此时渐变色块只是「设定下次绘制的样式」，与纯色块一致，不能灰掉。
+pub(in crate::overlay) fn gradient_enabled_for(tool: Option<crate::editor::Tool>, selected: Option<&Object>) -> bool {
+    if let Some(obj) = selected {
+        return kind_supports_gradient(&obj.kind);
+    }
+    tool.is_none_or(|t| {
+        matches!(
+            t,
+            crate::editor::Tool::Rect
+                | crate::editor::Tool::Arrow
+                | crate::editor::Tool::Line
+                | crate::editor::Tool::Ellipse
+                | crate::editor::Tool::Freehand
+                | crate::editor::Tool::Number
+        )
+    })
+}
+
+/// 该对象类型能否用渐变涂色。
+pub(in crate::overlay) fn kind_supports_gradient(kind: &Kind) -> bool {
+    matches!(
+        kind,
+        Kind::Rect { .. }
+            | Kind::Arrow { .. }
+            | Kind::Line { .. }
+            | Kind::Ellipse { .. }
+            | Kind::Freehand { .. }
+            | Kind::Number { .. }
+    )
+}
+
 /// 线型是否可用（EDT-18）：有选中对象时看它自己有没有描边（切换会直接改它）；
 /// 没有选中对象时才看当前工具会不会画出描边。
 /// `filled` 只对矩形 / 椭圆工具有意义：填充后不描边，这时线型确实无处可见。

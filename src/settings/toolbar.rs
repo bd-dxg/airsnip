@@ -40,9 +40,8 @@ const TOOL_SLOTS: [ToolbarSlot; 11] = [
 const COLOR_SLOTS: [ToolbarSlot; SWATCH_COUNT] = [
     ToolbarSlot::Color(0),
     ToolbarSlot::Color(1),
+    // EDT-19：第 3 格是渐变色块（2 个纯色 + 1 个渐变）
     ToolbarSlot::Color(2),
-    ToolbarSlot::Color(3),
-    ToolbarSlot::Color(4),
 ];
 const EDIT_SLOTS: [ToolbarSlot; 5] = [
     ToolbarSlot::Fill,
@@ -176,9 +175,8 @@ impl ToolbarSlot {
             ToolbarSlot::Tool(Tool::Freehand) => "手绘",
             ToolbarSlot::Color(0) => "颜色1",
             ToolbarSlot::Color(1) => "颜色2",
-            ToolbarSlot::Color(2) => "颜色3",
-            ToolbarSlot::Color(3) => "颜色4",
-            ToolbarSlot::Color(4) => "颜色5",
+            // EDT-19：第 3 格是渐变色块（2 个纯色 + 1 个渐变）
+            ToolbarSlot::Color(2) => "渐变",
             ToolbarSlot::Color(_) => "颜色",
             ToolbarSlot::Fill => "填充",
             ToolbarSlot::Line => "线型",
@@ -232,6 +230,13 @@ impl ToolbarConfig {
     /// 单个元素是否绘制。
     pub fn visible(&self, slot: ToolbarSlot) -> bool {
         !self.hidden.iter().any(|k| k == slot.key())
+    }
+
+    /// 迁移（EDT-19）：颜色组从 5 格缩到 2 纯色 + 1 渐变，第 3 格语义变了（颜色3 → 渐变），
+    /// 旧隐藏键不能把新功能藏掉；第 4 / 5 格已不存在。
+    pub fn migrate_swatch_keys(&mut self) {
+        self.hidden
+            .retain(|k| !matches!(k.as_str(), "color.3" | "color.4" | "color.5"));
     }
 
     /// 改单个元素显隐（幂等；重复键不会堆积）。

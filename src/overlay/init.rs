@@ -38,6 +38,7 @@ impl Overlay {
             window_snap,
             control_snap,
             colors,
+            color_index: start_color_hint,
             save,
             ui_scale,
             line_style,
@@ -100,7 +101,10 @@ impl Overlay {
         } else {
             editor::Mode::Move
         };
-        let start_color = visibility.settle_color(1); // 默认红色
+        let start_color = visibility.settle_color(start_color_hint.min(editor::SWATCH_COUNT - 1));
+        // 渐变只存在运行时（ADR 0043）：基准色取当前纯色，套数从 0 起
+        let gradient_base = colors[start_color.min(editor::SOLID_COUNT - 1)];
+        let gradient = editor::Gradient::nth(gradient_base, 0);
 
         Ok(Self {
             capture,
@@ -144,8 +148,11 @@ impl Overlay {
             cancel_hint: None,
             pin_key,
             save,
-            color_index: start_color, // 默认红色；被隐藏时落到第一个可见色块
+            color_index: start_color,
             colors,
+            gradient,
+            gradient_base,
+            gradient_count: 0,
             line_width: editor::DEFAULT_LINE_WIDTH,
             line_style,
             line_menu: None,

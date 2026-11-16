@@ -240,6 +240,10 @@ impl super::super::Overlay {
             self.doc.push(draft);
             // 新建的箭头随即选中，控制柄落在 1/3、2/3 处（EDT-3）
             self.selected = Some(self.doc.objects().len() - 1);
+            // EDT-19：渐变色块下“真的多了一个对象”才推进一套（退化丢弃不算）
+            if self.color_index >= crate::editor::GRADIENT_SWATCH {
+                self.advance_gradient();
+            }
         }
         self.doc.commit(kept);
         let c = draft_bounds;

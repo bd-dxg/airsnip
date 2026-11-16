@@ -6,14 +6,17 @@ use crate::editor::{
     Bounds, Kind, Object, Point, Style, arrow_head_len, end_tangent, flatten, head_entry_t, polyline_len, split_left,
     t_at_arc_from_end,
 };
-use tiny_skia::{FillRule, LineCap, LineJoin, Paint, Path, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
+use tiny_skia::{FillRule, LineCap, LineJoin, Path, PathBuilder, Pixmap, Rect, Stroke, StrokeDash, Transform};
 
 mod bake;
 pub use bake::bake_objects;
 mod blur;
 pub mod fonts;
+mod gradient_stroke;
 pub mod icon;
 pub(crate) mod mask;
+mod paint;
+pub(crate) use paint::{box_span, paint_of, solid_paint};
 mod region;
 mod stroke;
 pub mod text;
@@ -98,12 +101,6 @@ pub fn bounds_to_clip(b: &Bounds) -> Clip {
 }
 
 /// 荧光笔透明度（HIGHLIGHT_ALPHA）与高亮/模糊绘制见 `region`（EDT-5/EDT-6）。
-pub(crate) fn paint_of(color: [u8; 4]) -> Paint<'static> {
-    let mut paint = Paint::default();
-    paint.set_color_rgba8(color[0], color[1], color[2], color[3]);
-    paint
-}
-
 /// 描边参数（EDT-18）：线型按 `style.line` 换成 tiny-skia 的 dash 数组；
 /// 虚线一律用平头端点（圆头会把每段包成胶囊、间隙视觉上缩一半，ADR 0042）。
 pub(super) fn stroke_of(style: &Style, cap: LineCap, join: LineJoin) -> Stroke {
@@ -127,11 +124,23 @@ fn draw_rect(pixmap: &mut Pixmap, a: Point, b: Point, radius: f32, filled: bool,
     let Some(path) = rounded_rect_path(x0, y0, x1, y1, radius) else {
         return;
     };
-    let paint = paint_of(style.color);
+    let (ga, gb) = box_span(x0, y0, x1, y1);
+    let paint = paint_of(style, ga, gb);
 
     if filled {
         // 填充用半透明色（与描边同色），透明度由颜色 alpha 表达
         pixmap.fill_path(&path, &paint, FillRule::Winding, tr, None);
+        return;
+    }
+    // 渐变描边沿**周长弧长**走色（否则水平渐变下矩形的上边与下边同色，ADR 0043）
+    if style.is_gradient() {
+        // 直角矩形 + 实线：4 条边各一次渐变，比沿周长切段快一个数量级。
+        // 虚线 / 点划线必须走分段：`stroke_rect_edges` 用 Square 端帽填角，会把虚线间隔补成实线。
+        if radius < 0.5 && style.line.is_solid() {
+            gradient_stroke::stroke_rect_edges(pixmap, (x0, y0, x1, y1), style, tr);
+        } else {
+            gradient_stroke::stroke_gradient(pixmap, &path, style, tr);
+        }
         return;
     }
     let stroke = stroke_of(style, LineCap::Butt, LineJoin::Miter);
@@ -172,7 +181,7 @@ fn draw_arrow(pixmap: &mut Pixmap, from: Point, c1: Point, c2: Point, to: Point,
     let head = arrow_head_len(style.width).min(total);
     let half = head * 0.45;
     let base = Point::new(to.x - ux * head, to.y - uy * head);
-    let paint = paint_of(style.color);
+    let paint = paint_of(style, from, to);
 
     // 线身：截断在头部三角的边界（底边或侧边）上，避免弯曲时与头部脱开或穿出三角侧面（EDT-3a）；
     // 末端沿曲线在截断点的切线方向再深入「线宽一半 + 1px」，保证粗线也能完全没入三角，
@@ -256,7 +265,10 @@ fn draw_number(pixmap: &mut Pixmap, obj: &Object, tr: Transform) {
     let mut pb = PathBuilder::new();
     pb.push_circle(center.x, center.y, *radius);
     if let Some(path) = pb.finish() {
-        pixmap.fill_path(&path, &paint_of(obj.style.color), FillRule::Winding, tr, None);
+        let r = *radius;
+        let (ga, gb) = box_span(center.x - r, center.y - r, center.x + r, center.y + r);
+        let paint = paint_of(&obj.style, ga, gb);
+        pixmap.fill_path(&path, &paint, FillRule::Winding, tr, None);
     }
     // 3) 数字：按徽标底色亮度自动取反色（白底用黑字，否则白字），避免白徽标上看不见
     let mut spec = text::FontSpec::new(*font_size);
@@ -281,6 +293,7 @@ fn contrast_ink(badge: [u8; 4]) -> [u8; 4] {
 mod tests {
     use super::*;
     use crate::editor::{Kind, Style};
+    use tiny_skia::Paint;
 
     fn new_pixmap(w: u32, h: u32) -> Pixmap {
         let mut p = Pixmap::new(w, h).unwrap();
@@ -321,6 +334,99 @@ mod tests {
         let style = style.with_line(crate::editor::LineStyle::DashDot);
         stroke::draw_line(&mut dot, a, b, &style, Transform::identity());
         assert!(ink_runs(&dot, 20) >= 3, "点划线同样应有空隙");
+    }
+
+    /// EDT-19：渐变填充真的从起色走到止色（起 / 中 / 止三点互不相同，中间提亮）。
+    #[test]
+    fn gradient_fill_runs_between_stops() {
+        let g = crate::editor::Gradient::seed([229, 57, 53, 255]);
+        let style = Style::new(g.representative(), 4.0).with_gradient(g);
+        let obj = Object {
+            kind: Kind::Rect {
+                a: Point::new(10.0, 10.0),
+                b: Point::new(190.0, 90.0),
+                radius: 0.0,
+                filled: true,
+            },
+            style,
+        };
+        let mut pm = new_pixmap(200, 100);
+        draw_object(&mut pm, &obj);
+        let px = |x: u32| pm.pixel(x, 50).map(|p| (p.red(), p.green(), p.blue()));
+        let (left, mid, right) = (px(20).unwrap(), px(100).unwrap(), px(180).unwrap());
+        assert_ne!(left, right, "两端颜色应不同（渐变真的存在）");
+        assert_ne!(left, mid, "中间不应与起点同色");
+        assert_ne!(mid, right, "中间不应与终点同色");
+        // 一套渐变里要能数出多种颜色：在 1/4、1/2、3/4 处各取一点，都不能相同
+        let q = |f: f32| px((10.0 + 180.0 * f) as u32).unwrap();
+        let (a, b, c) = (q(0.25), q(0.5), q(0.75));
+        assert_ne!(a, b, "1/4 与 1/2 应不同：{a:?} vs {b:?}");
+        assert_ne!(b, c, "1/2 与 3/4 应不同：{b:?} vs {c:?}");
+    }
+
+    /// EDT-19：方向取长边——宽矩形是水平渐变（同一列上下同色、左右不同色）。
+    #[test]
+    fn gradient_direction_follows_long_edge() {
+        let g = crate::editor::Gradient::seed([229, 57, 53, 255]);
+        let style = Style::new(g.representative(), 4.0).with_gradient(g);
+        let wide = Object {
+            kind: Kind::Rect {
+                a: Point::new(10.0, 10.0),
+                b: Point::new(190.0, 90.0),
+                radius: 0.0,
+                filled: true,
+            },
+            style,
+        };
+        let mut pm = new_pixmap(200, 100);
+        draw_object(&mut pm, &wide);
+        let rgb = |x: u32, y: u32| pm.pixel(x, y).map(|p| (p.red(), p.green(), p.blue()));
+        let (left, right) = (rgb(20, 50).unwrap(), rgb(180, 50).unwrap());
+        assert_ne!(left, right, "左右应不同（水平渐变）");
+        let (top, bottom) = (rgb(100, 20).unwrap(), rgb(100, 80).unwrap());
+        assert_eq!(top, bottom, "水平渐变上下应同色");
+    }
+
+    /// EDT-19：未填充矩形只画描边，描边也照样跟渐变（上边框两端颜色不同）。
+    #[test]
+    fn gradient_stroke_varies_along_edge() {
+        let g = crate::editor::Gradient::seed([30, 136, 229, 255]);
+        let style = Style::new(g.representative(), 6.0).with_gradient(g);
+        let obj = Object {
+            kind: Kind::Rect {
+                a: Point::new(10.0, 10.0),
+                b: Point::new(190.0, 90.0),
+                radius: 0.0,
+                filled: false,
+            },
+            style,
+        };
+        let mut pm = new_pixmap(200, 100);
+        draw_object(&mut pm, &obj);
+        let left = pm.pixel(20, 12).map(|p| (p.red(), p.green(), p.blue()));
+        let right = pm.pixel(180, 12).map(|p| (p.red(), p.green(), p.blue()));
+        assert!(left.is_some() && right.is_some(), "上下边框应有墨");
+        assert_ne!(left, right, "描边也应跟着渐变变化");
+    }
+
+    /// EDT-19：渐变 + 虚线可以共存（两个独立维度），描边不 panic 且有墨。
+    #[test]
+    fn gradient_and_dashed_can_combine() {
+        let g = crate::editor::Gradient::seed([229, 57, 53, 255]);
+        let style = Style::new(g.representative(), 6.0)
+            .with_line(crate::editor::LineStyle::Dashed)
+            .with_gradient(g);
+        let obj = Object {
+            kind: Kind::arrow(Point::new(10.0, 30.0), Point::new(180.0, 30.0)),
+            style,
+        };
+        let mut pm = new_pixmap(200, 60);
+        draw_object(&mut pm, &obj);
+        // 箭头线身 + 三角头都要有墨，且经过渐变着色器（不崩、不是全透明）
+        let ink = (10..180)
+            .filter(|x| pm.pixel(*x as u32, 30).is_some_and(|p| p.alpha() > 0))
+            .count();
+        assert!(ink > 0, "虚线渐变箭头应有墨");
     }
 
     fn alpha_at(p: &Pixmap, x: u32, y: u32) -> u8 {
@@ -808,5 +914,52 @@ mod tests {
         draw_object(&mut p, &obj);
         let has_dark = (0..60).any(|y| (0..60).any(|x| pixel(&p, x, y).0 < 80 && pixel(&p, x, y).3 > 0));
         assert!(has_dark, "白底徽标上应绘制深色数字");
+    }
+
+    /// 人工核对用：`cargo test gradient_visual_dump -- --ignored --nocapture` 会落两张 PNG
+    /// 到临时目录（填充矩形 / 描边矩形），看三段颜色在深底与细描边上是否都能辨。
+    #[test]
+    #[ignore]
+    fn gradient_visual_dump() {
+        let g = crate::editor::Gradient::seed([229, 57, 53, 255]);
+        for (name, filled) in [("filled", true), ("stroke", false)] {
+            let style = Style::new(g.representative(), 6.0).with_gradient(g);
+            let obj = Object {
+                kind: Kind::Rect {
+                    a: Point::new(10.0, 10.0),
+                    b: Point::new(390.0, 190.0),
+                    radius: 0.0,
+                    filled,
+                },
+                style,
+            };
+            let mut pm = new_pixmap(400, 200);
+            pm.fill(tiny_skia::Color::from_rgba8(30, 30, 30, 255));
+            draw_object(&mut pm, &obj);
+            let path = std::env::temp_dir().join(format!("airsnip-gradient-{name}.png"));
+            std::fs::write(&path, pm.encode_png().expect("png")).expect("写入 dump");
+            eprintln!("已输出 {path:?}");
+        }
+        // 连续 6 套（链式推进）：亮度应恒定，不能一套套变暗
+        let mut pm = new_pixmap(400, 300);
+        pm.fill(tiny_skia::Color::from_rgba8(30, 30, 30, 255));
+        let base = [229, 57, 53, 255];
+        for i in 0..6u32 {
+            let g = crate::editor::Gradient::nth(base, i);
+            let style = Style::new(g.representative(), 4.0).with_gradient(g);
+            let obj = Object {
+                kind: Kind::Rect {
+                    a: Point::new(10.0, 10.0 + i as f32 * 46.0),
+                    b: Point::new(390.0, 46.0 + i as f32 * 46.0),
+                    radius: 0.0,
+                    filled: true,
+                },
+                style,
+            };
+            draw_object(&mut pm, &obj);
+        }
+        let path = std::env::temp_dir().join("airsnip-gradient-chain.png");
+        std::fs::write(&path, pm.encode_png().expect("png")).expect("写入 dump");
+        eprintln!("已输出 {path:?}");
     }
 }

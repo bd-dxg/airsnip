@@ -145,6 +145,30 @@ pub struct SavePrefs {
     pub last_dir: Option<String>,
 }
 
+/// 默认纯色块（红 / 橙黄）。
+fn default_swatches() -> [[u8; 4]; crate::editor::SOLID_COUNT] {
+    crate::editor::DEFAULT_COLORS
+}
+
+/// 兼容旧配置：旧格式是 5 个纯色，新格式是 2 个（EDT-19）。
+fn de_swatches<'de, D>(d: D) -> Result<[[u8; 4]; crate::editor::SOLID_COUNT], D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw: Vec<[u8; 4]> = Vec::deserialize(d)?;
+    Ok(migrate_swatches(raw))
+}
+
+/// 纯色块迁移：旧 5 项（白 / 红 / 橙 / 绿 / 蓝）取第 2、3 项（红 / 橙黄），
+/// 新格式原样取两项；样本不足时用默认值。
+fn migrate_swatches(raw: Vec<[u8; 4]>) -> [[u8; 4]; crate::editor::SOLID_COUNT] {
+    match raw.len() {
+        2 => [raw[0], raw[1]],
+        n if n >= 3 => [raw[1], raw[2]],
+        _ => crate::editor::DEFAULT_COLORS,
+    }
+}
+
 /// 根配置。所有字段带默认值，旧配置文件缺字段时自动补齐。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
@@ -173,8 +197,13 @@ pub struct Config {
     pub pin_border: bool,
     /// 覆盖层界面缩放（CAP-5，默认自动）：4K@100% 这类高密度屏需要手动放大。
     pub ui_scale: UiScale,
-    /// 工具栏 5 个色块的颜色（EDT-7，issue #73 后续）：双击色块取色改写，缺省为预设色。
-    pub swatch_colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
+    /// 工具栏 2 个纯色块的颜色（EDT-7 / EDT-19）：双击色块取色改写，缺省为红 / 橙黄。
+    /// 第 3 格是渐变色块，不存颜色（`Gradient` 不写配置，详见 ADR 0043）。
+    /// 旧配置存的是 5 个纯色：`migrate_swatches` 取第 2、3 项迁移。
+    #[serde(default = "default_swatches", deserialize_with = "de_swatches")]
+    pub swatch_colors: [[u8; 4]; crate::editor::SOLID_COUNT],
+    /// 上次选中的色块下标（0..`SWATCH_COUNT`，含渐变色块）：下次截图沿用。
+    pub color_index: usize,
     /// 当前线型（EDT-18，issue #168）：跨截图记忆，缺省为实线。
     pub line_style: crate::editor::LineStyle,
     /// 有未保存标注时取消截图先弹确认框（OUT-3 / ADR 0027，默认开）；关闭后直接退出（issue #120）。
@@ -214,6 +243,7 @@ impl Default for Config {
             pin_border: true,
             ui_scale: UiScale::Auto,
             swatch_colors: crate::editor::DEFAULT_COLORS,
+            color_index: 0,
             line_style: crate::editor::LineStyle::Solid,
             confirm_cancel: true,
             toolbar: ToolbarConfig::default(),
@@ -254,6 +284,8 @@ impl Config {
         }
         // 迁移：0.13 开发期的整条路径模板 → 目录 + 文件名（ADR 0041）
         cfg.quick_save.migrate();
+        // 迁移（EDT-19）：颜色组缩到 2 纯色 + 1 渐变，清掉指向旧色块的隐藏键
+        cfg.toolbar.migrate_swatch_keys();
         cfg
     }
 
@@ -493,20 +525,44 @@ mod tests {
         assert!(!back.control_snap);
     }
 
-    /// 色块颜色（EDT-7）：旧配置缺字段回退预设色，新值能往返。
+    /// 色块颜色（EDT-7 / EDT-19）：默认红 / 橙黄；旧 5 项迁移到 2 项，新值能往返。
     #[test]
     fn swatch_colors_defaults_and_roundtrip() {
         let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
         assert_eq!(old.swatch_colors, crate::editor::DEFAULT_COLORS, "旧配置应回退预设色");
 
+        // 旧格式（5 个纯色：白 / 红 / 橙 / 绿 / 蓝）→ 取红、橙黄
+        let legacy: Config = toml::from_str(
+            "swatch_colors = [[255,255,255,255],[229,57,53,255],[251,140,0,255],[67,160,71,255],[30,136,229,255]]\n",
+        )
+        .unwrap();
+        assert_eq!(legacy.swatch_colors[0], [229, 57, 53, 255], "迁移应保留红");
+        assert_eq!(legacy.swatch_colors[1], [251, 140, 0, 255], "迁移应保留橙黄");
+
         let mut colors = crate::editor::DEFAULT_COLORS;
-        colors[4] = [142, 36, 170, 255];
+        colors[1] = [142, 36, 170, 255];
         let cfg = Config {
             swatch_colors: colors,
             ..Default::default()
         };
-        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
         assert_eq!(back.swatch_colors, colors);
+    }
+
+    /// 上次选中的色块（EDT-19）：默认 0（红）；旧配置缺字段回退 0；新值能往返。
+    #[test]
+    fn color_index_defaults_and_roundtrip() {
+        assert_eq!(Config::default().color_index, 0);
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.color_index, 0, "旧配置应回退第一个色块");
+
+        let cfg = Config {
+            color_index: crate::editor::GRADIENT_SWATCH,
+            ..Default::default()
+        };
+        let back: Config = toml::from_str(&toml::to_string_pretty(&cfg).unwrap()).unwrap();
+        assert_eq!(back.color_index, crate::editor::GRADIENT_SWATCH);
     }
 
     /// 线型（EDT-18）：默认实线；旧配置（缺字段）回退实线；新值能往返。

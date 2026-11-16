@@ -110,6 +110,7 @@ impl App {
             window_snap: self.config.window_snap,
             control_snap: self.config.control_snap,
             colors: self.config.swatch_colors,
+            color_index: self.config.color_index,
             line_style: self.config.line_style,
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,

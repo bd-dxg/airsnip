@@ -6,10 +6,13 @@
 mod corner;
 mod curve;
 mod document;
+mod gradient;
 mod hit;
 mod linestyle;
 mod number;
+pub(crate) mod oklab;
 pub(crate) mod palette;
+mod style;
 pub(crate) mod text;
 mod tool;
 mod transform;
@@ -19,9 +22,14 @@ pub use curve::{
     split_left, t_at_arc_from_end,
 };
 pub use document::{Document, MAX_HISTORY};
+pub use gradient::{Gradient, HUE_SPAN, HUE_STEP, STOPS as GRADIENT_STOPS};
 pub use linestyle::{LineStyle, line_store, line_take};
 pub use number::{next_number, number_arrow_start};
-pub use palette::{DEFAULT_COLORS, SWATCH_COUNT, colors_store, colors_take};
+pub use palette::{
+    DEFAULT_COLORS, GRADIENT_SWATCH, SOLID_COUNT, SWATCH_COUNT, color_index_store, color_index_take, colors_store,
+    colors_take,
+};
+pub use style::Style;
 pub use tool::{
     DEFAULT_BLUR_RADIUS, DEFAULT_FONT_FAMILY, DEFAULT_FONT_SIZE, DEFAULT_LINE_WIDTH, DEFAULT_NUMBER_FONT_SIZE,
     FONT_SIZE_RANGE, Mode, Tool,
@@ -60,32 +68,6 @@ impl Bounds {
             x1: x1 + pad,
             y1: y1 + pad,
         }
-    }
-}
-
-/// 对象样式（EDT-7：颜色、线宽；EDT-18：线型）。
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Style {
-    /// 描边/填充色（RGBA，alpha 支持矩形透明度，EDT-1）。
-    pub color: [u8; 4],
-    /// 线宽（物理像素）。
-    pub width: f32,
-    /// 线型（EDT-18）：只对有描边的对象有意义。
-    pub line: LineStyle,
-}
-
-impl Style {
-    pub fn new(color: [u8; 4], width: f32) -> Self {
-        Self {
-            color,
-            width,
-            line: LineStyle::Solid,
-        }
-    }
-
-    /// 换线型（构造当前样式时用，保留颜色与线宽）。
-    pub fn with_line(self, line: LineStyle) -> Self {
-        Self { line, ..self }
     }
 }
 

@@ -43,8 +43,10 @@ pub struct OverlayOpts {
     pub window_snap: bool,
     /// 控件级捕捉（CAP-6 二级 / ADR 0039）：在整窗吸附上再下钻到 UIA 子控件。
     pub control_snap: bool,
-    /// 色块颜色（EDT-7，issue #73 后续）：来自配置，缺省为 `DEFAULT_COLORS`。
-    pub colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
+    /// 色块颜色（EDT-7 / EDT-19）：2 个纯色，来自配置，缺省为红 / 橙黄。
+    pub colors: [[u8; 4]; crate::editor::SOLID_COUNT],
+    /// 上次选中的色块下标（含渐变色块，0..SWATCH_COUNT）：下次截图沿用。
+    pub color_index: usize,
     /// 当前线型（EDT-18，issue #168）：来自配置，缺省为实线。
     pub line_style: crate::editor::LineStyle,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。

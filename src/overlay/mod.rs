@@ -125,10 +125,16 @@ pub struct Overlay {
     pin_key: u32,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
     save: crate::settings::SavePrefs,
-    /// 当前色块下标（0..SWATCH_COUNT，EDT-7）。
+    /// 当前色块下标（0..SWATCH_COUNT，EDT-7）：`SOLID_COUNT` 及以上是渐变色块（EDT-19）。
     color_index: usize,
-    /// 色块颜色（EDT-7，issue #73 后续）：初值来自配置，双击色块取色改写。
-    colors: [[u8; 4]; crate::editor::SWATCH_COUNT],
+    /// 纯色块颜色（EDT-7 / EDT-19）：初值来自配置，双击色块取色改写。
+    colors: [[u8; 4]; crate::editor::SOLID_COUNT],
+    /// 下一笔将用的渐变（EDT-19）：每落笔 / 换工具推一套，只存运行时（不写配置）。
+    gradient: crate::editor::Gradient,
+    /// 渐变的基准色（首次进入渐变模式时的纯色块）与已推进的套数。
+    /// 用「基准 + 计数」生成而不是拿上一套终点当起点：后者经 u8 往返会逐套漂，步长越走越小。
+    gradient_base: [u8; 4],
+    gradient_count: u32,
     /// 新建对象的默认线宽（滚轮 / 二级工具栏可连续调整）。
     line_width: f32,
     /// 当前线型（EDT-18）：新建对象用它，切换时同时作用于选中对象。

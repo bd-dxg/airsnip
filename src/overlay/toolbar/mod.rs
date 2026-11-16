@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use tiny_skia::Pixmap;
 
-use crate::editor::{LineStyle, SWATCH_COUNT, Tool};
+use crate::editor::{Gradient, LineStyle, SOLID_COUNT, Tool};
 use crate::overlay::geometry::SelRect;
 use crate::overlay::ui::Ui;
 use crate::theme::Palette;
@@ -47,8 +47,12 @@ pub struct State {
     /// 当前待用工具；`None` = 移动态（ADR 0036，高亮「移动」按钮，工具全不高亮）。
     pub tool: Option<Tool>,
     pub color: usize,
-    /// 色块颜色（EDT-7）：绘制色块用。
-    pub colors: [[u8; 4]; SWATCH_COUNT],
+    /// 色块颜色（EDT-7）：**只有纯色块**（`SOLID_COUNT` 个）用得到。
+    pub colors: [[u8; 4]; SOLID_COUNT],
+    /// 下一笔将用的渐变（EDT-19）：渐变色块的色带画它。
+    pub gradient: Gradient,
+    /// 渐变色块是否可用（EDT-19）：文本 / 荧光笔 / 模糊 / 聚光不适用。
+    pub gradient_enabled: bool,
     /// 矩形 / 椭圆是否填充（EDT-1/EDT-14）。
     pub filled: bool,
     /// 填充开关是否可用（EDT-1/EDT-14）：当前工具能画可填充形状，或选中对象是矩形 / 椭圆。
@@ -345,28 +349,28 @@ mod tests {
         }
         // 元素顺序与数量（EDT-7 工具栏结构 + ADR 0036 移动按钮 + EDT-4 第二行）
         let actions: Vec<Action> = bar.hits.iter().map(|(_, a)| *a).collect();
-        assert_eq!(actions.len(), 31);
+        assert_eq!(actions.len(), 29);
         // ADR 0036：「移动」排在工具组首位，框选完成后高亮的就是它
         assert_eq!(actions[0], Action::Move);
         assert_eq!(actions[1..11], Tool::ALL.map(Action::Tool));
-        // 色块：5 个，均可双击改色（issue #73 后续，不再有单独的自定义槽）
-        assert_eq!(actions[11..16], [0, 1, 2, 3, 4].map(Action::Color));
-        assert_eq!(actions[16], Action::ToggleFill);
+        // 色块：3 个（EDT-19：2 个纯色 + 1 个渐变），前两个可双击改色、第三个双击换套
+        assert_eq!(actions[11..14], [0, 1, 2].map(Action::Color));
+        assert_eq!(actions[14], Action::ToggleFill);
         // EDT-18：线型紧跟在填充之后，且占**两个按钮宽**（单格 26px 画虚线只剩一两个周期）
-        assert_eq!(actions[17], Action::LineMenu);
-        let line = &bar.hits[17].0;
+        assert_eq!(actions[15], Action::LineMenu);
+        let line = &bar.hits[15].0;
         assert_eq!(line.w, base().px(BTN_BASE) * 2, "线型格子应占两格宽：{line:?}");
         assert_eq!(line.h, base().px(BTN_BASE), "高度仍与其它按钮一致");
-        assert_eq!(actions[18], Action::Undo);
-        assert_eq!(actions[19], Action::Redo);
-        assert_eq!(actions[20], Action::Pin);
-        assert_eq!(actions[21], Action::Longshot);
-        assert_eq!(actions[22], Action::Copy);
-        assert_eq!(actions[23], Action::Save);
+        assert_eq!(actions[16], Action::Undo);
+        assert_eq!(actions[17], Action::Redo);
+        assert_eq!(actions[18], Action::Pin);
+        assert_eq!(actions[19], Action::Longshot);
+        assert_eq!(actions[20], Action::Copy);
+        assert_eq!(actions[21], Action::Save);
         // OUT-2 / ADR 0041：文件组末尾新增快速保存
-        assert_eq!(actions[24], Action::QuickSave);
+        assert_eq!(actions[22], Action::QuickSave);
         assert_eq!(
-            actions[25..],
+            actions[23..],
             [
                 Action::FontPick,
                 Action::ToggleBold,
@@ -384,7 +388,7 @@ mod tests {
         let bar = layout(sel(100, 100, 400, 300), 2560, 1440, &all(), false, base());
         assert!(bar.second.is_none());
         assert_eq!(bar.rect.h, base().px(H_BASE));
-        assert_eq!(bar.hits.len(), 25);
+        assert_eq!(bar.hits.len(), 23);
     }
 
     /// 隐藏的元素不再有命中区，工具栏宽度随之变窄（R1/R2）。
@@ -505,5 +509,40 @@ mod tests {
             assert_eq!(a.0.w * 2, b.0.w, "元素宽度应翻倍：{:?}", a.1);
             assert_eq!(a.0.h * 2, b.0.h, "元素高度应翻倍：{:?}", a.1);
         }
+    }
+
+    /// 人工核对用：`cargo test toolbar_visual_dump -- --ignored --nocapture` 落一张工具栏 PNG，
+    /// 确认渐变色块是彩色色带（不是灰的），且三个色块都在。
+    #[test]
+    #[ignore]
+    fn toolbar_visual_dump() {
+        let ui = base();
+        let bar = layout(sel(10, 10, 600, 300), 800, 400, &all(), false, ui);
+        let state = State {
+            tool: Some(Tool::Rect),
+            color: crate::editor::GRADIENT_SWATCH,
+            colors: crate::editor::DEFAULT_COLORS,
+            gradient: crate::editor::Gradient::seed(crate::editor::DEFAULT_COLORS[0]),
+            gradient_enabled: true,
+            filled: false,
+            fill_enabled: true,
+            line_style: crate::editor::LineStyle::Solid,
+            line_enabled: true,
+            line_open: false,
+            can_undo: false,
+            can_redo: false,
+            font_family: std::sync::Arc::from("Microsoft YaHei UI"),
+            bold: false,
+            italic: false,
+            font_size: 24.0,
+            font_open: false,
+            hover: None,
+        };
+        let mut pm = Pixmap::new(800, 400).unwrap();
+        pm.fill(tiny_skia::Color::from_rgba8(30, 30, 30, 255));
+        draw(&mut pm, &bar, &state, crate::theme::palette(crate::theme::Theme::Dark));
+        let path = std::env::temp_dir().join("airsnip-toolbar.png");
+        std::fs::write(&path, pm.encode_png().expect("png")).expect("写入 dump");
+        eprintln!("已输出 {path:?}");
     }
 }

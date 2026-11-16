@@ -4,7 +4,7 @@
 
 use tiny_skia::{FillRule, LineCap, LineJoin, PathBuilder, Pixmap, Rect, Transform};
 
-use super::{paint_of, stroke_of};
+use super::{box_span, paint_of, stroke_of};
 use crate::editor::{Point, Style};
 
 /// EDT-13 直线：无箭头的纯线段，端点用圆端帽（避免描边超出端点的生硬截断）。
@@ -19,9 +19,20 @@ pub(super) fn draw_line(pixmap: &mut Pixmap, from: Point, to: Point, style: &Sty
     let Some(path) = pb.finish() else {
         return;
     };
-    let paint = paint_of(style.color);
+    let paint = paint_of(style, from, to);
     let stroke = stroke_of(style, LineCap::Round, LineJoin::Round);
     pixmap.stroke_path(&path, &paint, &stroke, tr, None);
+}
+
+/// 折线包围盒：渐变方向用它（折返的手绘不让渐变跟着倒退）。
+fn points_bounds(pts: &[Point]) -> (Point, Point) {
+    let first = pts[0];
+    let (mut x0, mut y0, mut x1, mut y1) = (first.x, first.y, first.x, first.y);
+    for p in pts {
+        (x0, y0) = (x0.min(p.x), y0.min(p.y));
+        (x1, y1) = (x1.max(p.x), y1.max(p.y));
+    }
+    (Point::new(x0, y0), Point::new(x1, y1))
 }
 
 /// EDT-14 椭圆：外接矩形对角两点，`filled` 时填充（半透明由颜色 alpha 表达，与矩形一致）。
@@ -39,9 +50,15 @@ pub(super) fn draw_ellipse(pixmap: &mut Pixmap, a: Point, b: Point, filled: bool
     let Some(path) = pb.finish() else {
         return;
     };
-    let paint = paint_of(style.color);
+    let (ga, gb) = box_span(x0, y0, x1, y1);
+    let paint = paint_of(style, ga, gb);
     if filled {
         pixmap.fill_path(&path, &paint, FillRule::Winding, tr, None);
+        return;
+    }
+    // 渐变描边沿周长弧长走色（否则水平渐变下上下两边同色，ADR 0043）
+    if style.is_gradient() {
+        super::gradient_stroke::stroke_gradient(pixmap, &path, style, tr);
         return;
     }
     let stroke = stroke_of(style, LineCap::Butt, LineJoin::Miter);
@@ -81,7 +98,14 @@ pub(super) fn draw_freehand(pixmap: &mut Pixmap, pts: &[Point], style: &Style, t
     let Some(path) = pb.finish() else {
         return;
     };
-    let paint = paint_of(style.color);
+    let (ga, gb) = points_bounds(pts);
+    let (ga, gb) = box_span(ga.x, ga.y, gb.x, gb.y);
+    let paint = paint_of(style, ga, gb);
+    // 手绘是开路径：沿笔迹弧长走色（与矩形 / 椭圆一致）
+    if style.is_gradient() {
+        super::gradient_stroke::stroke_gradient(pixmap, &path, style, tr);
+        return;
+    }
     let stroke = stroke_of(style, LineCap::Round, LineJoin::Round);
     pixmap.stroke_path(&path, &paint, &stroke, tr, None);
 }

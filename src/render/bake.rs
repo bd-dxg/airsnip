@@ -86,6 +86,44 @@ mod tests {
         p
     }
 
+    /// EDT-19：导出烘焙的平移不能把渐变挤出画布。
+    /// shader 不再自带变换（由 `fill_path` 统一施加），否则非 identity 平移时会被平移两次，
+    /// 渐变整体移出画布、`Pad` 模式取端点色——屏幕上正常、导出变纯色。
+    #[test]
+    fn bake_keeps_gradient_after_translate() {
+        let g = crate::editor::Gradient::seed([229, 57, 53, 255]);
+        let style = Style::new(g.representative(), 4.0).with_gradient(g);
+        let obj = Object {
+            kind: Kind::Rect {
+                a: Point::new(100.0, 100.0),
+                b: Point::new(300.0, 200.0),
+                radius: 0.0,
+                filled: true,
+            },
+            style,
+        };
+        let mut p = canvas(220, 120);
+        bake_objects(&mut p, &[obj], (90, 90));
+        let at = |x: u32| p.pixel(x, 60).map(|c| (c.red(), c.green(), c.blue()));
+        // 矩形在裁剪图里是 (10,10)-(210,110)：左端应接近渐变起点色，右端接近终点色。
+        // 只查「左右不同」不够——双重平移后左边仍是中间色、右边是终点色，也能不同。
+        let g0 = g.stops[0];
+        let g1 = g.stops[crate::editor::GRADIENT_STOPS - 1];
+        let dist = |c: (u8, u8, u8), s: [u8; 4]| -> i32 {
+            (c.0 as i32 - s[0] as i32).abs() + (c.1 as i32 - s[1] as i32).abs() + (c.2 as i32 - s[2] as i32).abs()
+        };
+        assert!(
+            dist(at(12).unwrap(), g0) <= 60,
+            "左端应接近渐变起点：{:?} vs {g0:?}",
+            at(12)
+        );
+        assert!(
+            dist(at(208).unwrap(), g1) <= 60,
+            "右端应接近渐变终点：{:?} vs {g1:?}",
+            at(208)
+        );
+    }
+
     /// 聚光圆角：烘焙后四角保持暗化，中心恢复原图亮度，且裁剪原点正确平移。
     #[test]
     fn glow_corner_stays_dim_in_bake() {

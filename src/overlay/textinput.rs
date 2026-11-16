@@ -121,7 +121,8 @@ impl super::Overlay {
                 self.doc.begin();
                 self.doc.push(Object {
                     kind,
-                    style: self.current_style(),
+                    // 文本不支持渐变（EDT-19）：即使色块停在渐变上，也用代表色写成纯色
+                    style: self.current_style().with_solid(self.current_color()),
                 });
                 self.doc.commit(true);
                 self.selected = Some(self.doc.objects().len() - 1);

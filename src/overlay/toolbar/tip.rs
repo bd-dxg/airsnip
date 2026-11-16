@@ -101,10 +101,18 @@ fn hintable(action: Action) -> bool {
     matches!(action, Action::Color(_)) || action_label(action).is_some()
 }
 
-/// 色块气泡文案：第一段为色块当前颜色的十六进制色值，第二段提示双击改色。
-/// 色值取 `colors[i]`（与色块外观一致），改色后重新悬停即显示新值。
+/// 色块气泡文案：纯色块显示十六进制色值与双击改色；渐变色块显示起止色与双击换一套（EDT-19）。
 fn color_tip_text(c: [u8; 4]) -> String {
     format!("#{:02X}{:02X}{:02X} · 双击改色", c[0], c[1], c[2])
+}
+
+/// 渐变色块气泡：起色 → 止色，双击换一套（不手选色标，见 ADR 0043）。
+fn gradient_tip_text(g: &crate::editor::Gradient) -> String {
+    let (a, b) = (g.stops[0], g.stops[crate::editor::GRADIENT_STOPS - 1]);
+    format!(
+        "#{:02X}{:02X}{:02X} → #{:02X}{:02X}{:02X} · 双击换一套",
+        a[0], a[1], a[2], b[0], b[1], b[2]
+    )
 }
 
 /// 气泡文案：「名称 · 快捷键」；无快捷键时只有名称。
@@ -213,7 +221,10 @@ impl Overlay {
     /// 气泡文案：「名称 · 快捷键」；不提示的控件返回 None。色块显示色值 + 双击改色。
     fn tip_text(&self, hit: Hit) -> Option<String> {
         match hit {
-            // 色块：显示该色块的十六进制色值（第一段）与操作方式（第二段），issue #122 / #123
+            // 色块：纯色显示色值 + 双击改色，渐变色块显示起止色 + 双击换一套（issue #122 / #123，EDT-19）
+            Hit::Button(Action::Color(i)) if i >= crate::editor::GRADIENT_SWATCH => {
+                Some(gradient_tip_text(&self.gradient))
+            }
             Hit::Button(Action::Color(i)) => Some(color_tip_text(self.colors[i])),
             Hit::Button(a) => Some(compose(action_label(a)?, self.key_suffix(a).as_deref())),
             // 圆角控制柄（EDT-1/ADR 0010）没有快捷键

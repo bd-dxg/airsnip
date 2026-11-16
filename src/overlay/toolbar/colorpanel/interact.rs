@@ -21,6 +21,13 @@ impl Overlay {
             return false;
         };
         let bar_rect = bar.rect;
+        // EDT-19：渐变色块的双击是「换一套」，不开取色面板（渐变不手选色标）
+        if i >= crate::editor::GRADIENT_SWATCH {
+            self.color_index = i;
+            self.advance_gradient();
+            self.repaint_toolbar_chrome();
+            return true;
+        }
         self.close_font_list();
         self.close_color_panel();
         // 第一击已选用该色（`apply_action`），这里兜底一次

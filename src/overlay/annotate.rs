@@ -7,7 +7,7 @@ mod output;
 pub(super) mod style;
 
 use cancel::{CancelStep, cancel_step};
-pub(in crate::overlay) use style::{fill_enabled_for, has_stroke, line_enabled_for};
+pub(in crate::overlay) use style::{fill_enabled_for, gradient_enabled_for, has_stroke, line_enabled_for};
 
 // 画布 ↔ 屏幕坐标换算：贴图 / 长截图 / 快速选区（ADR 0040）共用一份
 pub(in crate::overlay) use output::to_screen;
@@ -19,14 +19,32 @@ use super::{geometry::SelRect, toolbar};
 use crate::editor::Style;
 
 impl super::Overlay {
-    /// 当前标注色（EDT-7）：当前色块的颜色。
-    pub(super) fn current_color(&self) -> [u8; 4] {
-        self.colors[self.color_index]
+    /// 推进到下一套渐变（EDT-19）：**落笔成对象**与**切换工具**都调用它。
+    /// 用「基准 + 计数」生成，不拿上一套终点当起点（否则经 u8 往返逐套漂、步长越走越小）。
+    pub(super) fn advance_gradient(&mut self) {
+        self.gradient_count = self.gradient_count.wrapping_add(1);
+        self.gradient = crate::editor::Gradient::nth(self.gradient_base, self.gradient_count);
     }
 
-    /// 当前样式（EDT-7：颜色 + 连续线宽；EDT-18：线型）。
+    /// 当前标注色（EDT-7）：渐变色块时用渐变中点作代表色（取色面板 / 提示 / 徽标对比度）。
+    pub(super) fn current_color(&self) -> [u8; 4] {
+        if self.color_index >= crate::editor::GRADIENT_SWATCH {
+            self.gradient.representative()
+        } else {
+            self.colors[self.color_index]
+        }
+    }
+
+    /// 当前样式（EDT-7：颜色 + 连续线宽；EDT-18：线型；EDT-19：渐变）。
+    /// 渐变的**推进不在这里**：只在草稿真的提交成对象时推进（见 `commit_draft`），
+    /// 否则「点一下只选中对象」也会白吐一套（ADR 0023 的退化丢弃）。
     pub(super) fn current_style(&self) -> Style {
-        Style::new(self.current_color(), self.line_width).with_line(self.line_style)
+        let style = Style::new(self.current_color(), self.line_width).with_line(self.line_style);
+        if self.color_index >= crate::editor::GRADIENT_SWATCH {
+            style.with_gradient(self.gradient)
+        } else {
+            style
+        }
     }
 
     /// 按下键对应的标注工具（工具切换键配置，M3）。
@@ -101,6 +119,8 @@ impl super::Overlay {
             tool,
             color: self.color_index,
             colors: self.colors,
+            gradient: self.gradient,
+            gradient_enabled: gradient_enabled_for(tool, self.selected_object()),
             filled: self.filled,
             fill_enabled: fill_enabled_for(tool, self.selected_object()),
             line_style: self.line_style,
@@ -130,13 +150,28 @@ impl super::Overlay {
             self.close_line_menu();
         }
         match action {
-            toolbar::Action::Tool(t) => self.mode = crate::editor::Mode::Draw(t),
+            toolbar::Action::Tool(t) => {
+                self.mode = crate::editor::Mode::Draw(t);
+                // 换工具也换一套：用户口径「换成箭头时就应该改变颜色」
+                if self.color_index >= crate::editor::GRADIENT_SWATCH {
+                    self.advance_gradient();
+                }
+            }
             // ADR 0036：回到指针（移动选区）态；贴图编辑模式选区锁定，指针模式无意义，忽略
             toolbar::Action::Move if self.locked_selection => {}
             toolbar::Action::Move => self.mode = crate::editor::Mode::Move,
             toolbar::Action::Color(i) => {
+                // EDT-19：渐变色块置灰时点了不生效（文本 / 荧光笔 / 效果类不支持渐变），
+                // 不能把 `color_index` 悄悄改成渐变而对象毫无变化
+                if i >= crate::editor::GRADIENT_SWATCH
+                    && !gradient_enabled_for(self.mode.tool(), self.selected_object())
+                {
+                    return;
+                }
                 self.color_index = i;
-                // EDT-7：颜色同时作用于选中的对象
+                // 记住选中的色块（含渐变），下次截图沿用（EDT-19）
+                crate::editor::color_index_store(i);
+                // EDT-7：颜色（或渐变）同时作用于选中的对象
                 self.style_selected();
             }
             toolbar::Action::ToggleFill => {
@@ -268,6 +303,26 @@ impl super::Overlay {
 mod tests {
     use super::*;
     use crate::editor::{Kind, Object};
+
+    /// 渐变可用性（EDT-19）：移动态无选中时**仍可用**（只是设定下次绘制的样式），
+    /// 只有当前工具 / 选中对象本身不支持时才灰。
+    #[test]
+    fn gradient_available_in_move_mode() {
+        use crate::editor::{Point, Tool};
+        let text = obj(Kind::Text {
+            pos: Point::new(0.0, 0.0),
+            text: "a".into(),
+            size: (8.0, 8.0),
+            font_size: 16.0,
+            font_family: "x".into(),
+            bold: false,
+            italic: false,
+        });
+        assert!(gradient_enabled_for(None, None), "移动态无选中时渐变色块应彩色可用");
+        assert!(gradient_enabled_for(Some(Tool::Rect), None));
+        assert!(!gradient_enabled_for(Some(Tool::Text), None), "文本不支持渐变");
+        assert!(!gradient_enabled_for(None, Some(&text)));
+    }
 
     /// 线型可用性（EDT-18）：有可见描边才能切换——填充矩形 / 椭圆、文本、效果类都不行。
     #[test]

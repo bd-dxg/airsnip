@@ -54,6 +54,8 @@ impl App {
             control_snap: self.config.control_snap,
             // 色块颜色（EDT-7，issue #73 后续）：可逐个双击改写
             colors: self.config.swatch_colors,
+            // 上次选中的色块（含渐变）：下次截图沿用（EDT-19）
+            color_index: self.config.color_index,
             // 当前线型（EDT-18，issue #168）：来自配置，缺省为实线
             line_style: self.config.line_style,
             // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名与初始位置

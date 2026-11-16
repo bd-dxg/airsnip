@@ -1,20 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 标注颜色调色板（EDT-7）：5 个可编辑色块（issue #73 后续）。
-//! 单击色块即使用；双击展开自绘取色面板（见 `overlay::toolbar::colorpanel`）改写该色块。
+//! 标注颜色调色板（EDT-7 / EDT-19）：工具栏只有 **2 个纯色块 + 1 个渐变色块**（issue #168 follow-up）。
+//! 单击色块即使用；双击纯色块展开自绘取色面板（见 `overlay::toolbar::colorpanel`）改写该色块，
+//! 双击渐变色块换一套渐变（见 `editor::gradient`）。
 //! 覆盖层线程写入 `colors_store`，主线程在截图结束时写回配置持久化。
 //! 这里另提供 HSV↔RGB 与取色面板的快捷色常量 `QUICK`。
 
-/// 色块数量。
-pub const SWATCH_COUNT: usize = 5;
+/// 工具栏色块格数：2 个纯色 + 1 个渐变。
+/// 注意：纯色数量是 `SOLID_COUNT`，`Color(2)` 是渐变色块。
+pub const SWATCH_COUNT: usize = 3;
 
-/// 色块默认颜色（RGBA）：用户未改过时使用。透明度当前固定 255。
-pub const DEFAULT_COLORS: [[u8; 4]; SWATCH_COUNT] = [
-    [255, 255, 255, 255],
-    [229, 57, 53, 255],
-    [251, 140, 0, 255],
-    [67, 160, 71, 255],
-    [30, 136, 229, 255],
-];
+/// 可自定义的纯色色块数量（渐变色块不在这里）。
+pub const SOLID_COUNT: usize = 2;
+
+/// 渐变色块在 `Action::Color(i)` 里的下标（= `SOLID_COUNT`）。
+pub const GRADIENT_SWATCH: usize = SOLID_COUNT;
+
+/// 纯色块默认颜色（RGBA）：红 / 橙黄（用户反馈白色用不上）。透明度当前固定 255。
+pub const DEFAULT_COLORS: [[u8; 4]; SOLID_COUNT] = [[229, 57, 53, 255], [251, 140, 0, 255]];
 
 /// 取色面板的快捷色块（2 行 × 6 列）：常用 Material 色 + 黑 / 白 / 灰。
 pub const QUICK: [[u8; 4]; 12] = [
@@ -71,19 +73,35 @@ pub fn rgb_to_hsv(c: [u8; 4]) -> (f32, f32, f32) {
     (h, s, max)
 }
 
-/// 覆盖层线程改过的色块组：主线程在截图结束时取出并写回配置（同 `output::recent`）。
-static COLORS: std::sync::Mutex<Option<[[u8; 4]; SWATCH_COUNT]>> = std::sync::Mutex::new(None);
+/// 覆盖层线程改过的纯色组：主线程在截图结束时取出并写回配置（同 `output::recent`）。
+static COLORS: std::sync::Mutex<Option<[[u8; 4]; SOLID_COUNT]>> = std::sync::Mutex::new(None);
 
-/// 记录本次改过的色块组（覆盖层线程调用）。
-pub fn colors_store(c: [[u8; 4]; SWATCH_COUNT]) {
+/// 记录本次改过的纯色组（覆盖层线程调用）。
+pub fn colors_store(c: [[u8; 4]; SOLID_COUNT]) {
     if let Ok(mut g) = COLORS.lock() {
         *g = Some(c);
     }
 }
 
-/// 取出并清空记录的色块组（主线程写回配置用）。
-pub fn colors_take() -> Option<[[u8; 4]; SWATCH_COUNT]> {
+/// 取出并清空记录的纯色组（主线程写回配置用）。
+pub fn colors_take() -> Option<[[u8; 4]; SOLID_COUNT]> {
     COLORS.lock().ok().and_then(|mut g| g.take())
+}
+
+/// 覆盖层线程改过的「当前色块下标」（含渐变色块）：主线程在截图结束时写回配置，
+/// 下次截图沿用上次选中的色块（issue #168 验收反馈）。
+static COLOR_INDEX: std::sync::Mutex<Option<usize>> = std::sync::Mutex::new(None);
+
+/// 记录当前选中的色块下标。
+pub fn color_index_store(i: usize) {
+    if let Ok(mut g) = COLOR_INDEX.lock() {
+        *g = Some(i);
+    }
+}
+
+/// 取出并清空记录的色块下标。
+pub fn color_index_take() -> Option<usize> {
+    COLOR_INDEX.lock().ok().and_then(|mut g| g.take())
 }
 
 #[cfg(test)]
@@ -126,9 +144,19 @@ mod tests {
     fn colors_memory_roundtrip() {
         assert_eq!(colors_take(), None, "初始应为空");
         let mut c = DEFAULT_COLORS;
-        c[2] = [10, 20, 30, 255];
+        c[1] = [10, 20, 30, 255];
         colors_store(c);
         assert_eq!(colors_take(), Some(c));
         assert_eq!(colors_take(), None, "取出后应清空");
+    }
+
+    /// 色块布局（EDT-19）：2 个纯色 + 1 个渐变，渐变下标不在纯色范围内。
+    #[test]
+    fn swatches_are_two_solids_and_a_gradient() {
+        assert_eq!(SOLID_COUNT + 1, SWATCH_COUNT, "除纯色外只有渐变色块");
+        assert_eq!(GRADIENT_SWATCH, SWATCH_COUNT - 1);
+        assert_eq!(DEFAULT_COLORS.len(), SOLID_COUNT);
+        assert_eq!(DEFAULT_COLORS[0], [229, 57, 53, 255], "默认纯色一：红");
+        assert_eq!(DEFAULT_COLORS[1], [251, 140, 0, 255], "默认纯色二：橙黄");
     }
 }

@@ -157,16 +157,31 @@ impl super::super::Overlay {
         let color = self.current_color();
         let filled = self.filled;
         let line = self.line_style;
+        let gradient = (self.color_index >= crate::editor::GRADIENT_SWATCH).then_some(self.gradient);
         let before = self.selected_clip();
         self.doc.begin();
         let changed = {
             let obj = &mut self.doc.objects_mut()[i];
             let mut changed = false;
-            // 模糊（效果）与聚光（亮度还原）不画描边，颜色对其无意义
-            if !matches!(obj.kind, Kind::Blur { .. } | Kind::Glow { .. }) && obj.style.color[..3] != color[..3] {
-                // 保留原有 alpha（透明度不随颜色选择变化，EDT-1）
-                obj.style.color = [color[0], color[1], color[2], obj.style.color[3]];
-                changed = true;
+            // 颜色 / 渐变（EDT-7 / EDT-19）：模糊（效果）与聚光（亮度还原）不画涂色，颜色对其无意义
+            if !matches!(obj.kind, Kind::Blur { .. } | Kind::Glow { .. }) {
+                match gradient {
+                    // 渐变色块：只给能涂渐变的类型；文本 / 荧光笔保持纯色（它们自己的颜色不被覆盖）
+                    Some(g) if super::super::annotate::style::kind_supports_gradient(&obj.kind) => {
+                        let next = obj.style.with_gradient(g);
+                        if obj.style != next {
+                            obj.style = next;
+                            changed = true;
+                        }
+                    }
+                    // 纯色块：所有能上色的对象（包括文本 / 荧光笔）都可改；
+                    // 保留原有 alpha（透明度不随颜色选择变化，EDT-1），渐变也要能改回纯色
+                    None if obj.style.color[..3] != color[..3] || obj.style.is_gradient() => {
+                        obj.style = obj.style.with_solid([color[0], color[1], color[2], obj.style.color[3]]);
+                        changed = true;
+                    }
+                    _ => {}
+                }
             }
             // 填充开关：矩形与椭圆共用（EDT-1/EDT-14），其余类型无填充概念
             if let Kind::Rect { filled: f, .. } | Kind::Ellipse { filled: f, .. } = &mut obj.kind

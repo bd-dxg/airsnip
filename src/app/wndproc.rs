@@ -217,6 +217,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     app.config.swatch_colors = colors;
                     changed = true;
                 }
+                // 上次选中的色块（含渐变）也记住，下次截图沿用（EDT-19）
+                if let Some(i) = crate::editor::color_index_take() {
+                    app.config.color_index = i;
+                    changed = true;
+                }
                 // 本次改过线型的话，记住它（EDT-18，issue #168）
                 if let Some(line) = crate::editor::line_take() {
                     app.config.line_style = line;
