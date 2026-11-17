@@ -961,5 +961,25 @@ mod tests {
         let path = std::env::temp_dir().join("airsnip-gradient-chain.png");
         std::fs::write(&path, pm.encode_png().expect("png")).expect("写入 dump");
         eprintln!("已输出 {path:?}");
+        // 手绘（按弧长重采样后仍需连续、沿笔迹走色）
+        let mut pm = new_pixmap(400, 220);
+        pm.fill(tiny_skia::Color::from_rgba8(30, 30, 30, 255));
+        let g = crate::editor::Gradient::seed([229, 57, 53, 255]);
+        let pts: Vec<Point> = (0..=180)
+            .map(|i| {
+                let x = 10.0 + i as f32 * 2.0;
+                Point::new(x, 110.0 + (i as f32 * 0.12).sin() * 70.0)
+            })
+            .collect();
+        let obj = Object {
+            kind: Kind::Freehand {
+                pts: std::sync::Arc::new(pts),
+            },
+            style: Style::new(g.representative(), 6.0).with_gradient(g),
+        };
+        draw_object(&mut pm, &obj);
+        let path = std::env::temp_dir().join("airsnip-gradient-freehand.png");
+        std::fs::write(&path, pm.encode_png().expect("png")).expect("写入 dump");
+        eprintln!("已输出 {path:?}");
     }
 }

@@ -2,8 +2,10 @@
 //! 沿路径的渐变描边（EDT-19）：矩形 / 椭圆 / 手绘的描边沿**周长弧长**走色，
 //! 而不是沿某个直线方向——否则水平渐变下，矩形的上边与下边在同一 x 处颜色完全相同。
 //!
-//! 做法：把路径（含虚线切分）平坦化成折线 → 按目标步长重新采样成小段 →
+//! 做法：把路径（含虚线切分）平坦化成折线 → 按整条路径的弧长重采样成 `STEP` 长的小段 →
 //! 每小段用一段起点/终点取色的线性渐变描边（Round 端帽让相邻段重叠，避免细缝）。
+//! 重采样看**累计弧长**，不是每条细碎折线各描一次——否则贝塞尔细分出的零点几像素的点
+//! 会让一条笔迹产生上千次 `stroke_path`。
 //! `LinearGradient` 本身只能沿直线走色，这是 tiny-skia 下的通用近似。
 
 use tiny_skia::{LineCap, LineJoin, Path, PathBuilder, PathSegment, Pixmap, Stroke, StrokeDash, Transform};
@@ -52,30 +54,44 @@ pub(super) fn stroke_gradient(pixmap: &mut Pixmap, path: &Path, style: &Style, t
         line_join: LineJoin::Round,
         ..Default::default()
     };
-    let mut acc = 0.0_f32;
-    for line in &polylines {
+    // 按**整条路径的弧长**重采样：每走满 `STEP` 才描一小段（局部渐变）。
+    resample(&polylines, total, |a, b, t0, t1| {
+        if let Some(path) = line_path(a, b)
+            && let Some(paint) = local_paint(&table, a, b, t0, t1)
+        {
+            pixmap.stroke_path(&path, &paint, &stroke, tr, None);
+        }
+    });
+}
+
+/// 把平坦化折线按**整条路径的弧长**重采样成 `STEP` 长的小段，回调（起点, 终点, t0, t1）。
+///
+/// 不能按折线逐段 `ceil(len / STEP)`（至少 1 段）：曲线被细分成几十个零点几像素的点，
+/// 每段都要 `stroke_path` 一次，一条长笔迹就上千次描边（手绘第二条起卡顿的根因，EDT-19）。
+fn resample(polylines: &[Vec<Point>], total: f32, mut emit: impl FnMut(Point, Point, f32, f32)) {
+    let mut acc = 0.0_f32; // 当前点累计弧长
+    for line in polylines {
         let mut prev = line[0];
+        let mut seg_start = prev;
+        let mut seg_arc = acc;
         for &p in &line[1..] {
             let (dx, dy) = (p.x - prev.x, p.y - prev.y);
             let len = (dx * dx + dy * dy).sqrt();
-            if len < 0.01 {
+            prev = p;
+            if len < 1e-4 {
                 continue;
             }
-            // 把一个折线段按 STEP 切成小段，每小段用局部渐变
-            let n = (len / STEP).ceil().max(1.0) as usize;
-            for k in 0..n {
-                let t0 = acc / total;
-                let a = lerp(prev, p, k as f32 / n as f32);
-                let b = lerp(prev, p, (k + 1) as f32 / n as f32);
-                acc += len / n as f32;
-                let t1 = acc / total;
-                if let Some(seg) = line_path(a, b)
-                    && let Some(paint) = local_paint(&table, a, b, t0, t1)
-                {
-                    pixmap.stroke_path(&seg, &paint, &stroke, tr, None);
-                }
+            acc += len;
+            if acc - seg_arc < STEP {
+                continue;
             }
-            prev = p;
+            emit(seg_start, p, seg_arc / total, acc / total);
+            seg_start = p;
+            seg_arc = acc;
+        }
+        // 子路径收尾：不足 `STEP` 的尾巴也要画（虚线被切碎后每段本来就短）
+        if acc - seg_arc > 1e-4 {
+            emit(seg_start, prev, seg_arc / total, acc / total);
         }
     }
 }
@@ -145,10 +161,6 @@ fn local_paint(table: &[(f32, [u8; 4])], a: Point, b: Point, t0: f32, t1: f32) -
         shader,
         ..Default::default()
     })
-}
-
-fn lerp(a: Point, b: Point, t: f32) -> Point {
-    Point::new(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t)
 }
 
 fn polyline_len(l: &[Point]) -> f32 {
@@ -299,5 +311,48 @@ mod tests {
         let (tl, tr) = (at(20, 11).unwrap(), at(180, 11).unwrap());
         assert_ne!(tl, tr, "上边左右应不同色");
         let _ = line_store;
+    }
+
+    /// 细碎折线（每点只差 0.1px，与贝塞尔细分出来的点列一样）必须**按弧长合段**：
+    /// 1000px 的笔迹只该切成 ~1000/STEP 段，而不是每个点描一次（那个写法让手绘第二条起卡顿）。
+    #[test]
+    fn resample_merges_fine_polyline() {
+        let pts: Vec<Point> = (0..=10_000).map(|i| Point::new(i as f32 * 0.1, 0.0)).collect();
+        let (mut n, mut prev_end, mut prev_t1) = (0usize, None, 0.0_f32);
+        resample(&[pts], 1000.0, |a, b, t0, t1| {
+            n += 1;
+            if let Some(e) = prev_end {
+                assert_eq!((a.x, a.y), e, "小段必须首尾相接，否则笔画会断开");
+                assert!((t0 - prev_t1).abs() < 1e-5, "取色参数也要接上");
+            }
+            assert!(b.x - a.x <= STEP + 0.2, "小段不应超过 STEP：{}", b.x - a.x);
+            prev_end = Some((b.x, b.y));
+            prev_t1 = t1;
+        });
+        let expect = (1000.0 / STEP) as usize;
+        assert!(n + 2 >= expect && n <= expect + 1, "应切成 ~{expect} 段，实际 {n} 段");
+    }
+
+    /// 手绘渐变描边不能有缝：按弧长重采样后相邻小段仍是首尾相接的。
+    /// （曾按平坦化折线逐段 `ceil(len / STEP)`，每条细碎子段都描一次，长笔迹上千次 `stroke_path`，
+    /// 第二条笔画起明显卡顿 —— 这里只守「重采样后仍然连续」，性能由少一个数量级的描边次数保证。）
+    #[test]
+    fn gradient_freehand_has_no_gaps() {
+        let g = Gradient::seed([229, 57, 53, 255]);
+        let style = Style::new(g.representative(), 6.0).with_gradient(g);
+        let pts: Vec<Point> = (0..=90).map(|i| Point::new(20.0 + i as f32 * 4.0, 50.0)).collect();
+        let obj = Object {
+            kind: Kind::Freehand {
+                pts: std::sync::Arc::new(pts),
+            },
+            style,
+        };
+        let mut pm = canvas(400, 100);
+        draw_object(&mut pm, &obj);
+        let bg = (30u8, 30u8, 30u8);
+        for x in 24..376 {
+            let ink = pm.pixel(x, 50).is_some_and(|p| (p.red(), p.green(), p.blue()) != bg);
+            assert!(ink, "手绘渐变在第 {x} 列断开了");
+        }
     }
 }
