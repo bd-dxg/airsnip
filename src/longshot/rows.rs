@@ -59,6 +59,42 @@ impl RowBuffer {
         }
     }
 
+    /// 把 `src` 的 `[y0, y1)` 行追加到末尾（`masks` 列区间用指定颜色填平）。
+    pub fn append_masked(&mut self, src: &[u8], y0: u32, y1: u32, masks: &[(u32, u32, [u8; 4])]) {
+        if masks.is_empty() {
+            self.append(src, y0, y1);
+            return;
+        }
+        let s = self.stride();
+        for y in y0..y1 {
+            let off = y as usize * s;
+            if off + s > src.len() {
+                break;
+            }
+            let mut row = src[off..off + s].to_vec();
+            mask_row(&mut row, masks);
+            self.rows.push_back(row);
+        }
+    }
+
+    /// 把 `src` 的 `[y0, y1)` 行插入到开头（`masks` 列区间同样填平）。
+    pub fn prepend_masked(&mut self, src: &[u8], y0: u32, y1: u32, masks: &[(u32, u32, [u8; 4])]) {
+        if masks.is_empty() {
+            self.prepend(src, y0, y1);
+            return;
+        }
+        let s = self.stride();
+        for y in (y0..y1).rev() {
+            let off = y as usize * s;
+            if off + s > src.len() {
+                continue;
+            }
+            let mut row = src[off..off + s].to_vec();
+            mask_row(&mut row, masks);
+            self.rows.push_front(row);
+        }
+    }
+
     /// 删除开头 `n` 行（固定页眉检测后从画布剔除，LNG-5）。
     pub fn remove_top(&mut self, n: u32) {
         for _ in 0..n.min(self.height()) {
@@ -91,6 +127,18 @@ impl RowBuffer {
             data.extend_from_slice(row);
         }
         Pixmap::from_vec(data, tiny_skia::IntSize::from_wh(self.w, h)?)
+    }
+}
+
+/// 把一行的若干列区间填成给定颜色（粘滞侧栏的底色，检测时算好一份）。
+fn mask_row(row: &mut [u8], masks: &[(u32, u32, [u8; 4])]) {
+    for &(a, b, color) in masks {
+        for x in a..b {
+            let o = x as usize * 4;
+            if o + 4 <= row.len() {
+                row[o..o + 4].copy_from_slice(&color);
+            }
+        }
     }
 }
 

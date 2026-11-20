@@ -20,6 +20,12 @@ mod window;
 use windows::Win32::Foundation::HINSTANCE;
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONERROR, MB_OK};
 
+/// 调试日志用的相对时间戳（毫秒，从本模块首调用起算）。
+pub(crate) fn window_start_ms() -> u128 {
+    static START: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    START.get_or_init(std::time::Instant::now).elapsed().as_millis()
+}
+
 /// 长截图主流程：创建执行窗口阻塞运行，完成后复制到剪贴板并保存。
 /// 保存目标：用户点过「另存为」则写到所选路径；否则自动存到默认目录（PNG）。
 /// 两种情况都会复制到剪贴板（OUT-1）。

@@ -3,21 +3,35 @@
 //! 高度上限与撤销段历史。纯逻辑，不依赖窗口（滚动由 `scroll` 模块负责）。
 //!
 //! 帧流时序：`seed(首帧)` 仅缓冲；此后每帧 `push(frame, h)` 内部用上一帧做
-//! 固定区域检测与条带定位。首帧不直接入画布——等拿到第二帧才能判断页眉/页脚，
-//! 避免「先入画布再纠正」的错位。
+//! 固定区域检测与条带定位。首帧直接入画布，页眉/页脚留到**第一次真实滚动**时
+//! 再检测（第二帧通常还没滚，两帧完全相同、检测不出东西，会把页眉高判成 0）。
+//!
+//! `prev` 始终是「最后一次成功拼入画布的帧」：定位失败 / 无位移都不更新它，
+//! 否则中间那段内容会永久丢掉（issue #157 / #196）。
 
 use super::rows::RowBuffer;
-use super::stitch::{self, Params};
+use super::stitch::{self, Params, Signs};
+
+/// 检测粘滞侧栏所需的最小滚动位移（像素）：位移太小时「静止列」与「滚动列」分不开。
+const MIN_MASK_SHIFT: u32 = 16;
 
 /// 拼接画布：宽度固定为视口宽，高度随帧增长。
 pub struct Canvas {
     w: u32,
     /// 内容区画布（不含固定页眉/页脚）。
     rows: RowBuffer,
-    /// 首帧缓冲（等待第二帧确定固定区域后才建画布）。
+    /// 首帧缓冲（首次 `push` 时入画布，页眉/页脚稍后检测）。
     first: Option<Vec<u8>>,
-    /// 上一帧（固定区域检测与定位用）。
+    /// 上一帧（固定区域检测与定位用）：始终是最后一次成功拼入的帧。
     prev: Vec<u8>,
+    /// 上一帧的行签名（每拍只算新帧，省一半签名成本）。
+    prev_sigs: Signs,
+    /// 页眉/页脚是否已确认（首次出现真实滚动时检测一次）。
+    fixed_done: bool,
+    /// 要遮掉的静态列区间与填充色（粘滞侧栏 / 滚动条）：只在结果顶部保留一次。
+    masks: Vec<(u32, u32, [u8; 4])>,
+    /// 静态列检测已试过几次（最多攒够 3 次，避免白底页面每拍都扫全屏）。
+    mask_tries: u8,
     /// 已确认的固定页眉（首帧顶部行，最终置于画布顶部）。
     header: Vec<u8>,
     header_h: u32,
@@ -32,6 +46,8 @@ pub struct Canvas {
     pub content_rows: u32,
     /// 段历史（撤销最后一段用）：(是否在顶部插入, 行数)。
     segments: Vec<(bool, u32)>,
+    /// 已处理的帧数（只用于调试抽样落盘）。
+    pushes: u32,
 }
 
 /// 单步结果。
@@ -54,6 +70,10 @@ impl Canvas {
             rows: RowBuffer::new(w),
             first: None,
             prev: Vec::new(),
+            prev_sigs: Signs::default(),
+            fixed_done: false,
+            masks: Vec::new(),
+            mask_tries: 0,
             header: Vec::new(),
             header_h: 0,
             footer: Vec::new(),
@@ -63,6 +83,7 @@ impl Canvas {
             still_run: 0,
             content_rows: 0,
             segments: Vec::new(),
+            pushes: 0,
         }
     }
 
@@ -77,50 +98,101 @@ impl Canvas {
 
     /// 处理一帧。`frame` 与上一帧同尺寸（宽 `w`、高 `h`）。
     pub fn push(&mut self, frame: &[u8], h: u32) -> Step {
-        // 首帧推入：建立画布。
+        // 首帧推入：整帧先入画布。页眉/页脚留到第一次真实滚动时再检测
+        //（此刻用户通常还没滚动，两帧完全相同，检测不出来）。
         if let Some(first) = self.first.take() {
-            let (mut t, mut b) = stitch::fixed_regions(&first, frame, self.w, h, &self.params);
-            // 完全静止（首帧==本帧）时不算页眉/页脚：整帧内容应入画布。
-            if t >= h {
-                t = 0;
-                b = 0;
-            }
-            let t = if t >= self.params.min_fixed { t } else { 0 };
-            let b = if b >= self.params.min_fixed { b } else { 0 };
-            // 首帧页眉/页脚入 header/footer，内容区入画布。
-            let stride = self.w as usize * 4;
-            if t > 0 {
-                self.header = first[..t as usize * stride].to_vec();
-                self.header_h = t;
-            }
-            if b > 0 {
-                self.footer = first[first.len() - b as usize * stride..].to_vec();
-                self.footer_h = b;
-            }
-            self.rows.append(&first, t, h - b);
+            self.rows.append(&first, 0, h);
             self.content_rows = self.rows.height();
-            self.prev = first.clone();
-            // 继续用首帧作上一帧，与本帧做一次正常定位，得到首段位移。
-            return self.push_inner(frame, h);
+            self.prev_sigs = Signs::new(&first, self.w, h);
+            self.prev = first;
         }
         self.push_inner(frame, h)
     }
 
+    /// 首次出现真实滚动时：先按「检测出的页眉/页脚」定位，成功才采纳；
+    /// 失败则退回不排除固定区域的定位。
+    fn locate_first(&mut self, ns: &Signs, h: u32) -> stitch::Match {
+        let p = self.params;
+        let (t, b) = stitch::fixed_regions(&self.prev_sigs, ns, h, &p);
+        // 单边不超过 1/3 屏高：内容大面积同色时不至于把整屏吞成页眉。
+        let cap = h / 3;
+        if (t > 0 || b > 0) && t <= cap && b <= cap && t + b < h {
+            let m = stitch::locate(&self.prev_sigs, ns, h, t, b, &p);
+            // 必须是真实位移才采纳；offset==0 多半是动画 / 同色区域导致的误检。
+            if m.confident && m.offset != 0 {
+                self.adopt_fixed(t, b);
+                self.fixed_done = true;
+                return m;
+            }
+        }
+        let m = stitch::locate(&self.prev_sigs, ns, h, 0, 0, &p);
+        if m.confident && m.offset != 0 {
+            self.fixed_done = true;
+        }
+        m
+    }
+
+    /// 把画布（此时只有首帧）顶部 `t` 行、底部 `b` 行划为页眉/页脚。
+    fn adopt_fixed(&mut self, t: u32, b: u32) {
+        let stride = self.w as usize * 4;
+        if t > 0 {
+            self.header = self.prev[..t as usize * stride].to_vec();
+            self.header_h = t;
+            self.rows.remove_top(t);
+        }
+        if b > 0 {
+            self.footer = self.prev[self.prev.len() - b as usize * stride..].to_vec();
+            self.footer_h = b;
+            self.rows.remove_bottom(b);
+        }
+        self.content_rows = self.rows.height();
+    }
+
     fn push_inner(&mut self, frame: &[u8], h: u32) -> Step {
         let params = self.params;
-        let m = stitch::locate(&self.prev, frame, self.w, h, self.header_h, self.footer_h, &params);
-        super::debug::log(&format!(
-            "push: offset={} start={} end={} confident={} fixed_top={} fixed_bottom={}",
-            m.offset, m.start, m.end, m.confident, self.header_h, self.footer_h
-        ));
+        self.pushes = self.pushes.wrapping_add(1);
+        let ns = Signs::new(frame, self.w, h);
+        let m = if self.fixed_done {
+            stitch::locate(&self.prev_sigs, &ns, h, self.header_h, self.footer_h, &params)
+        } else {
+            self.locate_first(&ns, h)
+        };
+        // 调试：每拍的定位结果、分数分母（有信息量行）与画面变化占比。
+        // 只在 AIRSNIP_DEBUG=1 时计算，避免常态每拍白算一遍全屏行比对。
+        if super::debug::enabled() {
+            let chg = self.prev_sigs.changed_ratio(&ns, h);
+            super::debug::log(&format!(
+                "push: offset={} start={} end={} confident={} fixed_top={} fixed_bottom={} info={} changed={:.0}%",
+                m.offset,
+                m.start,
+                m.end,
+                m.confident,
+                self.header_h,
+                self.footer_h,
+                self.prev_sigs.info_rows(h),
+                chg * 100.0
+            ));
+            // 抽样落盘：每 25 帧存一对，留一份时间序列供人眼核对（"页面真没滚" vs "抓到旧帧"）。
+            if self.pushes.is_multiple_of(25) {
+                super::debug::dump_pair("seq", &self.prev, frame, self.w, h);
+            }
+            // 画面明显变了却判「没动」：把两帧落盘，区分「页面真没滚」与「抓到的是旧帧」。
+            if m.confident && m.offset == 0 && chg > 0.5 {
+                super::debug::log("still-but-changed: 画面在变但判无位移");
+                super::debug::dump_pair("still", &self.prev, frame, self.w, h);
+            }
+            if !m.confident {
+                super::debug::dump_pair("failed", &self.prev, frame, self.w, h);
+            }
+        }
+        // 不确定：保持 prev 不变（它必须始终是「最后一次成功拼入的帧」），
+        // 用户下一拍继续滚动或动画停在某个状态时还能接上。
         if !m.confident {
-            self.still_run += 1;
-            self.prev = frame.to_vec();
             return Step::Failed;
         }
+        // 无位移：同样不更新 prev，避免动画把参考帧一点点带偏。
         if m.offset == 0 {
             self.still_run += 1;
-            self.prev = frame.to_vec();
             return Step::Still;
         }
         self.still_run = 0;
@@ -129,21 +201,30 @@ impl Canvas {
         let rows = (m.end - m.start) as u32;
         if rows == 0 {
             self.prev = frame.to_vec();
+            self.prev_sigs = ns;
             return Step::Still;
         }
         if self.content_rows + rows > self.max_height {
             self.prev = frame.to_vec();
+            self.prev_sigs = ns;
             return Step::Limit;
         }
         let prepend = m.offset < 0;
+        // 粘滞侧栏（论坛的话题侧栏、时间轴、聊天窗左右栏）：真实滚过一大段后检测一次，
+        // 之后拼入的行把那几列用相邻背景填平，否则侧栏会随每一段重复一遍。
+        if self.masks.is_empty() && self.mask_tries < 3 && m.offset.unsigned_abs() >= MIN_MASK_SHIFT {
+            self.mask_tries += 1;
+            self.masks = stitch::static_columns(&self.prev, frame, self.w, h, self.header_h, self.footer_h);
+        }
         if prepend {
-            self.rows.prepend(frame, m.start, m.end);
+            self.rows.prepend_masked(frame, m.start, m.end, &self.masks);
         } else {
-            self.rows.append(frame, m.start, m.end);
+            self.rows.append_masked(frame, m.start, m.end, &self.masks);
         }
         self.content_rows = self.rows.height();
         self.segments.push((prepend, rows));
         self.prev = frame.to_vec();
+        self.prev_sigs = ns;
         Step::Appended { offset: m.offset, rows }
     }
 
@@ -240,6 +321,66 @@ mod tests {
             min_ratio: 0.6,
             min_fixed: 8,
         }
+    }
+
+    /// 带 GIF 头像的论坛帖子页（issue #196 场景）：每个帖子左上角一块头像，
+    /// 头像区域每帧都在变（GIF 动画），帖子沿页面向下重复出现。
+    /// 返回（页面像素, 按帧号生成视口帧的闭包参数）。
+    fn forum_page(w: u32, total: u32) -> Vec<u8> {
+        let mut data = vec![0u8; (w * total * 4) as usize];
+        for y in 0..total {
+            for x in 0..w {
+                let o = ((y * w + x) * 4) as usize;
+                // 正文：逐行可区分（文字行）
+                data[o] = (y & 0xff) as u8;
+                data[o + 1] = ((y >> 8) & 0xff) as u8;
+                data[o + 2] = ((x * 3 + y * 7) & 0xff) as u8;
+                data[o + 3] = 255;
+            }
+        }
+        data
+    }
+
+    /// 取视口帧并把「头像块」按帧号改写（模拟 GIF 每一帧都不同）。
+    fn forum_frame(page: &[u8], w: u32, y0: u32, h: u32, frame_no: u32) -> Vec<u8> {
+        let stride = w as usize * 4;
+        let mut out = page[y0 as usize * stride..(y0 + h) as usize * stride].to_vec();
+        // 每 50 行一个帖子，帖子顶部 16 行 x [4, 40) 是头像；头像按帧号翻色。
+        for y in 0..h {
+            let global = y0 + y;
+            if global % 50 >= 16 {
+                continue;
+            }
+            for x in 4..40 {
+                let o = (y as usize * w as usize + x as usize) * 4;
+                out[o] = ((x * 11 + frame_no * 37) & 0xff) as u8;
+                out[o + 1] = ((y * 13 + frame_no * 53) & 0xff) as u8;
+            }
+        }
+        out
+    }
+
+    /// 滚动穿过一堆动画头像（issue #196）：只要头像只占行内少数分段，就不该妨碍定位。
+    #[test]
+    fn canvas_scrolls_through_animated_avatars() {
+        let w = 200u32;
+        let view_h = 100u32;
+        let step = 70u32; // 重叠 30 行（≥ 内容区 1/5）
+        let page = forum_page(w, 700);
+        let mut c = Canvas::new(w, params(), 30000);
+        c.seed(&forum_frame(&page, w, 0, view_h, 0));
+        for k in 1..=6u32 {
+            let f = forum_frame(&page, w, k * step, view_h, k);
+            assert_eq!(
+                c.push(&f, view_h),
+                Step::Appended {
+                    offset: step as i32,
+                    rows: step
+                },
+                "第 {k} 次滚动应拼入 {step} 行（头像动画不应妨碍定位）"
+            );
+        }
+        assert_eq!(c.height(), view_h + 6 * step);
     }
 
     /// 造完整页面：固定页眉 hdr 行 + 内容 total 行 + 固定页脚 ftr 行。
@@ -389,6 +530,129 @@ mod tests {
                 "第 {y} 行"
             );
         }
+    }
+
+    #[test]
+    fn canvas_keeps_reference_frame_on_failure() {
+        // 定位失败时 prev 不能换成失败帧，否则失败帧之前的内容永久丢掉（issue #196）。
+        let w = 64u32;
+        let view_h = 60u32;
+        let page = make_page(w, 0, 200, 0);
+        let mut c = Canvas::new(w, params(), 30000);
+        c.seed(&view(&page, w, 0, view_h));
+        // 第二帧与首帧相同：静止
+        assert_eq!(c.push(&view(&page, w, 0, view_h), view_h), Step::Still);
+        // 一帧彻底对不上的画面（模拟动画 / 模糊帧）
+        let noise: Vec<u8> = (0..(w * view_h * 4) as usize).map(|i| (i * 37 % 251) as u8).collect();
+        assert_eq!(c.push(&noise, view_h), Step::Failed);
+        assert_eq!(c.height(), 60, "失败不应改变画布");
+        // 下一帧真滚了 10 行：还能接在首帧后面
+        assert_eq!(
+            c.push(&view(&page, w, 10, view_h), view_h),
+            Step::Appended { offset: 10, rows: 10 }
+        );
+        assert_eq!(c.height(), 70);
+    }
+
+    #[test]
+    fn canvas_detects_fixed_regions_on_first_real_scroll() {
+        // 第二帧往往还没滚动（两帧相同），页眉/页脚必须留到首次真实滚动时检测。
+        let w = 64u32;
+        let hdr = 10u32;
+        let ftr = 8u32;
+        let content_total = 120u32;
+        let view_h = hdr + 60 + ftr;
+        let page = make_page(w, hdr, content_total, ftr);
+        let mut c = Canvas::new(w, params(), 30000);
+        let f0 = frame_simple(&page, w, hdr, ftr, 0, view_h);
+        c.seed(&f0);
+        assert_eq!(c.push(&f0, view_h), Step::Still, "未滚动时应静止");
+        assert_eq!(
+            c.push(&frame_simple(&page, w, hdr, ftr, 10, view_h), view_h),
+            Step::Appended { offset: 10, rows: 10 }
+        );
+        // 页眉/页脚已拆出画布：10 + 60 + 10 + 8
+        assert_eq!(c.height(), 10 + 60 + 10 + 8);
+        let img = c.to_pixmap().expect("画布可转像素图");
+        let stride = w as usize * 4;
+        for y in 0..10 {
+            let o = y * stride;
+            assert_eq!(&img.data()[o..o + stride], &page[o..o + stride], "页眉第 {y} 行");
+        }
+    }
+
+    /// 左侧粘滞侧栏（论坛话题页、聊天窗左右栏）：只应出现在结果顶部一次，
+    /// 后面拼入的段落里要填平，不能每拼一段就重复一遍侧栏。
+    #[test]
+    fn canvas_blanks_sticky_sidebar_in_later_segments() {
+        let w = 200u32;
+        let rail = 40u32;
+        let view_h = 100u32;
+        let step = 70u32;
+        let page = make_page(w, 0, 500, 0);
+        let frame = |off: u32| -> Vec<u8> {
+            let mut f = view(&page, w, off, view_h);
+            // 侧栏：背景 [90,91,92]，每 8 行有一块「文字」
+            for y in 0..view_h {
+                for x in 0..rail {
+                    let o = ((y * w + x) * 4) as usize;
+                    let text = y % 8 == 0 && (10..25).contains(&x);
+                    let v = if text { 20 } else { 90 };
+                    f[o] = v;
+                    f[o + 1] = v + 1;
+                    f[o + 2] = v + 2;
+                    f[o + 3] = 255;
+                }
+            }
+            f
+        };
+        let mut c = Canvas::new(w, params(), 30000);
+        c.seed(&frame(0));
+        for k in 1..=3u32 {
+            assert_eq!(
+                c.push(&frame(k * step), view_h),
+                Step::Appended {
+                    offset: step as i32,
+                    rows: step
+                },
+                "第 {k} 次滚动"
+            );
+        }
+        let img = c.to_pixmap().expect("画布可转像素图");
+        let stride = w as usize * 4;
+        // 顶部一屏保留侧栏（含文字：x=15 处是文字色）
+        assert_eq!(&img.data()[15 * 4..15 * 4 + 3], &[20, 21, 22], "顶部应保留侧栏文字");
+        // 拼入的行：侧栏列被填成侧栏自己的背景色，不再出现文字
+        for y in view_h..(view_h + 3 * step) {
+            let row = &img.data()[y as usize * stride..(y as usize + 1) * stride];
+            for x in 0..rail as usize {
+                assert_eq!(
+                    &row[x * 4..x * 4 + 3],
+                    &[90, 91, 92],
+                    "第 {y} 行第 {x} 列应是侧栏背景色"
+                );
+            }
+        }
+    }
+
+    /// 页面的主内容区拼完后（左侧无粘滞侧栏）不受遮罩影响。
+    #[test]
+    fn canvas_keeps_full_width_when_nothing_is_sticky() {
+        let w = 200u32;
+        let view_h = 100u32;
+        let page = make_page(w, 0, 300, 0);
+        let mut c = Canvas::new(w, params(), 30000);
+        c.seed(&view(&page, w, 0, view_h));
+        assert_eq!(
+            c.push(&view(&page, w, 70, view_h), view_h),
+            Step::Appended { offset: 70, rows: 70 }
+        );
+        let img = c.to_pixmap().unwrap();
+        let stride = w as usize * 4;
+        // 拼入的第一行（画布 y=view_h）应对应页面第 100 行，逐像素一致
+        let o = view_h as usize * stride;
+        let p = 100usize * stride;
+        assert_eq!(&img.data()[o..o + stride], &page[p..p + stride]);
     }
 
     #[test]

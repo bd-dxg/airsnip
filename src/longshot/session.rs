@@ -160,7 +160,8 @@ impl Session {
                 }
                 Step::Failed => {
                     self.fail_run += 1;
-                    self.status = "检测到滚动但拼接失败，请放慢滚动速度".to_string();
+                    // 失败时引擎不推进参考帧，向回滚一点就能重新接上。
+                    self.status = "检测到滚动但拼接失败，请向回滚动一点或放慢速度".to_string();
                     super::debug::log("failed: locate mismatch");
                 }
                 Step::Limit => {
@@ -198,7 +199,7 @@ impl Session {
         } else if self.finished {
             "已完成"
         } else if self.fail_run >= FAIL_HINT {
-            "拼接定位失败，请放慢滚动"
+            "拼接定位失败，请向回滚动一点"
         } else {
             ""
         }
