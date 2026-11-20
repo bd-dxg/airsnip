@@ -138,6 +138,11 @@
 5. 每个源文件保留头部 `SPDX-License-Identifier: GPL-3.0-only`。
 6. 引入新依赖前确认许可证与 GPL-3.0-only 兼容，并说明用途。
 7. `windows` crate 按需开启 features，不一次性全量开启。
+8. **合并用 squash，且提交标题自带 PR 号**（与历史一致：`…（ADR 0044） (#199)`）：
+   ```powershell
+   gh pr merge <n> --squash --delete-branch --subject "<同 PR 标题> (#<n>)" --body ""
+   ```
+   本仓库 squash 消息模板是 `COMMIT_OR_PR_TITLE` + `COMMIT_MESSAGES`，**但传 `--subject` 会整体覆盖模板、`(#N)` 不再自动追加**；`main` 分支保护不开 force push（`allow_force_pushes=false`、`enforce_admins=true`），漏了就改不回来，只能将错就错。反之若不传 `--subject`（让模板生效），标题取“分支上唯一 commit 的标题”，而 commit 标题在建 PR 前就固定了、写不进 PR 号，所以推荐前者。
 
 ## 代码约定
 
