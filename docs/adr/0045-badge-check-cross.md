@@ -1,6 +1,6 @@
 # 45. 徽标对勾 / 叉号（EDT-20）—— 序号标记扩展为三态内容
 
-- 状态：已采纳（v0.14.0 之前）
+- 状态：已采纳（v0.14.0）
 - 影响范围：`src/editor/number.rs`（`Badge` / `BadgeMark` / `next_number`）、`src/editor/mod.rs`（`Kind::Number.mark`）、
   `src/render/badge.rs`（徽标绘制，从 `render::mod` 拆出）、`src/overlay/{annotate,badgemenu,number_edit,textinput,objedit,interaction}`、
   `src/overlay/toolbar/{badgemenu,draw,line,mod,tip}`、`src/settings`（`badge_mark`）

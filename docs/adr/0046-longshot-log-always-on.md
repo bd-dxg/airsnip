@@ -1,6 +1,6 @@
 # 46. 长截图日志常开（SYS-9）—— 不加开关，出问题时日志就在
 
-- 状态：已采纳（v0.14.0 之前）
+- 状态：已采纳（v0.14.0）
 - 影响范围：`src/longshot/{debug,engine}.rs`（开关 / 目录 / 轮转 / 帧抽样分级）、
   `src/settings/panel/{controls,controls/sections,link,interact}.rs`（一行按钮）、`src/diagnose/text.rs`
 - 相关：issue #200、#196 / #129 / #157（驱动它的排障场景）、ADR 0044（长截图拼接埋点）、ADR 0041（面板几何）
