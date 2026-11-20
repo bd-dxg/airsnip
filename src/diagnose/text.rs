@@ -67,6 +67,10 @@ fn toggles_line(autostart: bool, cfg: &Config, ui_scale: f32) -> String {
             cfg.ui_scale.title().trim_start_matches("界面缩放·")
         ),
         format!("开机自启 {}", on_off(autostart)),
+        // 长截图日志（SYS-9 / ADR 0046）：日志常开，这里告诉对方去哪拿。
+        // 写 `%TEMP%` 而不是展开后的真实路径——后者含用户名，而这份文本刻意不带；
+        // 目录名从 `debug` 取，避免两处字面量迟早漂。
+        format!("长截图日志 %TEMP%\\{}", crate::longshot::debug::DIR_NAME),
     ];
     format!("开关：{}", items.join(" · "))
 }
@@ -224,6 +228,7 @@ mod tests {
         assert!(text.contains("双击选区空白 复制截图"), "{text}");
         assert!(text.contains("界面缩放 自动（1.00×）"), "{text}");
         assert!(text.contains("开机自启 关"), "{text}");
+        assert!(text.contains("长截图日志 %TEMP%\\airsnip"), "{text}");
 
         cfg.window_snap = false;
         cfg.control_snap = false;

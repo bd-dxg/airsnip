@@ -222,6 +222,12 @@ impl Panel {
                 self.config.control_snap = !self.config.control_snap;
                 self.config_dirty = true;
             }
+            // 打开日志文件夹（SYS-9 / ADR 0046，issue #200）：日志常开，这里只负责
+            // 把文件取出来。`log_dir` 保证目录存在，不必像「保存」页那样先判存在再提示。
+            RowId::OpenLogFolder => {
+                self.end_capture();
+                crate::output::quick::open_folder(&crate::longshot::debug::log_dir());
+            }
             // 项目主页（关于页）：用浏览器打开
             RowId::Repo => {
                 self.end_capture();

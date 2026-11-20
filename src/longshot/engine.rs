@@ -158,32 +158,32 @@ impl Canvas {
             self.locate_first(&ns, h)
         };
         // 调试：每拍的定位结果、分数分母（有信息量行）与画面变化占比。
-        // 只在 AIRSNIP_DEBUG=1 时计算，避免常态每拍白算一遍全屏行比对。
-        if super::debug::enabled() {
-            let chg = self.prev_sigs.changed_ratio(&ns, h);
-            super::debug::log(&format!(
-                "push: offset={} start={} end={} confident={} fixed_top={} fixed_bottom={} info={} changed={:.0}%",
-                m.offset,
-                m.start,
-                m.end,
-                m.confident,
-                self.header_h,
-                self.footer_h,
-                self.prev_sigs.info_rows(h),
-                chg * 100.0
-            ));
-            // 抽样落盘：每 25 帧存一对，留一份时间序列供人眼核对（"页面真没滚" vs "抓到旧帧"）。
-            if self.pushes.is_multiple_of(25) {
-                super::debug::dump_pair("seq", &self.prev, frame, self.w, h);
-            }
-            // 画面明显变了却判「没动」：把两帧落盘，区分「页面真没滚」与「抓到的是旧帧」。
-            if m.confident && m.offset == 0 && chg > 0.5 {
-                super::debug::log("still-but-changed: 画面在变但判无位移");
-                super::debug::dump_pair("still", &self.prev, frame, self.w, h);
-            }
-            if !m.confident {
-                super::debug::dump_pair("failed", &self.prev, frame, self.w, h);
-            }
+        // 文本日志常开（每拍一行、几 KB、不含画面，ADR 0046）；`chg` 同时是
+        // 「画面变了却判没动」的判据，所以总得算。
+        let chg = self.prev_sigs.changed_ratio(&ns, h);
+        super::debug::log(&format!(
+            "push: offset={} start={} end={} confident={} fixed_top={} fixed_bottom={} info={} changed={:.0}%",
+            m.offset,
+            m.start,
+            m.end,
+            m.confident,
+            self.header_h,
+            self.footer_h,
+            self.prev_sigs.info_rows(h),
+            chg * 100.0
+        ));
+        // 每 25 拍的抽样落盘成本高（全屏 PNG 编码几十 ms/张），只在开发者的
+        // `AIRSNIP_DEBUG` 下做；异常帧落盘不受影响。
+        if super::debug::verbose() && self.pushes.is_multiple_of(25) {
+            super::debug::dump_pair("seq", &self.prev, frame, self.w, h);
+        }
+        // 画面明显变了却判「没动」：把两帧落盘，区分「页面真没滚」与「抓到的是旧帧」。
+        if m.confident && m.offset == 0 && chg > 0.5 {
+            super::debug::log("still-but-changed: 画面在变但判无位移");
+            super::debug::dump_pair("still", &self.prev, frame, self.w, h);
+        }
+        if !m.confident {
+            super::debug::dump_pair("failed", &self.prev, frame, self.w, h);
         }
         // 不确定：保持 prev 不变（它必须始终是「最后一次成功拼入的帧」），
         // 用户下一拍继续滚动或动画停在某个状态时还能接上。

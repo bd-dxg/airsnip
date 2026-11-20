@@ -92,8 +92,9 @@ impl Session {
     pub fn capture(&mut self) -> Result<Vec<u8>, String> {
         let frame = self.source.capture()?;
         self.frame_seq += 1;
-        if std::env::var_os("AIRSNIP_DEBUG").is_some() {
-            // 简单哈希（异或逐 8 字节）+ 采样首像素，看每帧是否真在变。
+        // 每帧一行哈希（常开，SYS-9）：直接看出「帧到底有没有变」——
+        // 与 `still-but-changed` 对照，能区分「页面真没滚」与「抓到的是旧帧」。
+        if super::debug::enabled() {
             let mut h: u64 = 0;
             for c in frame.chunks_exact(8).step_by(97) {
                 h ^= u64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]);
@@ -101,13 +102,13 @@ impl Session {
             }
             super::debug::log(&format!("capture#{} hash={h:016x}", self.frame_seq));
         }
-        // 调试：导出首帧供目视核对抓取区域。
-        if !self.seeded && std::env::var_os("AIRSNIP_DEBUG").is_some() {
-            let size = tiny_skia::IntSize::from_wh(self.w, self.h);
-            if let Some(size) = size
+        // 首帧整屏 PNG 只在开发者模式下落盘（4K 编码几十 ms + 几 MB），
+        // 路径跟日志同目录（ADR 0046）。
+        if !self.seeded && super::debug::verbose() && super::debug::enabled() {
+            if let Some(size) = tiny_skia::IntSize::from_wh(self.w, self.h)
                 && let Some(px) = tiny_skia::Pixmap::from_vec(frame.clone(), size)
             {
-                let path = std::env::temp_dir().join("airsnip-longshot-frame0.png");
+                let path = super::debug::log_dir().join("airsnip-longshot-frame0.png");
                 let _ = px.save_png(&path);
             }
         }

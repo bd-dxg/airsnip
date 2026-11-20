@@ -158,6 +158,42 @@ fn save_page_paints_open_dropdown() {
     }
 }
 
+/// 长截图日志那一行（SYS-9 / ADR 0046）渲染过一遍：标签与按钮都得有墨。
+/// 「新加一行但忘了画」是 `RowKind` 分支漏掉的典型症状（整行空白）。
+#[test]
+fn general_page_paints_log_folder_row() {
+    use crate::overlay::geometry::SelRect;
+    use crate::settings::panel::controls::RowId;
+    for theme in [crate::theme::Theme::Light, crate::theme::Theme::Dark] {
+        let panel = panel_for_test(Section::General, theme, KeyGroup::Capture);
+        let (pm, layout) = paint(&panel);
+        let bg = panel.palette.bg;
+        let row = layout
+            .items
+            .iter()
+            .find_map(|it| match it {
+                Item::Row(r) if r.id == RowId::OpenLogFolder => Some(r),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{theme:?} 通用页应有「打开日志文件夹」行"));
+        let label_rect = SelRect {
+            x: row.rect.x + row.label_pad,
+            y: row.rect.y,
+            w: row.control.x - (row.rect.x + row.label_pad),
+            h: row.rect.h,
+        };
+        assert!(
+            ink_of(&pm, label_rect, bg) > 10,
+            "{theme:?} 日志行标签没画出来：{label_rect:?}"
+        );
+        let btn = crate::settings::panel::link::button_rect(&panel, row);
+        assert!(
+            ink_of(&pm, btn, bg) > 10,
+            "{theme:?}「打开日志文件夹」按钮没画出来：{btn:?}"
+        );
+    }
+}
+
 /// 保存页渲染过一遍（OUT-2 / ADR 0041）：**文件名输入框**里有模板文本、
 /// **保存位置**行有目录文本、**预览**行有完整路径——三者都必须真有墨迹。
 #[test]

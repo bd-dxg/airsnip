@@ -7,7 +7,8 @@
 
 mod bar;
 mod border;
-mod debug;
+// 日志目录给设置面板的「打开日志文件夹」用（SYS-9 / ADR 0046），故对外可见
+pub(crate) mod debug;
 mod engine;
 mod events;
 mod present;

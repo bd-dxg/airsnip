@@ -34,8 +34,8 @@ fn button_state(row: &super::controls::Row) -> (String, bool, bool) {
     (text, enabled, state::button_emphasis(&phase))
 }
 
-/// 按钮行的固定文案（不随更新状态变）：快捷键页的「恢复默认」与「保存」页的
-/// 三个按钮（OUT-2 / ADR 0041）。
+/// 按钮行的固定文案（不随更新状态变）：快捷键页的「恢复默认」、保存页的三个按钮
+/// （OUT-2 / ADR 0041）与通用页的「打开日志文件夹」（SYS-9 / ADR 0046）。
 ///
 /// 注意：这里必须列出**所有**固定文案的按钮行。漏一项会让那个按钮落到
 /// 「随更新状态变」分支，显示成「检查更新 / 已是最新」之类——快捷键页的
@@ -44,6 +44,7 @@ pub(super) fn fixed_button_text(id: RowId) -> Option<&'static str> {
     match id {
         RowId::ResetKeys => Some("全部恢复默认"),
         RowId::SaveOpenFolder => Some("打开文件夹"),
+        RowId::OpenLogFolder => Some("打开日志文件夹"),
         RowId::VarHelp => Some("变量说明"),
         _ => None,
     }
@@ -186,6 +187,7 @@ mod tests {
                 match r.id {
                     RowId::ResetKeys => assert_eq!(text, "全部恢复默认", "快捷键页按钮文案错位"),
                     RowId::SaveOpenFolder => assert_eq!(text, "打开文件夹"),
+                    RowId::OpenLogFolder => assert_eq!(text, "打开日志文件夹"),
                     RowId::VarHelp => assert_eq!(text, "变量说明"),
                     // 「版本更新」随状态变，允许是任何非空文案
                     _ => assert!(!text.is_empty(), "{:?} 按钮文案为空", r.id),
@@ -195,6 +197,7 @@ mod tests {
         }
         assert!(seen.contains(&RowId::ResetKeys), "快捷键页应有「全部恢复默认」按钮");
         assert!(seen.contains(&RowId::SaveOpenFolder), "保存页应有「打开文件夹」按钮");
+        assert!(seen.contains(&RowId::OpenLogFolder), "通用页应有「打开日志文件夹」按钮");
     }
 
     /// 按钮矩形不占满行（否则会出现「按钮外一点就触发」）：右对齐、比行矮、比控件区窄。

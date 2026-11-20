@@ -59,6 +59,16 @@ pub(super) fn section_rows(
             push(RowId::WindowSnap, RowKind::Toggle, "窗口吸附", &mut y, items);
             // 控件级捕捉（ADR 0039）：依赖窗口吸附；关掉后层级止于整窗
             push(RowId::ControlSnap, RowKind::Toggle, "控件级捕捉", &mut y, items);
+            // 长截图日志（SYS-9 / ADR 0046，issue #200）：日志**常开**，不设开关——
+            // “先让用户去开个开关”只是把「不会设环境变量」换成「没开开关」，问题照旧。
+            // 这里只给「把文件取出来」的入口；标签兼写隐私边界（不含密码 / 可删）。
+            push(
+                RowId::OpenLogFolder,
+                RowKind::Button,
+                "长截图日志（不含密码，可删）",
+                &mut y,
+                items,
+            );
         }
         Section::Toolbar => toolbar_rows(y, s, items),
         Section::Hotkeys => hotkey_rows(y0, s, group, bar, items),

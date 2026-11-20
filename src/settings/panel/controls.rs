@@ -155,6 +155,9 @@ pub enum RowId {
     WindowSnap,
     /// 控件级捕捉（CAP-6 二级 / ADR 0039）：在整窗吸附上再下钻到 UIA 子控件。
     ControlSnap,
+    /// 打开日志文件夹（SYS-9 / ADR 0046）：长截图日志常开，用户只需把文件取出来；
+    /// 按钮行为复用 `output::quick::open_folder`。
+    OpenLogFolder,
     /// 主题：跟随系统。
     ThemeFollow,
     /// 主题：浅色。
@@ -499,6 +502,7 @@ mod tests {
                     RowId::DoubleClick,
                     RowId::WindowSnap,
                     RowId::ControlSnap,
+                    RowId::OpenLogFolder,
                 ],
                 Section::Hotkeys => {
                     // 子页签当前组（默认「截图」）的键帽 + 底部两行
@@ -613,6 +617,29 @@ mod tests {
         for item in &l.items {
             if let Item::Row(r) = item {
                 assert!(r.rect.x >= NAV_W, "内容行不得进入导航区：{r:?}");
+            }
+        }
+    }
+
+    /// 通用页的标签必须横得下（含新增的「长截图日志（不含密码，可删）」）：
+    /// 标准行的标签区 = 从 `rect.x + label_pad` 到控件区左缘，超了会和右侧控件叠在一起。
+    #[test]
+    fn general_labels_fit_before_controls() {
+        for scale in [1.0f32, 1.25, 1.5, 2.0] {
+            let spec = crate::render::text::FontSpec::new(16.0 * scale);
+            let l = layout(Section::General, scale);
+            let mut avail = 0i32;
+            for item in &l.items {
+                let Item::Row(r) = item else { continue };
+                let (lw, _) = crate::render::text::measure(r.label, &spec);
+                let w = r.control.x - (r.rect.x + r.label_pad);
+                assert!(lw <= w as f32, "@{scale}x「{}」宽 {lw}px，超过标签区 {w}px", r.label);
+                avail = w;
+            }
+            // 开关行文案随状态变（ADR 0036）：动态写法同样要放得下
+            for text in ["贴图位置·屏幕中间", "双击选区空白·贴到屏幕"] {
+                let (lw, _) = crate::render::text::measure(text, &spec);
+                assert!(lw <= avail as f32, "@{scale}x 动态文案「{text}」超过标签区 {avail}px");
             }
         }
     }
