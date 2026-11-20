@@ -52,7 +52,7 @@ icon_table! {
     Italic => "toolbar/italic.svg",
     Minus => "toolbar/minus.svg",
     Plus => "toolbar/plus.svg",
-    // 长截图状态条（M4）
+    // 状态图标：长截图状态条的取消；完成已统一为复制图标（与工具栏文件组一致）
     Check => "status/check.svg",
     Cross => "status/cross.svg",
     // 设置面板行内按钮（SYS-2）

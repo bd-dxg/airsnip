@@ -15,6 +15,7 @@ mod preview;
 mod rows;
 mod session;
 mod stitch;
+mod tip;
 mod window;
 
 use windows::Win32::Foundation::HINSTANCE;

@@ -13,11 +13,12 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{HOT_KEY_MODIFIERS, MOD_CONTROL
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
-use super::bar::{self, Bar};
+use super::bar::{self, Bar, Button};
 use super::border;
 use super::present::redraw;
 use super::preview::Preview;
 use super::session::Session;
+use super::tip::Tip;
 use crate::overlay::geometry::SelRect;
 use crate::overlay::ui::Ui;
 use crate::theme::Palette;
@@ -62,6 +63,10 @@ pub(super) struct Win {
     pub(super) preview: Option<Preview>,
     /// 状态条几何。
     pub(super) bar: Bar,
+    /// 悬停中的按钮（EDT-10 对齐）：底色由 `bar::render` 画，气泡由 `tip` 窗弹。
+    pub(super) hover: Option<Button>,
+    /// 悬浮提示窗（与覆盖层工具栏同一套气泡）。拿不到就只是没有气泡。
+    pub(super) tip: Option<Tip>,
     /// 主题调色板（与工具栏一致）。
     pub(super) palette: &'static Palette,
     /// 上屏用内存 DC 与其 DIB。
@@ -91,6 +96,29 @@ impl Drop for Win {
             if !self.mem_dc.0.is_null() {
                 let _ = DeleteDC(self.mem_dc);
             }
+        }
+    }
+}
+
+impl Win {
+    /// 悬停延迟到时弹气泡（一次性定时器调用方已 Kill）：锚点是按钮方框，
+    /// 垂直参照整条状态条（与覆盖层工具栏一致，见 `tip::bubble_rect`）。
+    pub(super) fn show_tip(&mut self) {
+        let Some(button) = self.hover else {
+            return;
+        };
+        let Some(anchor) = self.bar.button_box(button) else {
+            return;
+        };
+        if let Some(tip) = self.tip.as_mut() {
+            tip.show(button, anchor, &self.bar, self.palette);
+        }
+    }
+
+    /// 收起气泡（悬停变化 / 鼠标移出 / 按下鼠标）。
+    pub(super) fn hide_tip(&mut self) {
+        if let Some(tip) = self.tip.as_mut() {
+            tip.hide();
         }
     }
 }
@@ -182,11 +210,15 @@ pub fn run(
         let _ = ImmAssociateContext(hwnd, HIMC(std::ptr::null_mut()));
 
         let (mem_dc, dib_bmp, dib_bits) = crate::overlay::surface::create_dib_surface(bw as u32, bh as u32).ok()?;
+        // 悬浮提示窗：与状态条同一个分层窗口族（不抢焦点、鼠标穿透），拿不到只少一个气泡。
+        let tip = Tip::create(hinstance, ui);
         let win = Box::new(Win {
             session: Box::new(session),
             border_hwnd,
             preview,
             bar,
+            hover: None,
+            tip,
             palette,
             mem_dc,
             dib_bmp,

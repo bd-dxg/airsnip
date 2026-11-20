@@ -3,11 +3,39 @@
 //! 从 `window` 拆出，保证单文件不超过 300 行；窗口创建与 `Win` 定义仍在 `window`。
 
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::WindowsAndMessaging::*;
 
 use super::bar::Button;
 use super::present::{ctrl_down, redraw, win_from};
+use super::tip::{DELAY_MS as TIP_DELAY_MS, TIMER_ID as TIP_TIMER};
 use super::window::{HK_ENTER, HK_ESC, HK_SAVE, HK_UNDO, TIMER_ID, Win};
+
+/// 鼠标移出窗口（`WM_MOUSELEAVE`，0x02A3）：windows crate 只在 `Win32::UI::Controls`
+/// 导出它，这里按 WinUser.h 的定义写死，不为一条消息多开一个 feature。
+const WM_MOUSELEAVE: u32 = 0x02A3;
+
+/// 客户区坐标（点击与悬停都用它）。
+fn pos(lparam: LPARAM) -> (i32, i32) {
+    (
+        (lparam.0 & 0xFFFF) as u16 as i16 as i32,
+        ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32,
+    )
+}
+
+/// 让窗口在鼠标移出时收到 `WM_MOUSELEAVE`（悬停底色与气泡都得在移出时撤掉）。
+/// 每次移动重设一次：重复调用不会叠加，也不会产生定时器。
+fn track_leave(hwnd: HWND) {
+    unsafe {
+        let mut tme = TRACKMOUSEEVENT {
+            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+            dwFlags: TME_LEAVE,
+            hwndTrack: hwnd,
+            dwHoverTime: 0,
+        };
+        let _ = TrackMouseEvent(&mut tme);
+    }
+}
 
 /// 完成：先补抓一帧（用户滚动后立刻按 Enter 时，最后一屏还没被定时拍捕获），再收尾。
 fn finish(win: &mut Win) {
@@ -68,6 +96,16 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             LRESULT(0)
         }
         WM_TIMER => {
+            // 悬停延迟到时：一次性定时器先 Kill 再弹气泡（ADR 0020 同口径）
+            if wparam.0 == TIP_TIMER {
+                if let Some(win) = win_from(hwnd) {
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), TIP_TIMER);
+                    }
+                    win.show_tip();
+                }
+                return LRESULT(0);
+            }
             if let Some(win) = win_from(hwnd) {
                 let changed = win.session.tick();
                 if changed {
@@ -85,9 +123,13 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             LRESULT(0)
         }
         WM_LBUTTONDOWN => {
+            let (x, y) = pos(lparam);
             if let Some(win) = win_from(hwnd) {
-                let x = (lparam.0 & 0xFFFF) as u16 as i16 as i32;
-                let y = ((lparam.0 >> 16) & 0xFFFF) as u16 as i16 as i32;
+                // 按下即收起气泡（与普通截图工具栏一致）；悬停底色保留到鼠标移走
+                unsafe {
+                    let _ = KillTimer(Some(hwnd), TIP_TIMER);
+                }
+                win.hide_tip();
                 match win.bar.hit(x, y) {
                     Some(Button::Undo) => win.session.undo(),
                     // 另存为对话框是模态的，期间 WM_TIMER 仍会进来：靠 `done` 避免提前关窗
@@ -105,6 +147,43 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
                     unsafe {
                         let _ = DestroyWindow(hwnd);
                     }
+                }
+            }
+            LRESULT(0)
+        }
+        // 新增：悬停反馈（与普通截图工具栏一致：立即给底色 + 400ms 后弹气泡）
+        WM_MOUSEMOVE => {
+            let (x, y) = pos(lparam);
+            if let Some(win) = win_from(hwnd) {
+                let hover = win.bar.hit(x, y);
+                if hover != win.hover {
+                    win.hover = hover;
+                    win.hide_tip();
+                    unsafe {
+                        if hover.is_some() {
+                            // 同 ID 再次 SetTimer 会替换旧定时器（MSDN），无需先 Kill
+                            let _ = SetTimer(Some(hwnd), TIP_TIMER, TIP_DELAY_MS, None);
+                        } else {
+                            let _ = KillTimer(Some(hwnd), TIP_TIMER);
+                        }
+                    }
+                    win.dirty = true;
+                    redraw(hwnd);
+                }
+                // 每一帧都重新声明追踪：重复调用不叠加，只是保持离开通知
+                track_leave(hwnd);
+            }
+            LRESULT(0)
+        }
+        WM_MOUSELEAVE => {
+            if let Some(win) = win_from(hwnd) {
+                if win.hover.take().is_some() {
+                    unsafe {
+                        let _ = KillTimer(Some(hwnd), TIP_TIMER);
+                    }
+                    win.hide_tip();
+                    win.dirty = true;
+                    redraw(hwnd);
                 }
             }
             LRESULT(0)
@@ -154,5 +233,16 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             LRESULT(0)
         }
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 定时器 ID 不能撞：1 = 抓帧拍，2 = 气泡延迟。撞了会在抓帧的同时误弹气泡。
+    #[test]
+    fn timer_ids_are_unique() {
+        assert_ne!(TIP_TIMER, TIMER_ID);
     }
 }

@@ -42,6 +42,14 @@ pub(crate) struct Bubble {
     text: String,
 }
 
+impl Bubble {
+    /// 构造气泡。长截图状态条复用同一套几何与绘制（`longshot::tip`），
+    /// 只有它需要从模块外构造。
+    pub(crate) fn new(rect: SelRect, text: String) -> Self {
+        Self { rect, text }
+    }
+}
+
 /// 悬浮提示状态（默认无）。
 #[derive(Default)]
 pub(crate) struct Tip {

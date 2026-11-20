@@ -27,6 +27,8 @@ const BTN_BASE: f32 = 28.0;
 const PAD_BASE: f32 = 6.0;
 /// 圆角半径基准值。
 const RADIUS_BASE: f32 = 8.0;
+/// 按钮悬停底色的圆角（与覆盖层工具栏按钮同一档）。
+const BTN_RADIUS_BASE: f32 = 5.0;
 /// 文字字号基准值。
 const FONT_BASE: f32 = 14.0;
 
@@ -41,6 +43,38 @@ pub enum Button {
     Done,
     /// 取消。
     Cancel,
+}
+
+impl Button {
+    /// 全部按钮（气泡缓冲区按最长文案预留尺寸用）。
+    pub(super) const ALL: [Button; 4] = [Button::Undo, Button::SaveAs, Button::Done, Button::Cancel];
+
+    /// 悬浮提示文案「名称 · 快捷键」，与普通截图工具栏的气泡同格式（EDT-10）。
+    /// 快捷键是执行窗口注册的**硬编码**全局热键（见 `window::register_hotkeys`），
+    /// 改键时两处要一起改，否则气泡会谎报。
+    pub(super) fn tip_text(self) -> String {
+        let (label, key) = match self {
+            Button::Undo => ("撤销", "Ctrl+Z"),
+            Button::SaveAs => ("另存为", "Ctrl+S"),
+            // 图标统一成复制（见 `render`）：文案里说明“复制 + 落盘 + 结束”，
+            // 否则容易被读成“只复制不结束”（与普通截图的复制按钮不同，那个才是只复制）
+            Button::Done => ("完成（复制并保存）", "Enter"),
+            Button::Cancel => ("取消", "Esc"),
+        };
+        format!("{label} · {key}")
+    }
+}
+
+/// 按钮的可视方框（客户区坐标）：命中区高度取整条状态条（点偏上下也能命中），
+/// 悬停底色与气泡锚点都按居中的正方形算，与覆盖层工具栏的按钮尺寸一致。
+fn btn_box(r: SelRect) -> SelRect {
+    let side = r.w.min(r.h);
+    SelRect {
+        x: r.x + (r.w - side) / 2,
+        y: r.y + (r.h - side) / 2,
+        w: side,
+        h: side,
+    }
 }
 
 /// 状态条命中区信息。
@@ -62,6 +96,19 @@ impl Bar {
             .find(|(r, _)| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
             .map(|(_, b)| *b)
     }
+
+    /// 按钮的可视方框（**屏幕坐标**）：气泡定位用。与命中区不同——命中区高度取整条
+    /// 状态条（点偏上下也能命中），且是客户区坐标（`hits` 由 `layout` 按窗口内部算）。
+    pub(super) fn button_box(&self, button: Button) -> Option<SelRect> {
+        self.hits.iter().find(|(_, b)| *b == button).map(|(r, _)| {
+            let box_ = btn_box(*r);
+            SelRect {
+                x: box_.x + self.rect.x,
+                y: box_.y + self.rect.y,
+                ..box_
+            }
+        })
+    }
 }
 
 /// 状态条要显示的状态。
@@ -70,6 +117,8 @@ pub struct State {
     pub can_undo: bool,
     /// 提示文字（拼接失败等）。
     pub hint: &'static str,
+    /// 悬停中的按钮：与普通截图工具栏一致，立即给底色、气泡延迟出现。
+    pub hover: Option<Button>,
 }
 
 /// 计算状态条几何（条放视口下方，空间不足则上方）。
@@ -138,10 +187,17 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
 
     // 右侧按钮：图标与覆盖层工具栏同源（`render::icon`），不再各画一套
     for (r, button) in &bar.hits {
+        // 悬停底色（与普通截图工具栏同一档 `row_hover`）——长截图状态条原先没有任何
+        // 鼠标反馈，滑过按钮看不出来能不能点
+        if state.hover == Some(*button) {
+            rounded_rect(pixmap, btn_box(*r), ui.f(BTN_RADIUS_BASE), p.row_hover, None);
+        }
         let (glyph, color) = match button {
             Button::Undo => (Icon::Undo, if state.can_undo { p.icon } else { p.icon_dim }),
             Button::SaveAs => (Icon::Save, p.icon),
-            Button::Done => (Icon::Check, p.icon),
+            // 与普通截图工具栏的文件组统一：「完成」= 复制到剪贴板 + 保存，用复制图标
+            // （✓ 只能表达“结束”，看不出结果去了剪贴板）
+            Button::Done => (Icon::Copy, p.icon),
             Button::Cancel => (Icon::Cross, p.icon),
         };
         let cx = r.x as f32 + r.w as f32 / 2.0;
@@ -228,11 +284,65 @@ mod tests {
         let state = State {
             can_undo: true,
             hint: "",
+            hover: None,
         };
         render(&mut px, &bar, &state, &crate::theme::LIGHT);
         // 中心像素应为不透明背景
         let idx = ((bar.rect.h / 2) as u32 * px.width() + (px.width() / 2)) as usize * 4;
         assert!(px.data()[idx + 3] > 0, "状态条中心应有不透明像素");
+    }
+
+    /// 悬停给底色（与普通截图工具栏一致）：只改被悬停按钮的方框内像素。
+    #[test]
+    fn render_hover_highlights_button() {
+        let bar = layout(0, 600, 0, 400, 1080, base());
+        let draw_with = |hover: Option<Button>| {
+            let mut px = Pixmap::new(bar.rect.w as u32, bar.rect.h as u32).unwrap();
+            let state = State {
+                can_undo: true,
+                hint: "",
+                hover,
+            };
+            render(&mut px, &bar, &state, &crate::theme::LIGHT);
+            px
+        };
+        let plain = draw_with(None);
+        let hovered = draw_with(Some(Button::Done));
+        let (w, h) = (plain.width() as i32, plain.height() as i32);
+        let (mut x0, mut y0, mut x1, mut y1) = (w, h, -1, -1);
+        for y in 0..h {
+            for x in 0..w {
+                let i = (y as usize * w as usize + x as usize) * 4;
+                if plain.data()[i..i + 4] != hovered.data()[i..i + 4] {
+                    x0 = x0.min(x);
+                    y0 = y0.min(y);
+                    x1 = x1.max(x + 1);
+                    y1 = y1.max(y + 1);
+                }
+            }
+        }
+        assert!(x1 > 0, "悬停应改变像素");
+        // 悬停底色画在客户区坐标，气泡锚点用屏幕坐标：两者只差状态条原点
+        let screen_box = bar.button_box(Button::Done).expect("应有完成按钮");
+        let box_ = SelRect {
+            x: screen_box.x - bar.rect.x,
+            y: screen_box.y - bar.rect.y,
+            ..screen_box
+        };
+        assert!(
+            x0 >= box_.x && y0 >= box_.y && x1 <= box_.x + box_.w && y1 <= box_.y + box_.h,
+            "悬停变化应限定在按钮方框 {box_:?} 内，实际 ({x0},{y0})-({x1},{y1})"
+        );
+    }
+
+    /// 气泡文案：四个按钮都有「名称 · 快捷键」（与普通截图工具栏同格式）。
+    #[test]
+    fn every_button_has_tip_text() {
+        for b in Button::ALL {
+            let t = b.tip_text();
+            assert!(t.contains(" · "), "{b:?} 的提示应带快捷键：{t}");
+        }
+        assert_eq!(Button::Done.tip_text(), "完成（复制并保存） · Enter");
     }
 
     /// 高 DPI 下状态条整体放大，按钮命中区同步（CAP-5）。
@@ -245,5 +355,28 @@ mod tests {
         // 最右侧按钮中心仍可命中
         let x = hidpi.rect.w - hidpi.ui.px(PAD_BASE) - hidpi.ui.px(BTN_BASE) / 2;
         assert_eq!(hidpi.hit(x, hidpi.rect.h / 2), Some(Button::Cancel));
+    }
+
+    /// 人工核对用：`cargo test bar_visual_dump -- --ignored --nocapture` 落一张悬停态 PNG，
+    /// 确认悬停底色是居中的正方形、浅 / 深主题下都能看出区别（几何断言看不出「太淡」）。
+    #[test]
+    #[ignore]
+    fn bar_visual_dump() {
+        let bar = layout(0, 600, 0, 400, 1080, base());
+        for (name, palette) in [
+            ("light", &crate::theme::LIGHT),
+            ("dark", &crate::theme::palette(crate::theme::Theme::Dark)),
+        ] {
+            let mut px = Pixmap::new(bar.rect.w as u32, bar.rect.h as u32).unwrap();
+            let state = State {
+                can_undo: true,
+                hint: "",
+                hover: Some(Button::Done),
+            };
+            render(&mut px, &bar, &state, palette);
+            let path = std::env::temp_dir().join(format!("airsnip-longshot-bar-{name}.png"));
+            std::fs::write(&path, px.encode_png().expect("png")).expect("写入 dump");
+            eprintln!("已输出 {path:?}");
+        }
     }
 }
