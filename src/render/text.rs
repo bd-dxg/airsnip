@@ -139,9 +139,12 @@ pub fn remeasure(kind: &mut Kind) {
             *size = measure(text, &FontSpec::from_parts(font_family, *font_size, *bold, *italic));
         }
         Kind::Number {
-            n, font_size, radius, ..
+            mark,
+            font_size,
+            radius,
+            ..
         } => {
-            *radius = super::number_radius(*font_size, *n);
+            *radius = super::number_radius(*font_size, *mark);
         }
         _ => {}
     }

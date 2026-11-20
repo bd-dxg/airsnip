@@ -10,6 +10,8 @@ pub(super) enum CancelStep {
     ColorPanel,
     /// 收起线型下拉（EDT-18）。
     LineMenu,
+    /// 收起徽标形态下拉（EDT-20）。
+    BadgeMenu,
     /// 收起字体面板。
     FontPanel,
     /// 完成当前文本 / 序号输入（右键语义：保留已输入内容）。
@@ -25,6 +27,7 @@ pub(super) enum CancelStep {
 pub(super) fn cancel_step(
     color_panel: bool,
     line_menu: bool,
+    badge_menu: bool,
     font_panel: bool,
     editing: bool,
     has_annotations: bool,
@@ -33,6 +36,8 @@ pub(super) fn cancel_step(
         CancelStep::ColorPanel
     } else if line_menu {
         CancelStep::LineMenu
+    } else if badge_menu {
+        CancelStep::BadgeMenu
     } else if font_panel {
         CancelStep::FontPanel
     } else if editing {
@@ -48,17 +53,30 @@ pub(super) fn cancel_step(
 mod tests {
     use super::*;
 
-    /// 分层优先级：取色面板 > 线型下拉 > 字体面板 > 文本输入 > （有标注？确认）> 退出。
+    /// 分层优先级：取色面板 > 线型下拉 > 徽标下拉 > 字体面板 > 文本输入 > （有标注？确认）> 退出。
     #[test]
     fn cancel_step_recedes_layer_by_layer() {
-        assert_eq!(cancel_step(true, true, true, true, true), CancelStep::ColorPanel);
-        assert_eq!(cancel_step(false, true, true, true, true), CancelStep::LineMenu);
-        assert_eq!(cancel_step(false, false, true, true, true), CancelStep::FontPanel);
-        assert_eq!(cancel_step(false, false, false, true, true), CancelStep::CommitText);
+        assert_eq!(cancel_step(true, true, true, true, true, true), CancelStep::ColorPanel);
+        assert_eq!(cancel_step(false, true, true, true, true, true), CancelStep::LineMenu);
+        assert_eq!(cancel_step(false, false, true, true, true, true), CancelStep::BadgeMenu);
+        assert_eq!(
+            cancel_step(false, false, false, true, true, true),
+            CancelStep::FontPanel
+        );
+        assert_eq!(
+            cancel_step(false, false, false, false, true, true),
+            CancelStep::CommitText
+        );
         // 无面板 / 无输入：有标注需确认，否则直接退出
-        assert_eq!(cancel_step(false, false, false, false, true), CancelStep::Confirm);
-        assert_eq!(cancel_step(false, false, false, false, false), CancelStep::Exit);
+        assert_eq!(
+            cancel_step(false, false, false, false, false, true),
+            CancelStep::Confirm
+        );
+        assert_eq!(cancel_step(false, false, false, false, false, false), CancelStep::Exit);
         // 有标注不会绕过前面的层
-        assert_eq!(cancel_step(false, false, true, false, true), CancelStep::FontPanel);
+        assert_eq!(
+            cancel_step(false, false, false, true, false, true),
+            CancelStep::FontPanel
+        );
     }
 }

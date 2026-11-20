@@ -112,6 +112,7 @@ impl App {
             colors: self.config.swatch_colors,
             color_index: self.config.color_index,
             line_style: self.config.line_style,
+            badge_mark: self.config.badge_mark,
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,
                 // 贴图「另存为」也用同一份模板预填文件名（OUT-2 / ADR 0041）

@@ -62,8 +62,28 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
         match *action {
             Action::Tool(tool) => {
                 let active = state.tool == Some(tool);
-                if active {
+                // 徽标形态下拉展开时格子保持高亮，让用户看出下拉是从这里开的（EDT-20）
+                let open = tool == Tool::Number && state.badge_open;
+                if active || open {
                     rounded_rect(pixmap, *r, 5.0, p.accent_soft, None);
+                }
+                // EDT-20：序号格子不画固定图标，改画**当前形态**的徽标缩略图 +
+                // 右下角下拉三角（与线型格子同一套「格子里能直接看出当前值」的思路）
+                if tool == Tool::Number {
+                    let body = if active || open { p.accent } else { p.icon };
+                    let radius = ui.f(8.0);
+                    let cx = r.x as f32 + r.w as f32 * 0.5 - ui.f(1.0);
+                    let cy = r.y as f32 + r.h as f32 * 0.5 - ui.f(1.0);
+                    crate::render::badge_preview(
+                        pixmap,
+                        crate::editor::Point::new(cx, cy),
+                        radius,
+                        state.badge_mark.sample(),
+                        body,
+                        crate::render::contrast_ink(body),
+                    );
+                    super::line::draw_corner_chevron(pixmap, crate::overlay::toolbar::badge_corner(*r, ui), body, ui);
+                    continue;
                 }
                 let color = if tool == Tool::Highlight {
                     // 荧光笔图标：颜色跟主题（浅色主题用暗金，否则看不清楚），激活时更浓
@@ -143,6 +163,8 @@ pub fn render(pixmap: &mut Pixmap, bar: &Toolbar, state: &State, p: &Palette) {
             }
             // 下拉选定的线型只经过 `apply_action` 落地，不会出现在工具栏命中区里
             Action::LineStyle(_) => {}
+            // EDT-20：形态下拉同理（命中区由 `Toolbar::hit` 从序号格子的右下角折出）
+            Action::BadgeMenu | Action::BadgeMark(_) => {}
             Action::Undo => draw_icon(pixmap, Icon::Undo, *r, if state.can_undo { p.icon } else { p.icon_dim }),
             Action::Redo => draw_icon(pixmap, Icon::Redo, *r, if state.can_redo { p.icon } else { p.icon_dim }),
             Action::Pin => draw_icon(pixmap, Icon::Pin, *r, p.icon),

@@ -130,8 +130,12 @@ impl super::Overlay {
         if self.draft.is_some() {
             return Shape::Cross;
         }
-        // 工具栏与弹出面板（字体列表 / 取色 / 线型）是点击目标而非绘制区：鼠标在其上时用系统箭头
-        if self.over_font_list(x, y) || self.over_color_panel(x, y) || self.over_line_menu(x, y) {
+        // 工具栏与弹出面板（字体列表 / 取色 / 线型 / 徽标形态）是点击目标而非绘制区：鼠标在其上时用系统箭头
+        if self.over_font_list(x, y)
+            || self.over_color_panel(x, y)
+            || self.over_line_menu(x, y)
+            || self.over_badge_menu(x, y)
+        {
             return Shape::Arrow;
         }
         // 取色拖动中即使移出面板也保持箭头，避免拖出边界时闪回十字

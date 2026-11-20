@@ -70,6 +70,8 @@ pub(super) unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARA
             overlay.on_font_list_hover(x, y);
             // 线型下拉悬停高亮（EDT-18）
             overlay.on_line_menu_hover(x, y);
+            // 徽标形态下拉悬停高亮（EDT-20）
+            overlay.on_badge_menu_hover(x, y);
             // 光标随鼠标位置变：手柄→方向光标、对象/曲线控制柄→移动光标（否则系统只在
             // 位置变化且命中窗口时发 WM_SETCURSOR，拖动手柄途中光标不会更新）
             overlay.apply_cursor_at(x, y);

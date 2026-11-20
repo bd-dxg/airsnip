@@ -2,6 +2,7 @@
 //! 覆盖层工具栏（EDT-7 / EDT-16）：类型、命中测试与绘制入口；布局见 `layout`，绘制见 `draw`。
 //! 所有尺寸以 1080p / 100% DPI 为基准，经 `Ui` 按显示器 DPI 缩放（CAP-5）。
 
+pub(crate) mod badgemenu;
 pub(crate) mod colorpanel;
 mod draw;
 pub(crate) mod fontlist;
@@ -9,6 +10,7 @@ mod label;
 mod layout;
 mod line;
 pub(crate) mod linemenu;
+pub(crate) mod menu;
 pub(crate) mod tip;
 
 use std::sync::Arc;
@@ -16,7 +18,7 @@ use std::sync::Arc;
 use tiny_skia::Pixmap;
 
 use crate::editor::{Gradient, LineStyle, SOLID_COUNT, Tool};
-use crate::overlay::geometry::SelRect;
+use crate::overlay::geometry::{SelRect, in_rect};
 use crate::overlay::ui::Ui;
 use crate::theme::Palette;
 
@@ -40,6 +42,8 @@ const GAP_BASE: f32 = 4.0;
 const SEP_BASE: f32 = 9.0;
 /// 内边距。
 const PAD_BASE: f32 = 5.0;
+/// 序号格子右下角下拉三角的边长（EDT-20）：格子不因此加宽。
+const BADGE_CORNER_BASE: f32 = 9.0;
 
 /// 工具栏当前状态（决定高亮与可用性）。
 #[derive(Clone, PartialEq)]
@@ -74,6 +78,10 @@ pub struct State {
     pub font_open: bool,
     /// 悬停中的按钮（EDT-10）：立即给底色，气泡延迟出现。
     pub hover: Option<Action>,
+    /// 新建徽标的形态（EDT-20）：序号格子里画它的缩略图。
+    pub badge_mark: crate::editor::BadgeMark,
+    /// 徽标形态下拉是否展开。
+    pub badge_open: bool,
 }
 
 /// 工具栏动作。
@@ -88,6 +96,11 @@ pub enum Action {
     LineMenu,
     /// EDT-18：下拉里选定的线型（由下拉点击分发，不直接命中工具栏）。
     LineStyle(LineStyle),
+    /// EDT-20：展开 / 收起徽标形态下拉（数字编号 / 对勾 / 叉号）；
+    /// 命中区是序号格子的右下角小三角，格子其余区域仍是「选中序号工具」。
+    BadgeMenu,
+    /// EDT-20：下拉里选定的形态（由下拉点击分发，不直接命中工具栏）。
+    BadgeMark(crate::editor::BadgeMark),
     Undo,
     Redo,
     /// PIN-1：把选区（含标注）贴为置顶窗口。
@@ -135,10 +148,27 @@ pub struct Toolbar {
 impl Toolbar {
     /// 命中测试：返回落在哪个元素上。
     pub fn hit(&self, x: i32, y: i32) -> Option<Action> {
-        self.hits
+        let (r, action) = self
+            .hits
             .iter()
-            .find(|(r, _)| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
-            .map(|(_, a)| *a)
+            .find(|(r, _)| x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)?;
+        // EDT-20：序号格子的右下角小三角是形态下拉，其余区域仍是「选中序号工具」。
+        // 不另存一条命中区：`hits` 同时驱动绘制与显隐计数，多一条会打乱它们。
+        if *action == Action::Tool(Tool::Number) && in_rect(badge_corner(*r, self.ui), x, y) {
+            return Some(Action::BadgeMenu);
+        }
+        Some(*action)
+    }
+}
+
+/// 序号格子右下角的下拉三角命中区（EDT-20）：`hit` 与绘制共用这份几何。
+pub(crate) fn badge_corner(r: SelRect, ui: Ui) -> SelRect {
+    let side = ui.px(BADGE_CORNER_BASE);
+    SelRect {
+        x: r.x + r.w - side,
+        y: r.y + r.h - side,
+        w: side,
+        h: side,
     }
 }
 
@@ -183,6 +213,33 @@ mod tests {
     /// 全可见时的工具栏配置。
     fn all() -> ToolbarConfig {
         ToolbarConfig::default()
+    }
+
+    /// EDT-20：序号格子只有右下角小三角是形态下拉，其余区域仍是「选中序号工具」。
+    /// 格子不因此加宽（第一行宽度不变，窄屏适配不受影响）。
+    #[test]
+    fn number_corner_opens_badge_menu() {
+        let ui = base();
+        let bar = layout(sel(100, 100, 400, 300), 1366, 768, &all(), false, ui);
+        let (r, _) = bar
+            .hits
+            .iter()
+            .find(|(_, a)| *a == Action::Tool(Tool::Number))
+            .expect("应有序号格子");
+        assert_eq!(r.w, ui.px(BTN_BASE), "序号格子保持单格宽，不占两格");
+        let corner = badge_corner(*r, ui);
+        assert_eq!(
+            bar.hit(corner.x + corner.w / 2, corner.y + corner.h / 2),
+            Some(Action::BadgeMenu),
+            "右下角三角应是形态下拉"
+        );
+        assert_eq!(
+            bar.hit(r.x + 2, r.y + 2),
+            Some(Action::Tool(Tool::Number)),
+            "左上角仍是工具"
+        );
+        // 角区只占格子的一小块，不把整个格子吞掉
+        assert!(corner.w * corner.h < r.w * r.h / 2, "下拉命中区不应超过格子一半");
     }
 
     /// 窄屏 / 高缩放下的越界回归（EDT-7/EDT-16）：工具栏从 19 个按钮长到 23 个后更宽，
@@ -537,6 +594,8 @@ mod tests {
             font_size: 24.0,
             font_open: false,
             hover: None,
+            badge_mark: crate::editor::BadgeMark::Num,
+            badge_open: false,
         };
         let mut pm = Pixmap::new(800, 400).unwrap();
         pm.fill(tiny_skia::Color::from_rgba8(30, 30, 30, 255));

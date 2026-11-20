@@ -13,6 +13,7 @@
 //! > 空格移动选区 > （移动态）对象 / 选区平移 > Ctrl + 对象 > 选中对象框边 > 对象内部（绘制）> 空白绘制。
 
 mod annotate;
+mod badgemenu;
 mod cancel_hint;
 mod control;
 mod cursor;
@@ -147,6 +148,10 @@ pub struct Overlay {
     font_size: f32,
     /// 新建序号标记的默认字号（EDT-12，滚轮可调；徽标圆随字号缩放）。
     number_font_size: f32,
+    /// 新建徽标的形态（EDT-20）：数字编号 / 对勾 / 叉号，跨截图记忆。
+    badge_mark: crate::editor::BadgeMark,
+    /// 展开中的徽标形态下拉（EDT-20）。
+    badge_menu: Option<toolbar::badgemenu::BadgeMenu>,
     /// 新建文本对象的默认字体族、粗体、斜体（EDT-4，第二行工具栏可改）。
     font_family: std::sync::Arc<str>,
     bold: bool,

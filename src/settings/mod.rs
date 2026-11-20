@@ -206,6 +206,9 @@ pub struct Config {
     pub color_index: usize,
     /// 当前线型（EDT-18，issue #168）：跨截图记忆，缺省为实线。
     pub line_style: crate::editor::LineStyle,
+    /// 新建徽标的形态（EDT-20，issue #186）：跨截图记忆，缺省为自动编号。
+    #[serde(default)]
+    pub badge_mark: crate::editor::BadgeMark,
     /// 有未保存标注时取消截图先弹确认框（OUT-3 / ADR 0027，默认开）；关闭后直接退出（issue #120）。
     pub confirm_cancel: bool,
     /// 工具栏可见性（EDT-16，issue #143）：纯视觉偏好，只存隐藏集合、默认全可见。
@@ -245,6 +248,7 @@ impl Default for Config {
             swatch_colors: crate::editor::DEFAULT_COLORS,
             color_index: 0,
             line_style: crate::editor::LineStyle::Solid,
+            badge_mark: crate::editor::BadgeMark::Num,
             confirm_cancel: true,
             toolbar: ToolbarConfig::default(),
             name_style: NameStyle::DateTime,
@@ -582,5 +586,23 @@ mod tests {
         assert_eq!(back.line_style, crate::editor::LineStyle::DashDot);
         // 配置值是稳定的小写串（改名等于改配置格式，ADR 0042）
         assert!(text.contains("line_style = \"dash_dot\""), "{text}");
+    }
+
+    /// 徽标形态（EDT-20）：默认自动编号；旧配置（缺字段）回退编号；新值能往返。
+    #[test]
+    fn badge_mark_defaults_and_roundtrip() {
+        assert_eq!(Config::default().badge_mark, crate::editor::BadgeMark::Num);
+
+        let old: Config = toml::from_str("[hotkey]\nscreenshot_key = 0x70\n").unwrap();
+        assert_eq!(old.badge_mark, crate::editor::BadgeMark::Num, "旧配置应回退自动编号");
+
+        let cfg = Config {
+            badge_mark: crate::editor::BadgeMark::Cross,
+            ..Default::default()
+        };
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        let back: Config = toml::from_str(&text).unwrap();
+        assert_eq!(back.badge_mark, crate::editor::BadgeMark::Cross);
+        assert!(text.contains("badge_mark = \"cross\""), "{text}");
     }
 }

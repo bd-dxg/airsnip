@@ -65,13 +65,14 @@ fn bar_stale(bar: Option<bool>, want_second: bool) -> bool {
 }
 
 impl super::Overlay {
-    /// 工具栏与弹出面板（字体列表 / 取色 / 线型）的合并脏区（可能分离，重绘需一并覆盖）。
+    /// 工具栏与弹出面板（字体列表 / 取色 / 线型 / 徽标形态）的合并脏区（可能分离，重绘需一并覆盖）。
     pub(super) fn chrome_rect(&self) -> Option<SelRect> {
         let panels = union_rect(
             self.font_list.as_ref().map(|p| p.rect),
             self.color_panel.as_ref().map(|p| p.rect),
         );
-        let panels = union_rect(panels, self.line_menu.as_ref().map(|m| m.rect));
+        let panels = union_rect(panels, self.line_menu.as_ref().map(|m| m.rect()));
+        let panels = union_rect(panels, self.badge_menu.as_ref().map(|m| m.rect()));
         union_rect(self.bar.as_ref().map(|b| b.rect), panels)
     }
 

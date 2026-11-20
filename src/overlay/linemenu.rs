@@ -10,7 +10,7 @@ use crate::overlay::toolbar::{self, linemenu::LineMenu};
 impl Overlay {
     /// 展开 / 收起线型下拉（与取色面板、字体列表互斥）。
     pub(in crate::overlay) fn toggle_line_menu(&mut self) {
-        let old = self.line_menu.as_ref().map(|m| m.rect);
+        let old = self.line_menu.as_ref().map(|m| m.rect());
         if self.line_menu.is_some() {
             self.line_menu = None;
         } else {
@@ -19,7 +19,7 @@ impl Overlay {
             self.line_menu = self.open_line_menu();
         }
         // 面板旧 / 新区 + 工具栏：格子自己要跟着 `line_open` 变底色（EDT-18）
-        let dirty = union_rect(old, self.line_menu.as_ref().map(|m| m.rect));
+        let dirty = union_rect(old, self.line_menu.as_ref().map(|m| m.rect()));
         if let Some(dirty) = union_rect(dirty, self.bar.as_ref().map(|b| b.rect)) {
             self.repaint(expand_rect(dirty, 2));
         }
@@ -48,7 +48,7 @@ impl Overlay {
             return false;
         }
         let hit = panel.hit(x, y);
-        let rect = panel.rect;
+        let rect = panel.rect();
         self.line_menu = None;
         if let Some(style) = hit {
             self.apply_action(toolbar::Action::LineStyle(style));
@@ -63,7 +63,7 @@ impl Overlay {
             return;
         };
         if panel.hover_at(x, y) {
-            let rect = panel.rect;
+            let rect = panel.rect();
             self.repaint(expand_rect(rect, 2));
         }
     }
@@ -81,7 +81,7 @@ impl Overlay {
     /// 收起下拉（工具栏其它按钮、Esc、框选变动）；旧面板与工具栏一并重绘（格子底色随 `line_open` 变）。
     pub(in crate::overlay) fn close_line_menu(&mut self) {
         if let Some(panel) = self.line_menu.take() {
-            let dirty = union_rect(Some(panel.rect), self.bar.as_ref().map(|b| b.rect));
+            let dirty = union_rect(Some(panel.rect()), self.bar.as_ref().map(|b| b.rect));
             if let Some(dirty) = dirty {
                 self.repaint(expand_rect(dirty, 2));
             }

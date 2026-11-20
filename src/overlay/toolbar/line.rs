@@ -51,6 +51,27 @@ pub(super) fn draw_chevron(pixmap: &mut Pixmap, r: SelRect, color: [u8; 4], ui: 
     pixmap.stroke_path(&path, &solid_paint(color), &stroke, Transform::identity(), None);
 }
 
+/// 格子右下角的下拉指示三角（EDT-20）：序号格子不额外加宽，靠这个小三角开形态下拉。
+pub(super) fn draw_corner_chevron(pixmap: &mut Pixmap, corner: SelRect, color: [u8; 4], ui: Ui) {
+    let cx = corner.x as f32 + corner.w as f32 * 0.5;
+    let cy = corner.y as f32 + corner.h as f32 * 0.5 + ui.f(0.5);
+    let (dx, dy) = (ui.f(2.2), ui.f(1.3));
+    let mut pb = PathBuilder::new();
+    pb.move_to(cx - dx, cy - dy);
+    pb.line_to(cx, cy + dy);
+    pb.line_to(cx + dx, cy - dy);
+    let Some(path) = pb.finish() else {
+        return;
+    };
+    let stroke = tiny_skia::Stroke {
+        width: ui.f(1.3).max(1.0),
+        line_cap: LineCap::Round,
+        line_join: LineJoin::Round,
+        ..Default::default()
+    };
+    pixmap.stroke_path(&path, &solid_paint(color), &stroke, Transform::identity(), None);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

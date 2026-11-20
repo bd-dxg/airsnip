@@ -89,7 +89,7 @@ impl super::Overlay {
     pub(super) fn commit_text(&mut self) {
         let Some(edit) = self.text_edit.take() else { return };
         self.set_ime_enabled(false);
-        // EDT-12：改编号走单独分支（只解析数字，空 / 非法则保持原号）
+        // EDT-12：改徽标内容（编号 / 对勾 / 叉号）走单独分支，空 / 非法则保持原样
         if edit.number {
             self.finish_number_edit(edit);
             return;
@@ -160,10 +160,11 @@ impl super::Overlay {
             return;
         }
         let Some(edit) = self.text_edit.as_mut() else { return };
-        // EDT-12：编号编辑只接受数字字符（最多 4 位，避免荒谬的大数）
+        // EDT-12 / EDT-20：徽标内容编辑只收 `Badge::accepts_char` 认可的字符
+        // （数字 = 编号，`v` / `x` 与勾叉 = 符号），最多 4 个字符（避免荒谬的大数与长串）
         if edit.number {
-            let is_digit = char::from_u32(unit as u32).is_some_and(|c| c.is_ascii_digit());
-            if !is_digit || edit.chars.len() >= 4 {
+            let ok = char::from_u32(unit as u32).is_some_and(crate::editor::Badge::accepts_char);
+            if !ok || edit.chars.len() >= 4 {
                 return;
             }
         }

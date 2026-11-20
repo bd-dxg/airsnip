@@ -42,6 +42,7 @@ impl Overlay {
             save,
             ui_scale,
             line_style,
+            badge_mark,
             pin_edit,
         } = opts;
         let (w, h) = (capture.width, capture.height);
@@ -159,6 +160,8 @@ impl Overlay {
             blur_radius: editor::DEFAULT_BLUR_RADIUS,
             font_size: editor::DEFAULT_FONT_SIZE,
             number_font_size: editor::DEFAULT_NUMBER_FONT_SIZE,
+            badge_mark,
+            badge_menu: None,
             font_family: std::sync::Arc::from(editor::DEFAULT_FONT_FAMILY),
             bold: false,
             italic: false,

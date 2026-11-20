@@ -205,7 +205,7 @@ pub fn snap_direction(a: Point, b: Point) -> Point {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::editor::{Object, Style};
+    use crate::editor::{Badge, Object, Style};
 
     fn rect_obj(a: (f32, f32), b: (f32, f32)) -> Object {
         Object {
@@ -381,7 +381,7 @@ mod tests {
         let mut k = Kind::Number {
             center: Point::new(10.0, 10.0),
             tip: Point::new(40.0, 10.0),
-            n: 2,
+            mark: Badge::Num(2),
             font_size: 20.0,
             radius: 14.0,
         };
@@ -391,7 +391,7 @@ mod tests {
             Kind::Number {
                 center: Point::new(15.0, 7.0),
                 tip: Point::new(45.0, 7.0),
-                n: 2,
+                mark: Badge::Num(2),
                 font_size: 20.0,
                 radius: 14.0,
             }

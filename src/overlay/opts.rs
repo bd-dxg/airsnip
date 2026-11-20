@@ -49,6 +49,8 @@ pub struct OverlayOpts {
     pub color_index: usize,
     /// 当前线型（EDT-18，issue #168）：来自配置，缺省为实线。
     pub line_style: crate::editor::LineStyle,
+    /// 新建徽标的形态（EDT-20）：来自配置，缺省为自动编号。
+    pub badge_mark: crate::editor::BadgeMark,
     /// 保存偏好（OUT-2）：文件名模板、上次格式与上次目录。
     pub save: crate::settings::SavePrefs,
     /// 界面缩放（CAP-5）。

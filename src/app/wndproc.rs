@@ -227,6 +227,11 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                     app.config.line_style = line;
                     changed = true;
                 }
+                // 本次改过徽标形态的话，记住它（EDT-20，issue #186）
+                if let Some(mark) = crate::editor::badge_take() {
+                    app.config.badge_mark = mark;
+                    changed = true;
+                }
                 if changed {
                     app.config.save();
                 }

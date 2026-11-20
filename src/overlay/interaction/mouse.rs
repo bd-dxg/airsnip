@@ -30,6 +30,10 @@ impl super::super::Overlay {
         if self.on_line_menu_down(x, y) {
             return;
         }
+        // 徽标形态下拉（EDT-20）：同上
+        if self.on_badge_menu_down(x, y) {
+            return;
+        }
         // 字体面板（EDT-4）：不覆盖工具栏，故排在工具栏之后；命中行选字体，
         // 点面板之外则收起面板并退回常规流程
         if self.on_font_list_down(x, y) {

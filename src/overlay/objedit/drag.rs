@@ -205,6 +205,32 @@ impl super::super::Overlay {
         }
     }
 
+    /// 徽标形态作用于选中徽标（EDT-20）：只对 `Kind::Number` 生效，一次撤销。
+    /// 返回是否真的改了（调用方据此重绘）。
+    pub(in crate::overlay) fn apply_mark_to_selected(&mut self, mark: crate::editor::BadgeMark) -> bool {
+        let Some(i) = self.selected else {
+            return false;
+        };
+        let before = self.selected_clip();
+        let old = match &self.doc.objects()[i].kind {
+            Kind::Number { mark, .. } => mark.mark(),
+            _ => return false,
+        };
+        if old == mark {
+            return false;
+        }
+        self.doc.begin();
+        // 切回编号形态时重新分配号码（对勾 / 叉号不占用编号，见 `next_number`）
+        let next = crate::editor::Badge::create(mark, self.doc.objects());
+        if let Kind::Number { mark: slot, .. } = &mut self.doc.objects_mut()[i].kind {
+            *slot = next;
+        }
+        crate::render::text::remeasure(&mut self.doc.objects_mut()[i].kind);
+        self.doc.commit(true);
+        self.repaint_selected(before);
+        true
+    }
+
     /// 选中对象变化后的重绘：旧区 + 新区（手柄在包围盒外扩范围内）。
     fn repaint_selected(&mut self, before: Option<SelRect>) {
         if let Some(d) = union_rect(before, self.selected_clip()) {

@@ -80,6 +80,8 @@ fn action_label(action: Action) -> Option<&'static str> {
         Action::Tool(Tool::Blur) => Some("高斯模糊"),
         Action::Tool(Tool::Glow) => Some("聚光灯"),
         Action::Tool(Tool::Number) => Some("序号标记"),
+        // EDT-20：序号格子右下角的形态下拉（数字 / 对勾 / 叉号）
+        Action::BadgeMenu => Some("徽标形态"),
         Action::Tool(Tool::Line) => Some("直线工具"),
         Action::Tool(Tool::Ellipse) => Some("椭圆工具"),
         Action::Tool(Tool::Freehand) => Some("手绘"),

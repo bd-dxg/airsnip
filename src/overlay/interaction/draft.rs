@@ -2,7 +2,7 @@
 //! 绘制草稿（EDT-1/2/3）：在选区内拖拽时的临时对象与提交。
 //! 文本工具不产生草稿（走输入状态机，见 `textinput`）。
 
-use crate::editor::{Kind, Object, Point, Tool};
+use crate::editor::{Badge, Kind, Object, Point, Tool};
 use crate::render;
 
 use super::super::geometry::{SelRect, expand_rect, union_rect};
@@ -67,16 +67,16 @@ impl super::super::Overlay {
                 b: p,
                 corner: 0.0,
             },
-            // EDT-12 序号标记：按下即在 p 处放徽标（tip 与圆心同点，拖动时才出现引线箭头）
+            // EDT-12 序号标记 / EDT-20 徽标：按下即在 p 处放徽标（tip 与圆心同点，拖动时才出现引线箭头）
             Tool::Number => {
-                let n = crate::editor::next_number(self.doc.objects());
+                let mark = Badge::create(self.badge_mark, self.doc.objects());
                 let font_size = self.number_font_size;
                 Kind::Number {
                     center: p,
                     tip: p,
-                    n,
+                    mark,
                     font_size,
-                    radius: render::number_radius(font_size, n),
+                    radius: render::number_radius(font_size, mark),
                 }
             }
             // EDT-13 直线：两端点同点，拖动时终点跟随
@@ -165,17 +165,17 @@ impl super::super::Overlay {
                         b: end,
                         corner: *corner,
                     },
-                    // 序号标记：只更新引线尖端（圆心 / 编号 / 字号 / 半径不变）
+                    // 序号徽标：只更新引线尖端（圆心 / 内容 / 字号 / 半径不变）
                     Kind::Number {
                         center,
-                        n,
+                        mark,
                         font_size,
                         radius,
                         ..
                     } => Kind::Number {
                         center: *center,
                         tip: end,
-                        n: *n,
+                        mark: *mark,
                         font_size: *font_size,
                         radius: *radius,
                     },

@@ -58,6 +58,8 @@ impl App {
             color_index: self.config.color_index,
             // 当前线型（EDT-18，issue #168）：来自配置，缺省为实线
             line_style: self.config.line_style,
+            // 新建徽标的形态（EDT-20，issue #186）：来自配置，缺省为自动编号
+            badge_mark: self.config.badge_mark,
             // 命名模板与上次保存格式/目录（OUT-2）：保存对话框预填文件名与初始位置
             save: crate::settings::SavePrefs {
                 name_style: self.config.name_style,

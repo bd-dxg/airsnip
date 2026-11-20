@@ -134,6 +134,8 @@ impl super::Overlay {
             font_size,
             font_open: self.font_list.is_some(),
             hover: self.tip.hover_button(),
+            badge_mark: self.badge_mark,
+            badge_open: self.badge_menu.is_some(),
         }
     }
 
@@ -148,6 +150,10 @@ impl super::Overlay {
         self.close_color_panel();
         if action != toolbar::Action::LineMenu {
             self.close_line_menu();
+        }
+        // 徽标形态下拉同理：自己走 toggle，其余动作一律先收起（EDT-20）
+        if action != toolbar::Action::BadgeMenu {
+            self.close_badge_menu();
         }
         match action {
             toolbar::Action::Tool(t) => {
@@ -183,6 +189,19 @@ impl super::Overlay {
             }
             // EDT-18：线型格子只是展开 / 收起下拉，取值在 `LineStyle` 分支（由下拉点击分发）
             toolbar::Action::LineMenu => return self.toggle_line_menu(),
+            // EDT-20：序号格子右下角三角只展开 / 收起形态下拉，取值在 `BadgeMark` 分支
+            toolbar::Action::BadgeMenu => return self.toggle_badge_menu(),
+            toolbar::Action::BadgeMark(mark) => {
+                self.badge_mark = mark;
+                // 跨截图记忆（EDT-20）：主线程在 WM_OVERLAY_DONE 写回配置
+                crate::editor::badge_store(mark);
+                // 选完形态就切到序号工具：不切的话用户点画布会发现画出来的还是上一个工具
+                // （线型不必切——它对多个工具都生效，徽标形态只对序号有意义）
+                self.mode = crate::editor::Mode::Draw(crate::editor::Tool::Number);
+                // 有选中徽标时直接改它（与颜色 / 线型 / 渐变同一套语义），
+                // 没选中就只影响下一次绘制；工具栏统一刷新在 `apply_action` 末尾
+                let _ = self.apply_mark_to_selected(mark);
+            }
             toolbar::Action::LineStyle(style) => {
                 // 只有存在可见描边时才有意义（填充矩形 / 文本 / 效果类对象置灰，见 `line_enabled_for`）
                 if line_enabled_for(self.mode.tool(), self.selected_object(), self.filled) {
@@ -262,12 +281,14 @@ impl super::Overlay {
         match cancel_step(
             self.color_panel_open(),
             self.line_menu_open(),
+            self.badge_menu_open(),
             self.font_list_open(),
             self.is_editing_text(),
             self.confirm_cancel && !self.doc.is_empty(),
         ) {
             CancelStep::ColorPanel => self.close_color_panel(),
             CancelStep::LineMenu => self.close_line_menu(),
+            CancelStep::BadgeMenu => self.close_badge_menu(),
             CancelStep::FontPanel => self.close_font_list(),
             // 文本 / 序号输入中右键 = 完成本次输入（保留文字），而非丢弃；
             // Esc 取消输入走 `on_text_key`（键盘路径），不经过这里。

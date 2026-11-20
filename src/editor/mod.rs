@@ -24,7 +24,7 @@ pub use curve::{
 pub use document::{Document, MAX_HISTORY};
 pub use gradient::{Gradient, HUE_SPAN, HUE_STEP, STOPS as GRADIENT_STOPS};
 pub use linestyle::{LineStyle, line_store, line_take};
-pub use number::{next_number, number_arrow_start};
+pub use number::{Badge, BadgeMark, badge_store, badge_take, next_number, number_arrow_start};
 pub use palette::{
     DEFAULT_COLORS, GRADIENT_SWATCH, SOLID_COUNT, SWATCH_COUNT, color_index_store, color_index_take, colors_store,
     colors_take,
@@ -114,13 +114,13 @@ pub enum Kind {
     /// 高亮（聚光效果，与荧光笔是两种功能）：对角两点 + `corner` 圆角半径。
     /// 选区其余部分暗化、该区域显示原图亮度，详见渲染层说明。
     Glow { a: Point, b: Point, corner: f32 },
-    /// EDT-12 序号标记：`center` 为徽标圆心（按下点），`tip` 为引线箭头尖端（拖动终点）；
-    /// `n` 为显示的编号，`font_size` 为数字字号（滚轮连续调）。
-    /// `radius` 为徽标圆半径：由渲染层按字号与编号位数测量后写入（与 `Kind::Text::size` 同源约定）。
+    /// EDT-12 序号标记 / EDT-20 徽标：`center` 为徽标圆心（按下点），`tip` 为引线箭头尖端
+    /// （拖动终点）；`mark` 为徽标内容（编号 / 对勾 / 叉号），`font_size` 为内容字号（滚轮连续调）。
+    /// `radius` 为徽标圆半径：由渲染层按字号与内容测量后写入（与 `Kind::Text::size` 同源约定）。
     Number {
         center: Point,
         tip: Point,
-        n: u32,
+        mark: Badge,
         font_size: f32,
         radius: f32,
     },
@@ -510,7 +510,7 @@ mod tests {
             kind: Kind::Number {
                 center: Point::new(center.0, center.1),
                 tip: Point::new(tip.0, tip.1),
-                n,
+                mark: Badge::Num(n),
                 font_size: 20.0,
                 radius: 14.0,
             },

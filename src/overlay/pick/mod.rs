@@ -342,7 +342,7 @@ mod tests {
         let obj = rect_like(Kind::Number {
             center: Point::new(10.0, 10.0),
             tip: Point::new(10.0, 10.0),
-            n: 1,
+            mark: crate::editor::Badge::Num(1),
             font_size: 20.0,
             radius: 14.0,
         });
