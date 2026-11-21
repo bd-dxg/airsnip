@@ -7,7 +7,7 @@ on:
 jobs:
   move:
     # 只响应下面这几个标签,按你实际使用的标签名修改
-    if: contains(fromJSON('["待确认需求","已提供测试包"]'), github.event.label.name)
+    if: contains(fromJSON('["待确认需求","已提供测试包","已答复 等待回复"]'), github.event.label.name)
     runs-on: ubuntu-latest
     steps:
       - name: 把卡片移到 Waiting for author

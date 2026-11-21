@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/stale@v9
         with:
-          any-of-labels: '待确认需求,已提供测试包'
+          any-of-labels: '待确认需求,已提供测试包,已答复 等待回复'
           days-before-issue-stale: 2
           days-before-issue-close: 1
           stale-issue-label: '长期无回复'
