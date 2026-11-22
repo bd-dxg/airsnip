@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://github.com/bd-dxg/airsnip/releases"><img alt="Version" src="https://img.shields.io/github/v/release/bd-dxg/airsnip?label=version&color=blue"></a>
-  <a href="https://github.com/bd-dxg/airsnip/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/bd-dxg/airsnip/total"></a>
+  <a href="https://github.com/bd-dxg/airsnip/releases"><img alt="Downloads" src="https://img.shields.io/badge/downloads-6k%2B-0969da"></a>
   <a href="https://github.com/bd-dxg/airsnip/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/bd-dxg/airsnip?color=e3b341"></a>
   <a href="https://github.com/bd-dxg/airsnip/releases"><img alt="Platform" src="https://img.shields.io/badge/platform-Windows%2010%2B-lightgrey.svg"></a>
   <img alt="Size" src="https://img.shields.io/badge/size-%3C%202%20MB-ff6f00.svg">
@@ -103,8 +103,10 @@ AirSnip 免费、开源、无广告、无内购，也没有商业化计划。开
 |---|---|
 | GitHub Star | **600+**（顶部徽章实时显示） |
 | Fork / 二次开发 | **59** |
-| Release 累计下载 | **14,000+ 次** |
+| Release 安装包下载 | **6,000+ 次** |
 | 社区 | 首发于 [LinuxDo](https://linux.do/)，官网 [airsnip.bddxg.top](https://airsnip.bddxg.top) |
+
+> 下载量只算 exe / zip 附件，**不含**自动更新清单 `latest.json` 的请求——每台机器启动检查更新时都会拉一次，会把数字虚高一倍多。表格与徽章数字随发版手动更新。
 
 一个没有商业化的个人项目能走到这一步，靠的是愿意接受「一个人 + 业余时间」节奏的用户。所有取舍都摊在仓库里：决策记录（`docs/adr/`）、需求（`screenshot-tool-PRD.md`）、性能实测（`docs/perf-m5.md`）全部公开，连「做了什么又撤了」也留档（例如撤销 OCR / 翻译，见 ADR 0035）。
 
