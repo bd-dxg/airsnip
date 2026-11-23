@@ -37,7 +37,7 @@ pub fn conflict_for(cfg: &crate::settings::Config, id: RowId, vk: u32, mods: u32
             KeyBind::Plain => kv == vk && cand_mods == 0,
         };
         if hit {
-            return Some(row.label);
+            return Some(row.label.text());
         }
     }
     None

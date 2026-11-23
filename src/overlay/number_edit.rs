@@ -67,7 +67,7 @@ impl super::Overlay {
             self.commit_text();
         }
         self.selected = Some(i);
-        let mut spec = render::text::FontSpec::new(font_size);
+        let mut spec = render::text::FontSpec::content(font_size);
         spec.bold = true;
         let label = mark.edit_text();
         let (tw, th) = render::text::measure(&label, &spec);

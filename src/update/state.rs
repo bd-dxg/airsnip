@@ -69,15 +69,25 @@ pub fn is_busy_phase(p: &Phase) -> bool {
 
 /// 关于页更新按钮：文案 + 是否可点（检查中/下载中/安装中置灰）。
 pub fn button(phase: &Phase) -> (String, bool) {
+    use crate::i18n::{self, Key, SettingsKey as K};
     match phase {
-        Phase::Idle => ("检查更新".to_string(), true),
-        Phase::Checking => ("检查中…".to_string(), false),
+        Phase::Idle => (K::UpdateCheck.text().to_string(), true),
+        Phase::Checking => (K::UpdateChecking.text().to_string(), false),
         // 已是最新仍可点：过一段时间想手动再查一次
-        Phase::UpToDate => ("已是最新".to_string(), true),
-        Phase::Available { version } => (format!("更新到 v{version}"), true),
-        Phase::Downloading { percent, .. } => (format!("下载中 {percent}%"), false),
-        Phase::Installing { .. } => ("正在安装…".to_string(), false),
-        Phase::Failed(_) => ("重试".to_string(), true),
+        Phase::UpToDate => (K::UpdateUpToDate.text().to_string(), true),
+        Phase::Available { version } => (
+            i18n::t_with(Key::Settings(K::UpdateToVersion), &[("version", version)]),
+            true,
+        ),
+        Phase::Downloading { percent, .. } => (
+            i18n::t_with(
+                Key::Settings(K::UpdateDownloading),
+                &[("percent", &percent.to_string())],
+            ),
+            false,
+        ),
+        Phase::Installing { .. } => (K::UpdateInstalling.text().to_string(), false),
+        Phase::Failed(_) => (K::UpdateRetry.text().to_string(), true),
     }
 }
 

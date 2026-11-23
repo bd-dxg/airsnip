@@ -8,6 +8,7 @@ use std::path::Path;
 use tiny_skia::Pixmap;
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK};
 
+use crate::i18n::SettingsKey as K;
 use crate::output::quick;
 use crate::render::text as dwrite;
 
@@ -46,7 +47,8 @@ pub(super) fn preview(panel: &Panel) -> String {
 /// 下拉 / 只读值（保存位置、预览）的绘制（输入框与按钮各有自己的模块）。
 pub(super) fn draw(pixmap: &mut Pixmap, panel: &Panel, row: &Row) {
     match row.id {
-        RowId::QuickFormat | RowId::QuickOnExist => {
+        // 下拉行：保存页的格式 / 同名策略，与通用页的界面语言（I18N-1 / ADR 0047）
+        RowId::QuickFormat | RowId::QuickOnExist | RowId::Lang => {
             let open = panel.open_select == Some(row.id);
             select::draw_select(pixmap, panel, row, select::select_value(panel, row.id), open);
         }
@@ -108,7 +110,7 @@ pub(super) fn on_click(panel: &mut Panel, id: RowId) -> bool {
             }
         }
         // 下拉：点开列表（再点一次收起），选项由 `on_list_click` 写回
-        RowId::QuickFormat | RowId::QuickOnExist => {
+        RowId::QuickFormat | RowId::QuickOnExist | RowId::Lang => {
             panel.open_select = if panel.open_select == Some(id) { None } else { Some(id) };
             panel.select_hover = None;
         }
@@ -123,9 +125,9 @@ pub(super) fn on_click(panel: &mut Panel, id: RowId) -> bool {
             } else {
                 crate::app::message_box(
                     Some(panel.hwnd),
-                    &format!(
-                        "目录还不存在：{}\n先存一张图，或点「保存位置」换个已存在的目录。",
-                        dir.display()
+                    &crate::i18n::t_with(
+                        crate::i18n::Key::Settings(K::SaveDirMissing),
+                        &[("dir", &dir.display().to_string())],
                     ),
                     MB_OK | MB_ICONINFORMATION,
                 );

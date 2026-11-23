@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 设置面板控件模型与布局（M3）：左侧分类导航 + 右侧内容区。
 
+use crate::i18n::SettingsKey as K;
 use crate::overlay::geometry::SelRect;
 use crate::settings::{ToolbarGroup, ToolbarSlot};
 
@@ -9,6 +10,7 @@ mod keys;
 mod layout;
 mod scale;
 mod sections;
+mod toolbar_layout;
 pub use keyrows::*;
 pub use keys::*;
 pub use layout::*;
@@ -89,12 +91,12 @@ impl Section {
 
     pub fn title(self) -> &'static str {
         match self {
-            Section::General => "通用",
-            Section::Toolbar => "工具栏",
-            Section::Hotkeys => "快捷键",
-            Section::Save => "保存",
-            Section::Appearance => "外观",
-            Section::About => "关于",
+            Section::General => K::NavGeneral.text(),
+            Section::Toolbar => K::NavToolbar.text(),
+            Section::Hotkeys => K::NavHotkeys.text(),
+            Section::Save => K::NavSave.text(),
+            Section::Appearance => K::NavAppearance.text(),
+            Section::About => K::NavAbout.text(),
         }
     }
 }
@@ -106,7 +108,7 @@ pub enum RowId {
     Autostart,
     /// 连按两次退出开关（OUT-3，issue #120）：有未保存标注时，同一键连按两次才退出。
     ConfirmCancel,
-    /// 语言展示（一期仅 zh-CN）。
+    /// 界面语言（I18N-1，issue #151 / ADR 0047）：通用页一行真下拉。
     Lang,
     /// 截图热键。
     HotkeyShot,

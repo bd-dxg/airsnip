@@ -26,7 +26,7 @@ pub(super) fn help_rect(panel: &Panel) -> Option<SelRect> {
     let spec = dwrite::FontSpec::new(size);
     let mut w: f32 = 0.0;
     for (name, desc) in VARS {
-        let line = format!("{name}    {desc}");
+        let line = format!("{name}    {}", desc.text());
         w = w.max(dwrite::measure(&line, &spec).0);
     }
     let line_h = (20.0 * s) as i32;
@@ -69,7 +69,7 @@ pub(in crate::settings::panel) fn draw_help(pixmap: &mut Pixmap, panel: &Panel) 
     let pad = (12.0 * s) as i32;
     let line_h = (20.0 * s) as i32;
     for (i, (name, desc)) in VARS.iter().enumerate() {
-        let line = format!("{name}    {desc}");
+        let line = format!("{name}    {}", desc.text());
         let x = rect.x + pad;
         let y = rect.y + pad + i as i32 * line_h;
         draw_text(pixmap, x as f32, y as f32, &line, size, p.text);

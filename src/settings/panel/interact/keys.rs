@@ -32,7 +32,10 @@ impl Panel {
                 if let Some(name) = conflict_for(&self.config, id, vk, mods) {
                     message_box(
                         None,
-                        &format!("按键 {name} 已被其他快捷键使用，请换一个。"),
+                        &crate::i18n::t_with(
+                            crate::i18n::Key::Settings(crate::i18n::SettingsKey::KeyConflict),
+                            &[("name", name)],
+                        ),
                         MB_OK | MB_ICONWARNING,
                     );
                     self.end_capture();

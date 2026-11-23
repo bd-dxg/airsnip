@@ -9,6 +9,8 @@ pub mod toolbar;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::i18n::{LangPref, SettingsKey as K};
+
 pub use hotkey::{HotkeyConfig, ToolKeys, UNBOUND};
 pub use quick_save::{ExistingFile, QuickSaveConfig, SaveFormat};
 pub use toolbar::{GroupState, ToolbarConfig, ToolbarGroup, ToolbarSlot};
@@ -67,11 +69,14 @@ pub enum NameStyle {
 }
 
 impl NameStyle {
+    /// **已退役**（ADR 0041 起快速保存的名字由 `[quick_save] name` 模板决定）——无调用点，
+    /// 仅保留作迁移追溯。三条文案刻意不迁入语言表（不会显示给任何用户），
+    /// 行尾 `i18n:keep` 就是给 `scripts/check-i18n.ps1` 看的。
     pub fn title(self) -> &'static str {
         match self {
-            NameStyle::DateTime => "日期 + 时间",
-            NameStyle::Timestamp => "时间戳（Unix 毫秒）",
-            NameStyle::Date => "仅日期",
+            NameStyle::DateTime => "日期 + 时间",          // i18n:keep
+            NameStyle::Timestamp => "时间戳（Unix 毫秒）", // i18n:keep
+            NameStyle::Date => "仅日期",                   // i18n:keep
         }
     }
 }
@@ -109,12 +114,21 @@ impl UiScale {
     /// 设置面板行标签。
     pub fn title(self) -> &'static str {
         match self {
-            UiScale::Auto => "界面缩放·自动",
-            UiScale::P100 => "界面缩放·100%",
-            UiScale::P125 => "界面缩放·125%",
-            UiScale::P150 => "界面缩放·150%",
-            UiScale::P175 => "界面缩放·175%",
-            UiScale::P200 => "界面缩放·200%",
+            UiScale::Auto => K::ScaleAuto.text(),
+            UiScale::P100 => K::Scale100.text(),
+            UiScale::P125 => K::Scale125.text(),
+            UiScale::P150 => K::Scale150.text(),
+            UiScale::P175 => K::Scale175.text(),
+            UiScale::P200 => K::Scale200.text(),
+        }
+    }
+
+    /// 纯倍率文字（不带「界面缩放·」前缀）。诊断文本用它：
+    /// 那是另一条文案链，不该从面板标签里 `trim_start_matches` 抠值（一改语言就失效）。
+    pub fn value_label(self) -> String {
+        match self.factor() {
+            Some(f) => format!("{}%", (f * 100.0) as i32),
+            None => K::ScaleAutoValue.text().to_string(),
         }
     }
 
@@ -175,8 +189,9 @@ fn migrate_swatches(raw: Vec<[u8; 4]>) -> [[u8; 4]; crate::editor::SOLID_COUNT] 
 pub struct Config {
     /// 开机自启开关。实际生效状态以注册表 Run 键 + StartupApproved 为准。
     pub auto_start: bool,
-    /// 界面语言（一期仅 zh-CN，预留 i18n）。
-    pub language: String,
+    /// 界面语言（I18N-1，issue #151 / ADR 0047）：跟随系统 / 简体 / 繁體 / English / 日本語。
+    /// **容错反序列化**（`LangPref`）：旧配置的 `zh-CN` 与未来未知值都不能让整份配置回退默认。
+    pub language: LangPref,
     pub theme: ThemeSetting,
     pub hotkey: HotkeyConfig,
     /// 覆盖层工具切换键（M3）。
@@ -234,7 +249,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             auto_start: false,
-            language: "zh-CN".to_string(),
+            language: LangPref::Auto,
             theme: ThemeSetting::Follow,
             hotkey: HotkeyConfig::default(),
             tool_keys: ToolKeys::default(),
@@ -304,6 +319,29 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 本批次最重要的一条回归：旧配置里的 `language = "zh-CN"` 与新版本写入的未知语言
+    /// **都不能让 `toml::from_str` 失败**——一旦失败，`Config::load` 的 `unwrap_or_default()`
+    /// 会把用户的热键 / 保存路径 / 工具栏隐藏项一起重置回默认值。
+    #[test]
+    fn legacy_language_does_not_reset_other_settings() {
+        for raw in ["zh-CN", "zh-TW", "ko", ""] {
+            let text = format!("language = \"{raw}\"\nauto_check_update = false\nlongshot_max_height = 12345\n");
+            let cfg: Config = toml::from_str(&text).expect("旧 / 未知语言值不应解析失败");
+            assert!(!cfg.auto_check_update, "{raw}：其它字段不应被语言字段拖累重置");
+            assert_eq!(cfg.longshot_max_height, 12345, "{raw}");
+        }
+        // 旧写法落到简体中文（而不是「跟随系统」：当时的界面就是中文）
+        let cfg: Config = toml::from_str("language = \"zh-CN\"").unwrap();
+        assert_eq!(cfg.language, LangPref::ZhHans);
+    }
+
+    /// 缺字段时语言默认「跟随系统」。
+    #[test]
+    fn missing_language_defaults_to_auto() {
+        let cfg: Config = toml::from_str("theme = \"dark\"").unwrap();
+        assert_eq!(cfg.language, LangPref::Auto);
+    }
 
     /// 旧配置（共享 modifiers）能正确迁移到各键独立修饰键。
     #[test]

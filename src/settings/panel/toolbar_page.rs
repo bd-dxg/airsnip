@@ -4,6 +4,7 @@
 
 use tiny_skia::{Pixmap, Transform};
 
+use crate::i18n::SettingsKey as K;
 use crate::overlay::geometry::SelRect;
 use crate::overlay::shape::{paint_of, rounded_rect, rounded_rect_outline};
 use crate::render::text as dwrite;
@@ -23,7 +24,7 @@ pub(super) fn draw_hint(pixmap: &mut Pixmap, panel: &Panel, layout: &Layout) {
         return;
     }
     let s = panel.scale;
-    let text = "工具栏上已无复制 / 保存按钮，Enter 仍复制、Ctrl+S 仍保存";
+    let text = K::ToolbarFooterHint.text();
     let x = (super::controls::NAV_W as f32 + super::controls::PAD as f32) * s;
     draw_text(pixmap, x, hint_y(layout, s), text, 14.0 * s, panel.palette.text_dim);
 }

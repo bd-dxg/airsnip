@@ -230,3 +230,30 @@ fn save_page_paints_dir_name_and_preview() {
         );
     }
 }
+
+/// 通用页的「语言」行（I18N-1 / ADR 0047）必须真的画出下拉胶囊与当前语言名。
+/// 回归背景：这一行原来是最右侧的只读文字，改成 `RowKind::Select` 后，
+/// `savepage::draw` 的 match 漏了它 —— 整行右侧空白，几何测试却全绿。
+#[test]
+fn general_page_paints_language_select() {
+    use crate::settings::panel::controls::RowId;
+    for theme in [crate::theme::Theme::Light, crate::theme::Theme::Dark] {
+        let panel = panel_for_test(Section::General, theme, KeyGroup::Capture);
+        let (pm, layout) = paint(&panel);
+        let bg = panel.palette.bg;
+        let row = layout
+            .items
+            .iter()
+            .find_map(|it| match it {
+                Item::Row(r) if r.id == RowId::Lang => Some(r),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{theme:?} 通用页应有「语言」行"));
+        assert_eq!(row.kind, RowKind::Select, "语言行应走下拉");
+        assert!(
+            ink_of(&pm, row.control, bg) > 30,
+            "{theme:?} 语言行右侧空白：控件区没画出下拉（{:?}）",
+            row.control
+        );
+    }
+}

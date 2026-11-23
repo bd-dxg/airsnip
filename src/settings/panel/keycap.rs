@@ -7,6 +7,7 @@
 
 use tiny_skia::Pixmap;
 
+use crate::i18n::{self, SettingsKey as K};
 use crate::overlay::shape::{rounded_rect, rounded_rect_outline};
 use crate::render::icon::{self, Icon};
 use crate::render::text as dwrite;
@@ -89,7 +90,7 @@ fn row_key(panel: &Panel, id: RowId) -> u32 {
 fn keycap_text(panel: &Panel, id: RowId) -> String {
     if panel.capturing == Some(id) {
         // 两列排布后键帽较窄，捕获提示保持简短
-        return "按下新键…".into();
+        return K::KeyCapturing.text().into();
     }
     let Some(key) = spec(id) else { return String::new() };
     let (vk, mods) = key.current(&panel.config);
@@ -107,8 +108,8 @@ impl Panel {
         }
         // 两个全局热键是唯一入口时先说清楚：清空后只能从托盘菜单触发
         if key.confirm_clear {
-            let name = key.label;
-            let text = format!("清除「{name}」热键后，只能从托盘菜单触发{name}。\n确定清除吗？");
+            let name = key.label.text();
+            let text = i18n::t_with(i18n::Key::Settings(K::KeyClearConfirm), &[("name", name)]);
             if !confirm(self.hwnd, &text) {
                 return;
             }
@@ -120,10 +121,8 @@ impl Panel {
     /// 一键恢复默认快捷键（全部键帽行还原，含已清空的项）。
     pub(super) fn reset_keys(&mut self) {
         self.end_capture();
-        let text = format!(
-            "恢复默认会覆盖当前全部 {} 项快捷键设置（包括已清空的项）。\n确定恢复吗？",
-            KEY_ROWS.len()
-        );
+        let count = KEY_ROWS.len().to_string();
+        let text = i18n::t_with(i18n::Key::Settings(K::KeyResetConfirm), &[("count", &count)]);
         if !confirm(self.hwnd, &text) {
             return;
         }

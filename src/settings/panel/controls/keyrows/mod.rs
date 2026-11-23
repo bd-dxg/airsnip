@@ -8,6 +8,7 @@
 //! **表顺序即界面顺序**：同组内相邻排列，组与组之间由子页签分隔（ADR 0041），
 //! 同时也决定冲突提示先报哪一项。
 
+use crate::i18n::SettingsKey as K;
 use crate::settings::{Config, HotkeyConfig, ToolKeys};
 
 use super::RowId;
@@ -43,9 +44,9 @@ impl KeyGroup {
 
     pub fn title(self) -> &'static str {
         match self {
-            KeyGroup::Capture => "截图",
-            KeyGroup::Output => "输出",
-            KeyGroup::Tools => "工具",
+            KeyGroup::Capture => K::KeyTabCapture.text(),
+            KeyGroup::Output => K::KeyTabOutput.text(),
+            KeyGroup::Tools => K::KeyTabTools.text(),
         }
     }
 }
@@ -53,8 +54,8 @@ impl KeyGroup {
 /// 一个快捷键行的全部元数据。
 pub struct KeyRowSpec {
     pub id: RowId,
-    /// 行标签，同时用作冲突提示名（「按键 {label} 已被其他快捷键使用」）——两者本就同字。
-    pub label: &'static str,
+    /// 行标签键，同时用作冲突提示名（「按键 {label} 已被其他快捷键使用」）——两者本就同字。
+    pub label: K,
     /// 所属子页签（ADR 0041），决定它出现在哪一组里。
     pub group: KeyGroup,
     pub bind: KeyBind,
@@ -70,7 +71,7 @@ impl KeyRowSpec {
     /// 全局热键行：键 + 独立修饰键。`confirm_clear` 见字段说明。
     const fn hotkey(
         id: RowId,
-        label: &'static str,
+        label: K,
         group: KeyGroup,
         confirm_clear: bool,
         get: fn(&HotkeyConfig, &ToolKeys) -> (u32, u32),
@@ -90,7 +91,7 @@ impl KeyRowSpec {
     /// 覆盖层内键 / 工具切换键：只认虚拟键，无修饰键。
     const fn plain(
         id: RowId,
-        label: &'static str,
+        label: K,
         group: KeyGroup,
         get: fn(&HotkeyConfig, &ToolKeys) -> (u32, u32),
         set: fn(&mut Config, u32, u32),
@@ -109,7 +110,7 @@ impl KeyRowSpec {
     /// 覆盖层内组合键（保存 / 快速保存，ADR 0041）：键 + 修饰键一起记录。
     const fn combo(
         id: RowId,
-        label: &'static str,
+        label: K,
         group: KeyGroup,
         get: fn(&HotkeyConfig, &ToolKeys) -> (u32, u32),
         set: fn(&mut Config, u32, u32),
@@ -160,7 +161,7 @@ mod tests {
         for (i, a) in KEY_ROWS.iter().enumerate() {
             for b in &KEY_ROWS[i + 1..] {
                 assert_ne!(a.id, b.id, "表里有两项都指向 {:?}", a.id);
-                assert_ne!(a.label, b.label, "表里有两行的标签都是「{}」", a.label);
+                assert_ne!(a.label, b.label, "表里有两行的标签都是「{}」", a.label.text());
             }
         }
     }
@@ -190,7 +191,7 @@ mod tests {
             .iter()
             .map(|s| {
                 let (vk, mods) = s.current(&cfg);
-                (s.label, key_name(vk, mods))
+                (s.label.text(), key_name(vk, mods))
             })
             .collect();
         let want: Vec<(&str, String)> = vec![
@@ -251,7 +252,7 @@ mod tests {
                         KeyBind::Plain => cv == vk && mods == 0,
                     }
                 })
-                .map(|c| c.label)
+                .map(|c| c.label.text())
         };
         for a in &KEY_ROWS {
             let (vk, mods) = a.current(&cfg);

@@ -9,6 +9,7 @@ pub mod app;
 pub mod capture;
 pub mod diagnose;
 pub mod editor;
+pub mod i18n;
 pub mod longshot;
 pub mod output;
 pub mod overlay;

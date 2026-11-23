@@ -125,8 +125,8 @@ pub(super) fn mk_row_tall(id: RowId, kind: RowKind, label: &'static str, y: i32,
 }
 
 /// 「工具栏」页的开关单元格（EDT-16）：标签在左、开关靠右，控件区就是开关本身。
-pub(super) fn mk_toggle_cell(id: RowId, label: &'static str, x: i32, y: i32, w: i32, s: f32) -> Row {
-    let h = (ROW_H as f32 * s) as i32;
+/// `h` 由页面按「可容纳的行数」算（英文 / 日文降列后行数变多，见 `sections::toolbar_columns`）。
+pub(super) fn mk_toggle_cell(id: RowId, label: &'static str, x: i32, y: i32, w: i32, h: i32, s: f32) -> Row {
     let cellpad = (super::CELL_PAD as f32 * s) as i32;
     let tw = (TOGGLE_W as f32 * s) as i32;
     let (content_l, content_r) = (x + cellpad, x + w - cellpad);

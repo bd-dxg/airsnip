@@ -3,13 +3,13 @@
 //! 从 `layout` 拆出（ADR 0041 的「保存」页与快捷键子页签把那边撑过 300 行）：
 //! 几何原语（`mk_row` 等）留在 `layout`，这里只负责「哪一页有哪些行」。
 
+use crate::i18n::SettingsKey as K;
 use crate::overlay::geometry::SelRect;
 
-use crate::settings::ToolbarGroup;
-
+use super::toolbar_layout::toolbar_rows;
 use super::{
-    CELLPAD, GRID_GAP, GROUP_H, H, Item, KEY_ROW_H, KeyGroup, KeyRowSpec, NAV_W, PAD, QR_ROW_H, ROW_H, RowId, RowKind,
-    Section, TAB_H, TAB_PAD, W, mk_key_cell, mk_row, mk_row_tall, mk_row_wide, mk_toggle_cell, rows_of,
+    CELLPAD, GRID_GAP, H, Item, KEY_ROW_H, KeyGroup, KeyRowSpec, NAV_W, PAD, QR_ROW_H, ROW_H, RowId, RowKind, Section,
+    TAB_H, TAB_PAD, W, mk_key_cell, mk_row, mk_row_tall, mk_row_wide, rows_of,
 };
 
 /// 指定分类的内容行（`group` 只影响快捷键页：画哪一组的键帽；
@@ -29,43 +29,62 @@ pub(super) fn section_rows(
     };
     match section {
         Section::General => {
-            push(RowId::Autostart, RowKind::Toggle, "开机自启", &mut y, items);
             push(
-                RowId::ConfirmCancel,
+                RowId::Autostart,
                 RowKind::Toggle,
-                "连按两次 Esc / 右键退出",
+                K::GeneralAutostart.text(),
                 &mut y,
                 items,
             );
-            push(RowId::Lang, RowKind::Readonly, "语言", &mut y, items);
+            push(
+                RowId::ConfirmCancel,
+                RowKind::Toggle,
+                K::GeneralConfirmCancel.text(),
+                &mut y,
+                items,
+            );
+            // 界面语言（I18N-1 / ADR 0047）：一行真下拉，选项 = 跟随系统 + 四门语言。
+            push(RowId::Lang, RowKind::Select, K::GeneralLanguage.text(), &mut y, items);
             // 贴图位置与双击动作都是一行开关（ADR 0036）：行数不变，行高也没变，
             // 但面板少一行就少 46px——之前“原位置 / 屏幕中间”占两行单选。
             // 这两行的**显示文案随开关状态变**（`draw::toggle_label`），这里写默认（关）态的文字作兼底。
             push(
                 RowId::PinPosCenter,
                 RowKind::Toggle,
-                "贴图位置·截图原位置",
+                K::GeneralPinOriginal.text(),
                 &mut y,
                 items,
             );
             push(
                 RowId::DoubleClick,
                 RowKind::Toggle,
-                "双击选区空白·复制截图",
+                K::GeneralDoubleClickCopy.text(),
                 &mut y,
                 items,
             );
             // 窗口吸附（CAP-6 / ADR 0037，issue #62）：单一布尔开关，文案不随状态变
-            push(RowId::WindowSnap, RowKind::Toggle, "窗口吸附", &mut y, items);
+            push(
+                RowId::WindowSnap,
+                RowKind::Toggle,
+                K::GeneralWindowSnap.text(),
+                &mut y,
+                items,
+            );
             // 控件级捕捉（ADR 0039）：依赖窗口吸附；关掉后层级止于整窗
-            push(RowId::ControlSnap, RowKind::Toggle, "控件级捕捉", &mut y, items);
+            push(
+                RowId::ControlSnap,
+                RowKind::Toggle,
+                K::GeneralControlSnap.text(),
+                &mut y,
+                items,
+            );
             // 长截图日志（SYS-9 / ADR 0046，issue #200）：日志**常开**，不设开关——
             // “先让用户去开个开关”只是把「不会设环境变量」换成「没开开关」，问题照旧。
             // 这里只给「把文件取出来」的入口；标签兼写隐私边界（不含密码 / 可删）。
             push(
                 RowId::OpenLogFolder,
                 RowKind::Button,
-                "长截图日志（不含密码，可删）",
+                K::GeneralOpenLogFolder.text(),
                 &mut y,
                 items,
             );
@@ -74,51 +93,47 @@ pub(super) fn section_rows(
         Section::Hotkeys => hotkey_rows(y0, s, group, bar, items),
         Section::Save => save_rows(y, s, items),
         Section::Appearance => {
-            push(RowId::ThemeFollow, RowKind::Radio, "跟随系统", &mut y, items);
-            push(RowId::ThemeLight, RowKind::Radio, "浅色", &mut y, items);
-            push(RowId::ThemeDark, RowKind::Radio, "深色", &mut y, items);
+            push(
+                RowId::ThemeFollow,
+                RowKind::Radio,
+                K::ThemeFollowSystem.text(),
+                &mut y,
+                items,
+            );
+            push(RowId::ThemeLight, RowKind::Radio, K::ThemeLight.text(), &mut y, items);
+            push(RowId::ThemeDark, RowKind::Radio, K::ThemeDark.text(), &mut y, items);
             for m in crate::settings::UiScale::ALL {
                 push(super::ui_scale_row(m), RowKind::Radio, m.title(), &mut y, items);
             }
         }
         Section::About => {
-            push(RowId::About, RowKind::About, "AirSnip 轻截", &mut y, items);
-            push(RowId::Repo, RowKind::Link, "项目地址", &mut y, items);
-            push(RowId::Licenses, RowKind::Link, "第三方许可", &mut y, items);
-            push(RowId::CheckUpdate, RowKind::Button, "版本更新", &mut y, items);
-            push(RowId::AutoCheckUpdate, RowKind::Toggle, "启动时自动检查", &mut y, items);
+            push(RowId::About, RowKind::About, K::AboutAppName.text(), &mut y, items);
+            push(RowId::Repo, RowKind::Link, K::AboutRepo.text(), &mut y, items);
+            push(RowId::Licenses, RowKind::Link, K::AboutLicenses.text(), &mut y, items);
+            push(
+                RowId::CheckUpdate,
+                RowKind::Button,
+                K::AboutCheckUpdate.text(),
+                &mut y,
+                items,
+            );
+            push(
+                RowId::AutoCheckUpdate,
+                RowKind::Toggle,
+                K::AboutAutoCheck.text(),
+                &mut y,
+                items,
+            );
             let qh = (QR_ROW_H as f32 * s) as i32;
-            items.push(Item::Row(mk_row_tall(RowId::Reward, RowKind::Qr, "支持项目", y, s, qh)));
+            items.push(Item::Row(mk_row_tall(
+                RowId::Reward,
+                RowKind::Qr,
+                K::AboutReward.text(),
+                y,
+                s,
+                qh,
+            )));
         }
-    }
-}
-
-/// 「工具栏」页（EDT-16）：五组 + 组内元素多列紧凑排布。
-/// 面板没有滚动条，五组 + 组内元素必须落在固定高内。
-/// 高度：5 个组头（GROUP_H=24）+ 7 行元素（ROW_H=46）= 442，加节标题 40 → 482 < 520，
-/// 页脚提示还能留 12px（有 `toolbar_page::tests::hint_sits_below_last_row` 守门）。
-/// 工具组从 10 项到 11 项（ADR 0036 新增「移动」）后是 3 行，组头行高从 26 收到 24 就是为此腾的。
-fn toolbar_rows(mut y: i32, s: f32, items: &mut Vec<Item>) {
-    let w = (W as f32 * s) as i32;
-    let nav_w = (NAV_W as f32 * s) as i32;
-    let pad = (PAD as f32 * s) as i32;
-    let gap = (GRID_GAP as f32 * s) as i32;
-    let row_h = (ROW_H as f32 * s) as i32;
-    let group_h = (GROUP_H as f32 * s) as i32;
-    let (left, right) = (nav_w + pad, w - pad);
-    for g in ToolbarGroup::ALL {
-        let head = mk_row_tall(RowId::ToolbarGroup(g), RowKind::Group, g.title(), y, s, group_h);
-        items.push(Item::Row(head));
-        y += group_h;
-        let cols = g.columns() as i32;
-        let cell_w = (right - left - gap * (cols - 1)) / cols;
-        for (i, slot) in g.slots().iter().enumerate() {
-            let (col, line) = (i as i32 % cols, i as i32 / cols);
-            let x = left + col * (cell_w + gap);
-            let cell = mk_toggle_cell(RowId::Toolbar(*slot), slot.label(), x, y + line * row_h, cell_w, s);
-            items.push(Item::Row(cell));
-        }
-        y += g.slots().len().div_ceil(cols as usize) as i32 * row_h;
     }
 }
 
@@ -168,7 +183,7 @@ fn hotkey_rows(y0: i32, s: f32, group: KeyGroup, bar: &mut Option<SelRect>, item
         let row = (i / cols) as i32;
         let x = cell_x0 + col * (cell_w + gap);
         let y = y0 + tab_h + row * row_h;
-        items.push(Item::Row(mk_key_cell(spec.id, spec.label, x, y, cell_w, s)));
+        items.push(Item::Row(mk_key_cell(spec.id, spec.label.text(), x, y, cell_w, s)));
     }
     // 底部两行**固定锚在内容区右下角**（ADR 0041）：三组行数不同（2/3/6 行），
     // 跟着最后一行走的话切页签时按钮与提示会上下跳。贴底部预留 `PAD` 边距，
@@ -179,7 +194,7 @@ fn hotkey_rows(y0: i32, s: f32, group: KeyGroup, bar: &mut Option<SelRect>, item
     items.push(Item::Row(mk_row(
         RowId::Widenote,
         RowKind::Readonly,
-        "提示",
+        K::KeyHintLabel.text(),
         footer_y + row_h,
         s,
     )));
@@ -193,8 +208,8 @@ fn save_rows(mut y: i32, s: f32, items: &mut Vec<Item>) {
         items.push(Item::Row(mk_row(id, kind, label, *y, s)));
         *y += (ROW_H as f32 * s) as i32;
     };
-    push(RowId::SaveNotify, RowKind::Toggle, "快速保存后显示通知", &mut y, items);
-    push(RowId::SaveCopy, RowKind::Toggle, "同时复制到剪贴板", &mut y, items);
+    push(RowId::SaveNotify, RowKind::Toggle, K::SaveNotify.text(), &mut y, items);
+    push(RowId::SaveCopy, RowKind::Toggle, K::SaveAlsoCopy.text(), &mut y, items);
     // 保存位置与预览都撑到内容区右缘：目录与完整路径都要看得见，不能被 260px 控件区截成尾巴
     let wide = |id, kind, label: &'static str, y: &mut i32, items: &mut Vec<Item>| {
         let spec = crate::render::text::FontSpec::new(16.0 * s);
@@ -202,17 +217,101 @@ fn save_rows(mut y: i32, s: f32, items: &mut Vec<Item>) {
         items.push(Item::Row(mk_row_wide(id, kind, label, lw, *y, s)));
         *y += (ROW_H as f32 * s) as i32;
     };
-    wide(
-        RowId::QuickDir,
-        RowKind::Readonly,
-        "保存位置（点击更换）",
+    wide(RowId::QuickDir, RowKind::Readonly, K::SaveDir.text(), &mut y, items);
+    wide(RowId::QuickName, RowKind::TextInput, K::SaveName.text(), &mut y, items);
+    push(RowId::QuickFormat, RowKind::Select, K::SaveFormat.text(), &mut y, items);
+    push(
+        RowId::QuickOnExist,
+        RowKind::Select,
+        K::SaveOnExist.text(),
         &mut y,
         items,
     );
-    wide(RowId::QuickName, RowKind::TextInput, "文件名", &mut y, items);
-    push(RowId::QuickFormat, RowKind::Select, "格式", &mut y, items);
-    push(RowId::QuickOnExist, RowKind::Select, "如果文件存在", &mut y, items);
-    wide(RowId::QuickPreview, RowKind::Readonly, "预览", &mut y, items);
+    wide(
+        RowId::QuickPreview,
+        RowKind::Readonly,
+        K::SavePreview.text(),
+        &mut y,
+        items,
+    );
     push(RowId::SaveOpenFolder, RowKind::Button, "", &mut y, items);
     push(RowId::VarHelp, RowKind::Button, "", &mut y, items);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::i18n::Lang;
+    use crate::render::text::{self, FontSpec};
+    use std::sync::Arc;
+
+    fn label_spec(lang: Lang, s: f32) -> FontSpec {
+        FontSpec::from_parts(&Arc::from(lang.ui_family()), 16.0 * s, false, false)
+    }
+
+    /// 工具栏页列数：中文 5 列（与引入 i18n 前一致），英文 / 日文自动降到 4 列。
+    /// 这条是「加语言不改代码」的实测锚点 —— 掉到 3 列说明文案变长了，
+    /// 去缩短标签，而不是继续降列数（3 列会把页高顶爆）。
+    /// 整行标签的可用宽：内容区左到控件区（固定 260）左。
+    fn label_room(s: f32) -> f32 {
+        let w = (W as f32 * s) as i32;
+        let nav_w = (NAV_W as f32 * s) as i32;
+        let pad = (PAD as f32 * s) as i32;
+        (w - pad - (260.0 * s) as i32) as f32 - (nav_w + pad) as f32
+    }
+
+    /// 四门语言 × 四档缩放：与右侧控件区并排显示的行标签都不得溢到控件区。
+    /// 控件重叠是「量宽没跟语言走」最直接的后果，而它只能在真字体下量出来。
+    #[test]
+    fn row_labels_do_not_overlap_controls() {
+        // 与 260px 控件区并排出现的行标签（QuickDir / QuickName / QuickPreview 等
+        // wide 行例外：它们的控件区撑到内容区右缘）
+        const ROW_LABELS: &[K] = &[
+            K::GeneralAutostart,
+            K::GeneralConfirmCancel,
+            K::GeneralLanguage,
+            K::GeneralPinOriginal,
+            K::GeneralPinCenter,
+            K::GeneralDoubleClickCopy,
+            K::GeneralDoubleClickPin,
+            K::GeneralWindowSnap,
+            K::GeneralControlSnap,
+            K::GeneralOpenLogFolder,
+            K::SaveNotify,
+            K::SaveAlsoCopy,
+            K::SaveFormat,
+            K::SaveOnExist,
+            K::ThemeFollowSystem,
+            K::ThemeLight,
+            K::ThemeDark,
+            K::ScaleAuto,
+            K::Scale100,
+            K::Scale125,
+            K::Scale150,
+            K::Scale175,
+            K::Scale200,
+            K::AboutAppName,
+            K::AboutRepo,
+            K::AboutLicenses,
+            K::AboutCheckUpdate,
+            K::AboutAutoCheck,
+            K::AboutReward,
+            K::KeyHintLabel,
+        ];
+        for lang in Lang::ALL {
+            for s in [1.0f32, 1.25, 1.5, 2.0] {
+                let spec = label_spec(lang, s);
+                // 留 8px 间隙，免贴到控件上
+                let room = label_room(s) - 8.0 * s;
+                for k in ROW_LABELS {
+                    let label = crate::i18n::text(lang, crate::i18n::Key::Settings(*k));
+                    let (lw, _) = text::measure(label, &spec);
+                    assert!(
+                        lw <= room,
+                        "{lang:?} @{s}x：行标签「{label}」量宽 {lw:.1} 超过可用 {room:.1}"
+                    );
+                }
+            }
+        }
+    }
 }

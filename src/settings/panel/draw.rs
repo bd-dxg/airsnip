@@ -5,6 +5,7 @@
 use tiny_skia::{Pixmap, Rect, Transform};
 
 use crate::editor::Point;
+use crate::i18n::SettingsKey as K;
 use crate::overlay::geometry::SelRect;
 use crate::overlay::shape::{paint_of, rounded_rect};
 use crate::render::text as dwrite;
@@ -197,12 +198,12 @@ fn draw_row(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, idx:
 pub(super) fn toggle_label(id: RowId, cfg: &crate::settings::Config) -> Option<&'static str> {
     match id {
         RowId::PinPosCenter => Some(match cfg.pin_position {
-            crate::settings::PinPosition::Center => "贴图位置·屏幕中间",
-            crate::settings::PinPosition::Original => "贴图位置·截图原位置",
+            crate::settings::PinPosition::Center => K::GeneralPinCenter.text(),
+            crate::settings::PinPosition::Original => K::GeneralPinOriginal.text(),
         }),
         RowId::DoubleClick => Some(match cfg.double_click_action {
-            crate::settings::DoubleClickAction::Pin => "双击选区空白·贴到屏幕",
-            crate::settings::DoubleClickAction::Copy => "双击选区空白·复制截图",
+            crate::settings::DoubleClickAction::Pin => K::GeneralDoubleClickPin.text(),
+            crate::settings::DoubleClickAction::Copy => K::GeneralDoubleClickCopy.text(),
         }),
         _ => None,
     }

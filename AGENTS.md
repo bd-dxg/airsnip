@@ -10,6 +10,13 @@
 
 ## 项目状态
 
+- **国际化一期 B1（骨架 + 设置面板）**（I18N / ADR 0047，`feat/i18n-151`，issue #151）：界面文案从源码抽到**编译期嵌入**的语言表，四门语言 = 简体中文（源语言）/ 繁體中文 / English / 日本語。配置 `[ui] language` 默认 `auto`（跟随 `GetUserDefaultUILanguage`，未支持语言一律回落 English），设置面板「通用」页一行真下拉，选完**立即生效**（纯查表、无资源重载）。
+  结构：`Key` 是汇总枚举，`Key::Settings(SettingsKey)` 是第一个区域（130 条）；每门语言每个区域写一个**无 `_ =>` 兜底**的 `match` —— 漏文案是**编译错误**，且每个文件 ≤150 行（大枚举 + 大表会撞 300 行硬上限）。查表是 `match` 跳转表，O(1) 无分配。
+  **踩过的坑**：`Config.language` 从 `String` 改枚举时**必须手写容错反序列化** —— serde 的 `#[serde(default)]` 只在字段缺失时生效，旧配置的 `"zh-CN"` 会让 `toml::from_str` 失败，而 `Config::load` 的兜底是 `unwrap_or_default()`，**用户全部设置一起被重置**。
+  字体：`FontSpec::new` = 界面字体（按语言：YaHei / JhengHei / Segoe UI / Yu Gothic UI，简中与今天完全一致），`FontSpec::content` = 标注内容字体（**不随界面语言**，徽标数字 / 序号编辑框用它 —— 导出字形属于输出结果）。
+  布局：工具栏页**列数由量宽算**（中文 5 列、英日 4 列，不写 `if lang`），行高按可用高度收缩（4 列时 46→41）；行标签最长英文 237px < 288 可用，导航栏 `Appearance` 84.2px < 124，两者不用改宽度。英文 / 日文刻意用短词（`Marker` / `Long shot` / `縦長撮影`），那是布局约束不是文风。
+  `scripts/check-i18n.ps1`：`$MIGRATED` 清单内报错、其余只统计（现有 245 处属 B2 覆盖层 / B3 长截图 / B4 app 系统串）；**脚本必须存为 UTF-8 带 BOM**，Windows PowerShell 5.1 对无 BOM 中文脚本按 ANSI 解，注释里的中文会破坏引号配对。`cargo test` 523 项绿。
+  待迁批次与译文校对清单见 PR 说明；zh-Hant / ja 译文**未经母语者校对**。
 - **长截图日志常开**（SYS-9 / ADR 0046，`feat/diagnostics-toggle`，issue #200，v0.14.0）：长截图调试日志**默认就写**，不设开关。目的是让**普通用户零操作**报送现场（此前只能退托盘、开 PowerShell、设 `AIRSNIP_DEBUG=1` 再启动，多数报问题的用户到这里就放弃）。第一版按 issue 做过「诊断日志开关 + `[diagnostics] debug` + `AtomicBool` + 环境变量取或」，复核后**回退**：开关只是把失败模式从「不会设环境变量」换成「没开开关」，而常开的代价很小——`log()` / `dump_pair()` 的调用点全在 `longshot/{engine,session}.rs`，**只有长截图会话期间才写**（待机零写入），文本每拍一行（一次会话几十 KB），4MB 轮转封顶。分级：**文本日志常开**（`changed_ratio` 同时是「画面变了却判没动」的判据，本来就得每拍算）；**异常帧落盘常开**（`still-but-changed` / 定位失败，进程内上限 6 对）；**每 25 拍的时间序列抽样只在 `AIRSNIP_DEBUG` 下**（`debug::verbose()`，4K 全屏 PNG 编码几十 ms/张，会被感知为卡顿）。日志与帧 PNG 从 `%TEMP%` 根目录挪到 **`%TEMP%\airsnip\`**（那里几百个文件，按钮做了等于把用户丢进噪音），`log_dir()` 调用即 `create_dir_all`；轮转：写入时累计字节（首开从文件现有大小起算），超 4MB 改名 `.log.1` 覆盖更旧的一份。`capture#{} hash=` 帧哈希同批改为常开（纯文本、能对照 `still-but-changed` 看帧到底变没变）；首帧整屏 PNG 仍只在 `AIRSNIP_DEBUG` 下且改落日志目录。**测试里不写**（`debug::enabled()` = `!cfg!(test)`）：实测 `cargo test` 的模拟帧源会往真实日志里灌 258 行 + 一对 164B 失败帧 PNG，「打开日志文件夹」当场变成报 bug 现场。面板只有一行：通用页底部「长截图日志（不含密码，可删）」+「打开日志文件夹」按钮（复用 `output::quick::open_folder`；放通用页而非「关于」页——后者 470 高只剩 50px 余量，按钮会贴底）。「我要反馈」文本末项写 `长截图日志 %TEMP%\airsnip`（字面量，不展开真路径——含用户名），三行结构不变。`cargo test` 506 项绿。
 - **徽标对勾 / 叉号**（EDT-20 / ADR 0045，`feat/badge-check-cross`，issue #186，v0.14.0）：截图批注里要能标「这里对 / 这里错」。**不新增工具栏按钮**（第一行宽度已贴 1366×768 @200% 上限，加两个方形按钮会重新超宽）：序号标记升级成**徽标**，内容三态 `Badge { Num(u32), Check, Cross }`，`Kind::Number` 的 `n: u32` 换成 `mark: Badge`（`radius` 是渲染层缓存的测量值，`bounds` / `hit` / `transform` 不用改）。**对勾 / 叉号不占用编号**（`next_number` 只看 `Num`，混放不会让 1、2、3 跳号）。
   符号**用矢量描边、不用字符**（`render/badge.rs` 的 `MARK_CHECK` / `MARK_CROSS`，比例坐标相对徽标半径、线宽 0.30×半径、圆端帽）：字体族缺字会变豆腐块，且不同字体的 ✓ / ✕ 宽度与基线差很多，和徽标圆形比例对不上；半径按「与单个数字等宽」（0.6×字号）估。屏幕、导出烘焙、工具栏预览共用 `draw_badge_face` / `badge_preview`。
@@ -134,6 +141,7 @@
 - 生成更新清单：`scripts/gen-latest-json.ps1 -Notes "说明"`（算 SHA-256 → 调 `update-sign` 签名 → 输出 `dist\latest.json`，需先跑 package.ps1）
 - 更新密钥：`cargo run --example update-keygen`（私钥写 `%USERPROFILE%\.airsnip\update.key`，公钥打印出来填进 `UPDATE_PUBKEY_HEX`）
 - 许可证与依赖检查：`cargo deny check`（配置在 `deny.toml`；依赖变更后重跑 `scripts/gen-third-party.ps1` 更新 `THIRD-PARTY.md`）
+- 界面文案扫描：`powershell -NoProfile -File scripts/check-i18n.ps1`（已迁移范围内必须为 0；未迁完的批次只统计，见 ADR 0047）
 
 ## 开发流程（AI 驱动约定）
 
@@ -158,6 +166,8 @@
 - 标注采用矢量对象模型（底图不变，对象列表叠加），渲染用脏矩形局部重绘。
 - 所有坐标统一为物理像素（Per-Monitor V2 manifest）。
 - 一期界面仅简体中文，代码层预留 i18n。
+- **界面文案必须进语言表**（I18N-2 / ADR 0047）：新增 / 修改用户可见文案改 `src/i18n/{zh_hans,zh_hant,en,ja}.rs`，不要在源码里写中文字面量；日志（`eprintln!`）、`assert!` / `expect` 说明、测试用例名、技术标识不翻译。提交前跑 `scripts/check-i18n.ps1`（已迁移范围必须为 0）。
+- 加一门语言 = `src/i18n/xx.rs` 一个文件（各区域一个 `match`）+ `Lang` 一个变体 + `ui_family` 一行 + `LangPref` 一个变体；**不要在布局里写 `if lang`**（列数 / 行高按量宽自适应，见 ADR 0047 §5）。
 
 ## 性能红线（必须守住）
 

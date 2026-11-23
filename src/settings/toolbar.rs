@@ -12,6 +12,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::editor::{SWATCH_COUNT, Tool};
+use crate::i18n::SettingsKey as K;
 
 /// 工具栏分组（设置面板「工具栏」页的组头，顺序即界面顺序）。
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -65,11 +66,11 @@ impl ToolbarGroup {
     /// 组头文案。
     pub fn title(self) -> &'static str {
         match self {
-            ToolbarGroup::Tools => "工具",
-            ToolbarGroup::Colors => "颜色",
-            ToolbarGroup::Edit => "编辑",
-            ToolbarGroup::Output => "输出",
-            ToolbarGroup::File => "文件",
+            ToolbarGroup::Tools => K::GroupTools.text(),
+            ToolbarGroup::Colors => K::GroupColors.text(),
+            ToolbarGroup::Edit => K::GroupEdit.text(),
+            ToolbarGroup::Output => K::GroupOutput.text(),
+            ToolbarGroup::File => K::GroupFile.text(),
         }
     }
 
@@ -84,12 +85,10 @@ impl ToolbarGroup {
         }
     }
 
-    /// 设置面板每行排几个（多列紧凑排布，面板没有滚动条）。
-    /// 统一 5 列：单元格宽度相同，「标签 + 开关」贴得够近，不会看错归属；
-    /// 标签长度受此约束（实测字宽见 `controls` 的 `toolbar_cells_fit_label_and_toggle`）。
-    pub fn columns(self) -> usize {
-        5
-    }
+    /// 设置面板每行排几个的上限。实际列数由 `sections::toolbar_columns` 按量宽算：
+    /// 中文 5 列，英文 / 日文自动降到 4 列（issue #151 R6，ADR 0047）。
+    /// 写死列数会让英文标签撑破单元格（`Quick save` 75.7px vs 标签区 55px）。
+    pub const MAX_COLUMNS: usize = 5;
 }
 
 /// 工具栏里可单独隐藏的元素。
@@ -159,37 +158,47 @@ impl ToolbarSlot {
         }
     }
 
-    /// 设置面板行标签（短，工具栏页是多列布局）。
+    /// 设置面板行标签（短，工具栏页是多列布局；英文 / 日文用更短的词，见 `i18n` 表注释）。
     pub fn label(self) -> &'static str {
+        self.label_key().text()
+    }
+
+    /// 指定语言的标签（布局量宽用：按语言验证放不放得下时不改全局语言）。
+    pub fn label_in(self, lang: crate::i18n::Lang) -> &'static str {
+        crate::i18n::text(lang, crate::i18n::Key::Settings(self.label_key()))
+    }
+
+    /// 行标签的文案键（`label` / `label_in` 的唯一来源）。
+    fn label_key(self) -> K {
         match self {
-            ToolbarSlot::Move => "移动",
-            ToolbarSlot::Tool(Tool::Rect) => "矩形",
-            ToolbarSlot::Tool(Tool::Arrow) => "箭头",
-            ToolbarSlot::Tool(Tool::Text) => "文本",
-            ToolbarSlot::Tool(Tool::Highlight) => "荧光笔",
-            ToolbarSlot::Tool(Tool::Blur) => "模糊",
-            ToolbarSlot::Tool(Tool::Glow) => "聚光灯",
-            ToolbarSlot::Tool(Tool::Number) => "序号",
-            ToolbarSlot::Tool(Tool::Line) => "直线",
-            ToolbarSlot::Tool(Tool::Ellipse) => "椭圆",
-            ToolbarSlot::Tool(Tool::Freehand) => "手绘",
-            ToolbarSlot::Color(0) => "颜色1",
-            ToolbarSlot::Color(1) => "颜色2",
+            ToolbarSlot::Move => K::ToolMove,
+            ToolbarSlot::Tool(Tool::Rect) => K::ToolRect,
+            ToolbarSlot::Tool(Tool::Arrow) => K::ToolArrow,
+            ToolbarSlot::Tool(Tool::Text) => K::ToolText,
+            ToolbarSlot::Tool(Tool::Highlight) => K::ToolHighlight,
+            ToolbarSlot::Tool(Tool::Blur) => K::ToolBlur,
+            ToolbarSlot::Tool(Tool::Glow) => K::ToolGlow,
+            ToolbarSlot::Tool(Tool::Number) => K::ToolNumber,
+            ToolbarSlot::Tool(Tool::Line) => K::ToolLine,
+            ToolbarSlot::Tool(Tool::Ellipse) => K::ToolEllipse,
+            ToolbarSlot::Tool(Tool::Freehand) => K::ToolFreehand,
+            ToolbarSlot::Color(0) => K::SlotColor1,
+            ToolbarSlot::Color(1) => K::SlotColor2,
             // EDT-19：第 3 格是渐变色块（2 个纯色 + 1 个渐变）
-            ToolbarSlot::Color(2) => "渐变",
-            ToolbarSlot::Color(_) => "颜色",
-            ToolbarSlot::Fill => "填充",
-            ToolbarSlot::Line => "线型",
-            ToolbarSlot::Undo => "撤销",
-            ToolbarSlot::Redo => "重做",
+            ToolbarSlot::Color(2) => K::SlotGradient,
+            ToolbarSlot::Color(_) => K::SlotColorFallback,
+            ToolbarSlot::Fill => K::SlotFill,
+            ToolbarSlot::Line => K::SlotLine,
+            ToolbarSlot::Undo => K::SlotUndo,
+            ToolbarSlot::Redo => K::SlotRedo,
             // 第二行整行（字体族 / B / I / 字号）：多列布局里只能取短名，组头「编辑」提供上下文
-            ToolbarSlot::TextRow => "字体行",
-            ToolbarSlot::Pin => "贴图",
-            ToolbarSlot::Longshot => "长截图",
-            ToolbarSlot::Copy => "复制",
-            ToolbarSlot::Save => "保存",
-            // 5 列单元格只放得下 3 个字，「快速保存」会撑破标签区（有量宽单测守门），故用短名
-            ToolbarSlot::QuickSave => "快存",
+            ToolbarSlot::TextRow => K::SlotTextRow,
+            ToolbarSlot::Pin => K::SlotPin,
+            ToolbarSlot::Longshot => K::SlotLongshot,
+            ToolbarSlot::Copy => K::SlotCopy,
+            ToolbarSlot::Save => K::SlotSave,
+            // 单元格只放得下短名，「快速保存」会撑破标签区（有量宽单测守门），故用「快存」
+            ToolbarSlot::QuickSave => K::SlotQuickSave,
         }
     }
 

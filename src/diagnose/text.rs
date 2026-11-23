@@ -62,10 +62,7 @@ fn toggles_line(autostart: bool, cfg: &Config, ui_scale: f32) -> String {
                 DoubleClickAction::Pin => "贴到屏幕",
             }
         ),
-        format!(
-            "界面缩放 {}（{ui_scale:.2}×）",
-            cfg.ui_scale.title().trim_start_matches("界面缩放·")
-        ),
+        format!("界面缩放 {}（{ui_scale:.2}×）", cfg.ui_scale.value_label()),
         format!("开机自启 {}", on_off(autostart)),
         // 长截图日志（SYS-9 / ADR 0046）：日志常开，这里告诉对方去哪拿。
         // 写 `%TEMP%` 而不是展开后的真实路径——后者含用户名，而这份文本刻意不带；

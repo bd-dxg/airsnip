@@ -8,6 +8,7 @@ use std::sync::OnceLock;
 use tiny_skia::{FilterQuality, Pixmap, PixmapPaint, Transform};
 
 use crate::editor::Point;
+use crate::i18n::SettingsKey as K;
 use crate::render::text as dwrite;
 
 use super::Panel;
@@ -35,17 +36,14 @@ pub(super) fn draw_block(pixmap: &mut Pixmap, panel: &Panel, row: &Row) {
     let spec = dwrite::FontSpec::new(size);
     let lx = row.rect.x as f32 + PAD as f32 * s;
     let mut ly = row.rect.y as f32 + 46.0 * s;
-    for (i, line) in [
-        "功能都是业余时间开发和维护的：",
-        "跟进系统改动、修 bug、加新功能。",
-        "微信扫码支持一下，",
-        "每份心意都是它继续更新的动力。",
-    ]
-    .iter()
-    .enumerate()
-    {
-        // 后两行（扫码引导）用强调色，避免四行糊成一片
-        let color = if i >= 2 { p.accent } else { p.text_dim };
+    // 后两行（扫码引导）用强调色，避免四行糊成一片
+    let lines = [
+        (K::AboutRewardLine1.text(), p.text_dim),
+        (K::AboutRewardLine2.text(), p.text_dim),
+        (K::AboutRewardLine3.text(), p.accent),
+        (K::AboutRewardLine4.text(), p.accent),
+    ];
+    for (line, color) in lines {
         dwrite::draw(pixmap, Point::new(lx, ly), line, &spec, color, Transform::identity());
         ly += size * 1.7;
     }

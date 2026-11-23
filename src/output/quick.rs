@@ -12,16 +12,20 @@ use windows::core::HSTRING;
 use crate::settings::{ExistingFile, NameStyle, QuickSaveConfig};
 
 /// 变量名与含义（设置面板「变量说明」浮层与替换器共用一张表）。
-pub const VARS: [(&str, &str); 9] = [
-    ("$yyyy$", "四位年份，如 2026"),
-    ("$yy$", "两位年份，如 26"),
-    ("$MM$", "两位月份 01–12"),
-    ("$dd$", "两位日 01–31"),
-    ("$HH$", "两位小时（24 小时制）00–23"),
-    ("$mm$", "两位分钟 00–59"),
-    ("$ss$", "两位秒 00–59"),
-    ("$ts$", "Unix 毫秒时间戳（同秒多次保存也不会重名）"),
-    ("%VAR%", "环境变量，如 %USERPROFILE%、%TEMP%"),
+use crate::i18n::{self, SettingsKey as K};
+
+/// 可用变量表：变量名（技术标识，不翻译）+ 说明文案键。
+/// 表格与替换器共用这一张表，加一个变量不需要改两处。
+pub const VARS: [(&str, K); 9] = [
+    ("$yyyy$", K::VarYear),
+    ("$yy$", K::VarYearShort),
+    ("$MM$", K::VarMonth),
+    ("$dd$", K::VarDay),
+    ("$HH$", K::VarHour),
+    ("$mm$", K::VarMinute),
+    ("$ss$", K::VarSecond),
+    ("$ts$", K::VarTimestamp),
+    ("%VAR%", K::VarEnv),
 ];
 
 /// 模板变量取值所需的时间分量（本地时间 + Unix 毫秒）。
@@ -131,17 +135,17 @@ pub fn file_stem(template: &str, t: &TimeParts) -> String {
 /// 只做「一定会失败」的检查，不猜用户意图。
 pub fn validate(path: &str) -> Result<(), String> {
     if path.trim().is_empty() {
-        return Err("保存路径模板为空：请在设置「保存」页填写路径。".into());
+        return Err(K::SaveTemplateEmpty.text().into());
     }
     if let Some(name) = path.rsplit(['\\', '/']).next() {
         if name.is_empty() || name == "." || name == ".." {
-            return Err("保存路径模板只写到目录，缺少文件名：请补上文件名（可含变量）。".into());
+            return Err(K::SaveTemplateNoName.text().into());
         }
         if name.contains(['<', '>', ':', '"', '|', '?', '*']) {
-            return Err(format!("文件名「{name}」含 Windows 不允许的字符（< > : \" | ? *）。"));
+            return Err(i18n::fill(K::SaveNameInvalidChars.text(), &[("name", name)]));
         }
         if name.chars().any(|c| (c as u32) < 0x20) {
-            return Err("文件名含控制字符。".into());
+            return Err(K::SaveNameControlChars.text().into());
         }
     }
     Ok(())
@@ -173,9 +177,7 @@ pub fn unique_path(path: &Path, policy: ExistingFile) -> Result<PathBuf, String>
             return Ok(cand);
         }
     }
-    Err(format!(
-        "同名文件过多：「{stem}-1」到「{stem}-9999」都已被占用。请清理目录，或把「如果文件存在」改为「覆盖」。"
-    ))
+    Err(i18n::fill(K::SaveNameAllTaken.text(), &[("stem", &stem)]))
 }
 
 /// 快速保存落盘：渲染模板 → 校验 → 同名策略 → 建目录 → 写文件。
@@ -187,7 +189,12 @@ pub fn save_quickly(pixmap: &Pixmap, cfg: &QuickSaveConfig, t: &TimeParts) -> Re
     if let Some(dir) = path.parent()
         && !dir.as_os_str().is_empty()
     {
-        std::fs::create_dir_all(dir).map_err(|e| format!("创建目录 {dir:?} 失败：{e}"))?;
+        std::fs::create_dir_all(dir).map_err(|e| {
+            i18n::fill(
+                K::SaveDirCreateFailed.text(),
+                &[("dir", &dir.display().to_string()), ("e", &e.to_string())],
+            )
+        })?;
     }
     crate::output::save_file(pixmap, &path)?;
     Ok(path)

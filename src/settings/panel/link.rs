@@ -5,6 +5,7 @@
 use tiny_skia::{Pixmap, Transform};
 
 use crate::editor::Point;
+use crate::i18n::SettingsKey as K;
 use crate::overlay::geometry::SelRect;
 use crate::overlay::shape::rounded_rect;
 use crate::render::text as dwrite;
@@ -16,8 +17,9 @@ use super::controls::RowId;
 /// 外部链接行：右侧强调色文字 + 「›」箭头，文案按行类型取。
 pub(super) fn draw_link(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let text = match row.id {
-        RowId::Repo => "github.com/bd-dxg/airsnip ›",
-        RowId::Licenses => "查看清单 ›",
+        // 仓库地址是 ASCII 标识，不翻译
+        RowId::Repo => "github.com/bd-dxg/airsnip \u{203a}",
+        RowId::Licenses => K::AboutLicensesLink.text(),
         _ => "",
     };
     draw_trailing(pixmap, panel, row, text, panel.palette.accent);
@@ -42,16 +44,18 @@ fn button_state(row: &super::controls::Row) -> (String, bool, bool) {
 /// 「恢复默认」就这样被误显示成「已是最新」过一次。
 pub(super) fn fixed_button_text(id: RowId) -> Option<&'static str> {
     match id {
-        RowId::ResetKeys => Some("全部恢复默认"),
-        RowId::SaveOpenFolder => Some("打开文件夹"),
-        RowId::OpenLogFolder => Some("打开日志文件夹"),
-        RowId::VarHelp => Some("变量说明"),
+        RowId::ResetKeys => Some(K::KeyResetAll.text()),
+        RowId::SaveOpenFolder => Some(K::SaveOpenFolder.text()),
+        RowId::OpenLogFolder => Some(K::GeneralOpenLogFolderBtn.text()),
+        RowId::VarHelp => Some(K::SaveVarHelp.text()),
         _ => None,
     }
 }
 
 /// 「关于」行右侧的反馈按钮文案（SYS-8）。
-pub(super) const ABOUT_BTN_TEXT: &str = "我要反馈";
+pub(super) fn about_btn_text() -> &'static str {
+    K::AboutFeedback.text()
+}
 
 /// 按钮几何（纯计算，便于测试）：高度与快捷键行的键帽一致（30px 基准），宽度按文字量算，
 /// 右对齐、不超出控件区。
@@ -83,14 +87,14 @@ fn button_geom(panel: &Panel, row: &super::controls::Row) -> (SelRect, f32) {
 
 /// 「关于」行反馈按钮的矩形（SYS-8）：绘制与命中共用一份几何。
 pub(super) fn about_button_rect(panel: &Panel, row: &super::controls::Row) -> SelRect {
-    let (tw, _) = dwrite::measure(ABOUT_BTN_TEXT, &dwrite::FontSpec::new(15.0 * panel.scale));
+    let (tw, _) = dwrite::measure(about_btn_text(), &dwrite::FontSpec::new(15.0 * panel.scale));
     btn_geom(row.control, tw, panel.scale)
 }
 
-/// 「关于」行右侧的反馈按钮（SYS-8）：与更新按钮同一套外观，文案固定「我要反馈」。
+/// 「关于」行右侧的反馈按钮（SYS-8）：与更新按钮同一套外观。
 pub(super) fn draw_about_button(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row, hovered: bool) {
     let btn = about_button_rect(panel, row);
-    paint_button(pixmap, panel, btn, ABOUT_BTN_TEXT, false, hovered);
+    paint_button(pixmap, panel, btn, about_btn_text(), false, hovered);
 }
 
 /// 按钮外观（圆角底 + 边框 + 居中文字）；行按钮与关于行反馈按钮共用。
@@ -267,7 +271,7 @@ mod tests {
             w: 260,
             h: 46,
         };
-        let (tw, _) = dwrite::measure(ABOUT_BTN_TEXT, &dwrite::FontSpec::new(15.0));
+        let (tw, _) = dwrite::measure(about_btn_text(), &dwrite::FontSpec::new(15.0));
         let r = btn_geom(c, tw, 1.0);
         assert!(r.x > c.x && r.x + r.w <= c.x + c.w, "{r:?}");
         // 版本文字右对齐到按钮左缘前仍应留得下：`v0.12.0 · GPL-3.0`

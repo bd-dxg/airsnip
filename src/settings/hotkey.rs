@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use windows::Win32::UI::Input::KeyboardAndMouse::{MAPVK_VK_TO_CHAR, MapVirtualKeyW};
 
+use crate::i18n::SettingsKey as K;
+
 /// 未绑定语义：虚拟键码为 0 表示「该项不绑定任何键」（SYS-2）。
 /// 旧配置里不存在 0 值，只在用户显式清空时出现，回退默认逻辑不受影响。
 pub const UNBOUND: u32 = 0;
@@ -115,7 +117,7 @@ pub const MOD_WIN_BIT: u32 = 1 << 3;
 /// 不该让覆盖层反向依赖设置面板的内部布局模块。
 pub fn key_name(vk: u32, mods: u32) -> String {
     if vk == UNBOUND {
-        return "未设置".into();
+        return K::KeyUnbound.text().into();
     }
     let mut s = String::new();
     if mods & MOD_CTRL_BIT != 0 {
@@ -155,9 +157,9 @@ pub fn vk_name(vk: u32) -> String {
         // 少数紧凑键盘把 PrtScn 位置上报为 VK_PAUSE（#67）
         0x13 => "Pause".into(),
         // 鼠标键（ADR 0019）：沿用 winuser.h 的 VK_MBUTTON / VK_XBUTTON* 编号
-        0x04 => "鼠标中键".into(),
-        0x05 => "鼠标侧键1".into(),
-        0x06 => "鼠标侧键2".into(),
+        0x04 => K::KeyMouseMiddle.text().into(),
+        0x05 => K::KeyMouseSide1.text().into(),
+        0x06 => K::KeyMouseSide2.text().into(),
         // PrintScreen：无对应字符，直接给键名（#67）
         0x2C => "PrtScn".into(),
         0x27 => "→".into(),
@@ -170,7 +172,7 @@ pub fn vk_name(vk: u32) -> String {
             if ch != 0 && (ch as u8).is_ascii_graphic() {
                 (ch as u8 as char).to_uppercase().to_string()
             } else {
-                format!("键 {vk:#x}")
+                crate::i18n::fill(K::KeyUnknown.text(), &[("vk", &format!("{vk:#x}"))])
             }
         }
     }

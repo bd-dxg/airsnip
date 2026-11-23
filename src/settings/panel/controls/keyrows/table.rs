@@ -7,12 +7,13 @@
 
 use super::super::RowId;
 use super::{KeyGroup, KeyRowSpec};
+use crate::i18n::SettingsKey as K;
 /// 快捷键行元数据（顺序即界面顺序：**同组内相邻**，组与组之间由子页签分隔，ADR 0041）。
 pub const KEY_ROWS: [KeyRowSpec; 20] = [
     // ── 子页签「截图」─────────────────────────────────────────────
     KeyRowSpec::hotkey(
         RowId::HotkeyShot,
-        "截图",
+        K::KeyShot,
         KeyGroup::Capture,
         true,
         |hk, _| (hk.screenshot_key, hk.screenshot_modifiers),
@@ -23,7 +24,7 @@ pub const KEY_ROWS: [KeyRowSpec; 20] = [
     ),
     KeyRowSpec::hotkey(
         RowId::HotkeyRecapture,
-        "再次截图",
+        K::KeyRecapture,
         KeyGroup::Capture,
         false,
         |hk, _| (hk.recapture_key, hk.recapture_modifiers),
@@ -35,14 +36,14 @@ pub const KEY_ROWS: [KeyRowSpec; 20] = [
     // 快速选区（ADR 0040）：全屏 / 上次区域，覆盖层内、无修饰键
     KeyRowSpec::plain(
         RowId::HotkeyFullscreen,
-        "全屏",
+        K::KeyFullscreen,
         KeyGroup::Capture,
         |hk, _| (hk.fullscreen_key, 0),
         |cfg, vk, _| cfg.hotkey.fullscreen_key = vk,
     ),
     KeyRowSpec::plain(
         RowId::HotkeyLastArea,
-        "上次区域",
+        K::KeyLastArea,
         KeyGroup::Capture,
         |hk, _| (hk.last_area_key, 0),
         |cfg, vk, _| cfg.hotkey.last_area_key = vk,
@@ -52,7 +53,7 @@ pub const KEY_ROWS: [KeyRowSpec; 20] = [
     // 与无修饰的「长截图 S」共存（不同修饰键 = 不同动作）。
     KeyRowSpec::combo(
         RowId::HotkeySave,
-        "保存",
+        K::KeySave,
         KeyGroup::Output,
         |hk, _| (hk.save_key, hk.save_modifiers),
         |cfg, vk, mods| {
@@ -62,7 +63,7 @@ pub const KEY_ROWS: [KeyRowSpec; 20] = [
     ),
     KeyRowSpec::combo(
         RowId::HotkeyQuickSave,
-        "快速保存",
+        K::KeyQuickSave,
         KeyGroup::Output,
         |hk, _| (hk.quick_save_key, hk.quick_save_modifiers),
         |cfg, vk, mods| {
@@ -72,7 +73,7 @@ pub const KEY_ROWS: [KeyRowSpec; 20] = [
     ),
     KeyRowSpec::hotkey(
         RowId::HotkeyPin,
-        "贴图",
+        K::SlotPin,
         KeyGroup::Output,
         true,
         |hk, _| (hk.pin_key, hk.pin_modifiers),
@@ -83,7 +84,7 @@ pub const KEY_ROWS: [KeyRowSpec; 20] = [
     ),
     KeyRowSpec::hotkey(
         RowId::HotkeyBorder,
-        "贴图边框",
+        K::KeyPinBorder,
         KeyGroup::Output,
         false,
         |hk, _| (hk.border_key, hk.border_modifiers),
@@ -95,7 +96,7 @@ pub const KEY_ROWS: [KeyRowSpec; 20] = [
     // 长截图键在覆盖层内按下即触发（无修饰键）
     KeyRowSpec::plain(
         RowId::HotkeyLongshot,
-        "长截图",
+        K::KeyLongshot,
         KeyGroup::Output,
         |hk, _| (hk.longshot_key, 0),
         |cfg, vk, _| cfg.hotkey.longshot_key = vk,
@@ -104,77 +105,77 @@ pub const KEY_ROWS: [KeyRowSpec; 20] = [
     // ADR 0036：移动（指针）键排在工具键之前——它才是框选完成后的缺省态
     KeyRowSpec::plain(
         RowId::ToolMove,
-        "移动",
+        K::ToolMove,
         KeyGroup::Tools,
         |_, tk| (tk.move_key, 0),
         |cfg, vk, _| cfg.tool_keys.move_key = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolRect,
-        "矩形",
+        K::ToolRect,
         KeyGroup::Tools,
         |_, tk| (tk.rect, 0),
         |cfg, vk, _| cfg.tool_keys.rect = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolArrow,
-        "箭头",
+        K::ToolArrow,
         KeyGroup::Tools,
         |_, tk| (tk.arrow, 0),
         |cfg, vk, _| cfg.tool_keys.arrow = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolText,
-        "文本",
+        K::ToolText,
         KeyGroup::Tools,
         |_, tk| (tk.text, 0),
         |cfg, vk, _| cfg.tool_keys.text = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolBlur,
-        "模糊",
+        K::ToolBlur,
         KeyGroup::Tools,
         |_, tk| (tk.blur, 0),
         |cfg, vk, _| cfg.tool_keys.blur = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolHighlight,
-        "荧光笔",
+        K::ToolHighlight,
         KeyGroup::Tools,
         |_, tk| (tk.highlight, 0),
         |cfg, vk, _| cfg.tool_keys.highlight = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolGlow,
-        "聚光灯",
+        K::ToolGlow,
         KeyGroup::Tools,
         |_, tk| (tk.glow, 0),
         |cfg, vk, _| cfg.tool_keys.glow = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolNumber,
-        "序号",
+        K::ToolNumber,
         KeyGroup::Tools,
         |_, tk| (tk.number, 0),
         |cfg, vk, _| cfg.tool_keys.number = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolLine,
-        "直线",
+        K::ToolLine,
         KeyGroup::Tools,
         |_, tk| (tk.line, 0),
         |cfg, vk, _| cfg.tool_keys.line = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolEllipse,
-        "椭圆",
+        K::ToolEllipse,
         KeyGroup::Tools,
         |_, tk| (tk.ellipse, 0),
         |cfg, vk, _| cfg.tool_keys.ellipse = vk,
     ),
     KeyRowSpec::plain(
         RowId::ToolFreehand,
-        "手绘",
+        K::ToolFreehand,
         KeyGroup::Tools,
         |_, tk| (tk.freehand, 0),
         |cfg, vk, _| cfg.tool_keys.freehand = vk,

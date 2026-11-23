@@ -159,7 +159,7 @@ impl Panel {
                     // 任务计划创建/删除失败（通常是权限不足）：弹窗反馈并维持现状
                     message_box(
                         None,
-                        "开机自启设置失败：无法创建或删除任务计划。\n请以管理员权限重新运行本程序后再试。",
+                        crate::i18n::SettingsKey::AutostartFailed.text(),
                         MB_OK | MB_ICONWARNING,
                     );
                 }

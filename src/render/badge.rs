@@ -26,7 +26,7 @@ pub fn number_radius(font_size: f32, mark: Badge) -> f32 {
     let w = match mark {
         Badge::Num(n) => {
             text::measure(&n.to_string(), &{
-                let mut spec = text::FontSpec::new(font_size);
+                let mut spec = text::FontSpec::content(font_size);
                 spec.bold = true;
                 spec
             })
@@ -85,7 +85,7 @@ fn draw_badge_face(
     let ink = contrast_ink(style.color);
     match mark {
         Badge::Num(n) => {
-            let mut spec = text::FontSpec::new(font_size);
+            let mut spec = text::FontSpec::content(font_size);
             spec.bold = true;
             let label = n.to_string();
             let (tw, th) = text::measure(&label, &spec);
@@ -110,7 +110,7 @@ pub(crate) fn badge_preview(pixmap: &mut Pixmap, center: Point, radius: f32, mar
     match mark {
         Badge::Num(_) => {
             // 预览里的编号固定画 1：它只是「这一格是数字」的示意，不代表下一个号的真实值
-            let mut spec = text::FontSpec::new(radius * 1.5);
+            let mut spec = text::FontSpec::content(radius * 1.5);
             spec.bold = true;
             let (tw, th) = text::measure("1", &spec);
             let pos = Point::new(center.x - tw * 0.5, center.y - th * 0.5 + radius * 1.5 * 0.08);

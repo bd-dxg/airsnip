@@ -88,6 +88,9 @@ pub fn run() -> i32 {
     }
 
     let config = Config::load();
+    // 界面语言（I18N-1 / ADR 0047）：在托盘 / 热键 / 面板之前定下来，
+    // 后面所有线程读同一份全局值（进程内不再变，除非用户在面板里改）。
+    crate::i18n::set_current(config.language.resolve());
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(None) }.unwrap_or_default().into();
 
     let hwnd = match create_message_window(hinstance) {

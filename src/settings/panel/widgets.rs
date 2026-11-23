@@ -5,6 +5,7 @@
 
 use tiny_skia::Pixmap;
 
+use crate::i18n::SettingsKey as K;
 use crate::overlay::geometry::SelRect;
 use crate::overlay::shape::{rounded_rect, rounded_rect_outline};
 use crate::settings::ThemeSetting;
@@ -110,8 +111,7 @@ pub(super) fn draw_readonly(pixmap: &mut Pixmap, panel: &Panel, row: &Row) {
         return;
     }
     let text = match row.id {
-        RowId::Lang => "简体中文",
-        RowId::Widenote => "无修饰键会覆盖其他程序按键，建议 Ctrl/Alt",
+        RowId::Widenote => K::KeyModifierNote.text(),
         _ => "",
     };
     draw_right_text(pixmap, panel, row, text);

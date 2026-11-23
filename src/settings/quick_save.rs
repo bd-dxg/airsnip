@@ -7,6 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::SettingsKey as K;
+
 /// 默认保存目录（`%USERPROFILE%\Pictures\airsnip`，沿用旧默认位置）。
 pub const DEFAULT_DIR: &str = r"%USERPROFILE%\Pictures\airsnip";
 /// 默认文件名模板（不含扩展名；与旧的「日期 + 时间」命名等价）。
@@ -66,8 +68,8 @@ impl ExistingFile {
 
     pub fn title(self) -> &'static str {
         match self {
-            ExistingFile::Rename => "自动加序号",
-            ExistingFile::Overwrite => "覆盖",
+            ExistingFile::Rename => K::ExistingRename.text(),
+            ExistingFile::Overwrite => K::ExistingOverwrite.text(),
         }
     }
 }

@@ -7,9 +7,10 @@ use windows::Win32::Foundation::{HINSTANCE, HWND, RECT};
 use windows::Win32::Graphics::Dwm::{DWMWA_USE_IMMERSIVE_DARK_MODE, DwmSetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{BitBlt, GetDC, ReleaseDC, SRCCOPY};
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{PCWSTR, w};
+use windows::core::PCWSTR;
 
 use crate::app::icon_resource;
+use crate::i18n::SettingsKey as K;
 use crate::overlay::surface::{convert_rgba_to_bgra, create_dib_surface};
 use crate::overlay::ui::Ui;
 use crate::settings::ThemeSetting;
@@ -49,7 +50,7 @@ pub(super) fn create_window(hinstance: HINSTANCE, panel: &mut Panel) -> Result<H
         if RegisterClassExW(&wc) == 0 {
             // 面板可多次打开：类已注册不算错误
             if windows::Win32::Foundation::GetLastError().0 != 1410 {
-                return Err("设置窗口类注册失败".into());
+                return Err(K::WindowClassFailed.text().into());
             }
         }
 
@@ -67,10 +68,11 @@ pub(super) fn create_window(hinstance: HINSTANCE, panel: &mut Panel) -> Result<H
         let cx = (GetSystemMetrics(SM_CXSCREEN) - sw) / 2;
         let cy = (GetSystemMetrics(SM_CYSCREEN) - sh) / 2;
 
+        let title: Vec<u16> = K::WindowTitle.text().encode_utf16().chain([0]).collect();
         let hwnd = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             WINDOW_CLASS,
-            w!("AirSnip 设置"),
+            PCWSTR(title.as_ptr()),
             STYLE,
             cx,
             cy,
@@ -81,12 +83,25 @@ pub(super) fn create_window(hinstance: HINSTANCE, panel: &mut Panel) -> Result<H
             Some(hinstance),
             None,
         )
-        .map_err(|e| format!("创建设置窗口失败：{e}"))?;
+        .map_err(|e| crate::i18n::fill(K::WindowCreateFailed.text(), &[("e", &e.to_string())]))?;
 
         // 面板与截图覆盖层共用同一套界面缩放（ADR 0016）：面板内改设置能当场看到效果
         panel.scale = Ui::resolve(panel.config.ui_scale).scale();
         panel.fit_window(hwnd);
         Ok(hwnd)
+    }
+}
+
+/// 语言切换后重设窗口标题（I18N-1 / ADR 0047）：标题由 DWM 画，不会跟着自绘面板变，
+/// 而 `CreateWindowExW` 只在建窗时设过那一次。也顺手同步托盘 tooltip 要用的字串
+/// （托盘那一侧是 B4 批次，这里只负责窗口自己）。
+pub(super) fn retitle(panel: &Panel) {
+    if panel.hwnd.0.is_null() {
+        return;
+    }
+    let title: Vec<u16> = K::WindowTitle.text().encode_utf16().chain([0]).collect();
+    unsafe {
+        let _ = SetWindowTextW(panel.hwnd, PCWSTR(title.as_ptr()));
     }
 }
 

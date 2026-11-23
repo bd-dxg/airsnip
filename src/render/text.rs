@@ -32,8 +32,21 @@ pub struct FontSpec {
 }
 
 impl FontSpec {
-    /// 默认字体族、常规字重。
+    /// 界面文案字体：**按当前界面语言取族名**（I18N-3 / ADR 0047）。
+    /// 简体中文仍是历史默认 `Microsoft YaHei UI`，所以中文用户看到的一切与今天完全一致；
+    /// 日文 / 繁中若复用 YaHei 会得到「中文字形冒充日文汉字」。
     pub fn new(size: f32) -> Self {
+        Self {
+            family: Arc::from(crate::i18n::current().ui_family()),
+            size,
+            bold: false,
+            italic: false,
+        }
+    }
+
+    /// 标注内容字体（**不随界面语言变**）：线宽 / 字号 / 字形都属于导出结果，
+    /// 与「标注不随界面缩放」同一原则。徽标数字、序号编辑框等没有族字段的对象用它。
+    pub fn content(size: f32) -> Self {
         Self {
             family: Arc::from(DEFAULT_FAMILY),
             size,

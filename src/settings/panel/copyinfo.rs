@@ -14,6 +14,7 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{KillTimer, SetTimer};
 
 use crate::editor::Point;
+use crate::i18n::SettingsKey as K;
 use crate::overlay::geometry::{SelRect, in_rect};
 use crate::overlay::shape::rounded_rect;
 use crate::render::text as dwrite;
@@ -25,17 +26,17 @@ pub(super) const HOLD: Duration = Duration::from_secs(4);
 /// 面板定时器 ID（`WM_TIMER` 里按它识别；面板目前没有其它定时器）。
 pub(super) const TIMER_ID: usize = 1;
 
-/// 通知文案（成功 / 复制失败）与按钮文案。
-const TOAST_OK: &str = "已复制系统基本信息";
-const TOAST_FAIL: &str = "未能复制系统信息，请手动填写";
-const BTN_TEXT: &str = "打开反馈页";
+/// 通知文案在 `i18n`（键 `AboutToast*`）；按钮文案取当前界面语言。
+fn btn_text() -> &'static str {
+    K::AboutToastOpen.text()
+}
 
 impl Panel {
     /// 点「我要反馈」：复制系统信息并弹通知；打开网页由用户点通知里的按钮决定。
     pub(super) fn start_feedback(&mut self) {
         let text = match crate::diagnose::copy_report(&self.config) {
-            Ok(()) => TOAST_OK,
-            Err(_) => TOAST_FAIL,
+            Ok(()) => K::AboutToastCopied.text(),
+            Err(_) => K::AboutToastFailed.text(),
         };
         self.toast = Some(text.to_string());
         unsafe {
@@ -61,7 +62,7 @@ pub(super) fn toast_rects(panel: &Panel, height: i32) -> Option<(SelRect, SelRec
     let text = panel.toast.as_deref()?;
     let s = panel.scale;
     let (tw, _) = dwrite::measure(text, &dwrite::FontSpec::new(14.0 * s));
-    let (bw, _) = dwrite::measure(BTN_TEXT, &dwrite::FontSpec::new(13.0 * s));
+    let (bw, _) = dwrite::measure(btn_text(), &dwrite::FontSpec::new(13.0 * s));
     let pad = 14.0 * s;
     let gap = 14.0 * s;
     let btn_pad = 12.0 * s;
@@ -132,13 +133,13 @@ pub(super) fn draw_toast(pixmap: &mut Pixmap, panel: &Panel, height: i32) {
 
     rounded_rect(pixmap, btn, (6.0 * s) as f32, p.accent, None);
     let bsize = 13.0 * s;
-    let (bw, _) = dwrite::measure(BTN_TEXT, &dwrite::FontSpec::new(bsize));
+    let (bw, _) = dwrite::measure(btn_text(), &dwrite::FontSpec::new(bsize));
     let bx = btn.x as f32 + (btn.w as f32 - bw) / 2.0;
     let by = btn.y as f32 + (btn.h as f32 - bsize * 1.2) / 2.0;
     dwrite::draw(
         pixmap,
         Point::new(bx, by),
-        BTN_TEXT,
+        btn_text(),
         &dwrite::FontSpec::new(bsize),
         [255, 255, 255, 255],
         Transform::identity(),

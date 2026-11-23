@@ -6,6 +6,7 @@
 use tiny_skia::{Pixmap, Transform};
 
 use crate::editor::Point;
+use crate::i18n::{self, LangPref, SettingsKey as K};
 use crate::overlay::geometry::SelRect;
 use crate::overlay::shape::rounded_rect;
 use crate::render::text as dwrite;
@@ -20,7 +21,17 @@ pub(super) fn select_options(id: RowId) -> Vec<&'static str> {
     match id {
         RowId::QuickFormat => SaveFormat::ALL.iter().map(|f| f.title()).collect(),
         RowId::QuickOnExist => ExistingFile::ALL.iter().map(|e| e.title()).collect(),
+        // 界面语言（I18N-1 / ADR 0047）：「跟随系统」随界面语言翻译，语言自称不翻译
+        RowId::Lang => LangPref::ALL.iter().map(|p| lang_label(*p)).collect(),
         _ => Vec::new(),
+    }
+}
+
+/// 语言选项的文字。
+fn lang_label(pref: LangPref) -> &'static str {
+    match pref.explicit() {
+        Some(_) => pref.native_name(),
+        None => K::LanguageFollowSystem.text(),
     }
 }
 
@@ -34,6 +45,10 @@ pub(super) fn select_index(panel: &Panel, id: RowId) -> usize {
         RowId::QuickOnExist => ExistingFile::ALL
             .iter()
             .position(|e| *e == panel.config.quick_save.on_exist)
+            .unwrap_or(0),
+        RowId::Lang => LangPref::ALL
+            .iter()
+            .position(|p| *p == panel.config.language)
             .unwrap_or(0),
         _ => 0,
     }
@@ -53,6 +68,17 @@ pub(super) fn apply_option(panel: &mut Panel, id: RowId, index: usize) {
         },
         RowId::QuickOnExist => match ExistingFile::ALL.get(index) {
             Some(e) => panel.config.quick_save.on_exist = *e,
+            None => return,
+        },
+        // 界面语言（I18N-1 / ADR 0047）：**立即生效**。查表是纯内存操作，没有
+        // 「重载资源」这回事；面板下一帧重绘就换语言（`layout` 每帧重算，尺寸不变）。
+        // 标题栏是 DWM 画的，必须单独重设（它不跟自绘内容走）。
+        RowId::Lang => match LangPref::ALL.get(index) {
+            Some(p) => {
+                panel.config.language = *p;
+                i18n::set_current(p.resolve());
+                super::super::window::retitle(panel);
+            }
             None => return,
         },
         _ => return,
