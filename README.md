@@ -18,6 +18,8 @@
 
 ### 🌐 官网：**[airsnip.bddxg.top](https://airsnip.bddxg.top)**
 
+**中文** · [English](README.en.md)
+
 **[下载与安装](#下载与安装) · [快速上手](#快速上手) · [功能](#功能) · [快捷键](#快捷键) · [常见问题](#常见问题) · [技术文档](#技术文档)**
 
 </div>
@@ -297,9 +299,9 @@ exe 未做代码签名，Windows SmartScreen 会拦一下：点「更多信息�
 </details>
 
 <details>
-<summary><strong>界面只有简体中文？</strong></summary>
+<summary><strong>界面支持哪些语言？</strong></summary>
 
-一期只做简体中文，代码层预留 i18n。
+界面支持 **简体中文 / 繁體中文 / English / 日本語**，默认跟随 Windows 的界面语言（非中文系统首次启动即为英文），也可以在 设置 → 通用 → 语言 里手动指定，**选完立即生效**。翻译仍在逐批推进：设置面板与截图覆盖层已完成，长截图状态条、托盘菜单等还在路上（见 ADR 0047）。
 
 </details>
 
