@@ -19,11 +19,13 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-# 已迁移完毕、应当零硬编码的路径（前缀匹配，小写比较）。B1 设置面板 + B2 覆盖层/贴图。
+# 已迁移完毕、应当零硬编码的路径（前缀匹配，小写比较）。B1 设置面板 + B2 覆盖层/贴图 + B4 app。
 $MIGRATED = @(
     'src\settings\',
     'src\update\state.rs',
-    'src\output\quick.rs',
+    'src\output\',
+    'src\capture\',
+    'src\app\',
     'src\overlay\toolbar\tip.rs',
     'src\overlay\cancel_hint.rs',
     'src\overlay\toast.rs',
@@ -39,15 +41,44 @@ $MIGRATED = @(
     'src\i18n\'
 )
 
+# 永久不迁的路径（日志 / 排障报告 / 内部错误串，见 ADR 0047）」。
+# - update/**：「更新失败原因」只存进 `Phase::Failed`，面板只显示「重试」按钮，不进用户视野；
+#   它更像日志，保留中文便于按关键词检索既有 issue。
+# - diagnose/**：「我要反馈」复制的环境报告，用户只负责复制粘贴，内容给维护者看，
+#   翻译后同一份报告在不同用户那里格式不同，反而增加阅读成本。
+# - overlay/{uia,snap,recapture,init,run}、perf：内部日志与断言。
+$EXEMPT = @(
+    'src\update\',
+    'src\diagnose\',
+    'src\overlay\uia\',
+    'src\overlay\snap\',
+    'src\overlay\recapture.rs',
+    'src\overlay\init.rs',
+    'src\overlay\run.rs',
+    'src\perf.rs'
+)
+
 $cjk = '[\u3400-\u4dbf\u4e00-\u9fff\u3040-\u30ff]'
 $literal = '"[^"]*' + $cjk + '[^"]*"'
 
-function Test-Skippable([string]$line) {
+function Test-Skippable([string]$line, [string]$prev) {
     if ($line -match '^\s*//') { return $true }
     if ($line -match 'eprintln!|println!|dbg!|panic!|assert!|assert_eq!|assert_ne!|expect\(|unwrap_err') {
         return $true
     }
+    # 多行日志：`cargo fmt` 会把超长 eprintln 拆成「宏独占一行 + 参数各行」，参数行本身看不出来
+    if ($prev -match 'eprintln!\(\s*$|println!\(\s*$|dbg!\(\s*$') {
+        return $true
+    }
     if ($line -match '//\s*i18n:keep') { return $true }
+    return $false
+}
+
+function Test-Exempt([string]$rel) {
+    $lower = $rel.ToLowerInvariant()
+    foreach ($prefix in $EXEMPT) {
+        if ($lower.StartsWith($prefix.ToLowerInvariant())) { return $true }
+    }
     return $false
 }
 
@@ -67,6 +98,8 @@ foreach ($file in $files) {
     $rel = $file.FullName.Substring($root.Length + 1)
     # 语言表本身就是文案，不参与扫描
     if ($rel.ToLowerInvariant().StartsWith('src\i18n\')) { continue }
+    # 永久不迁的路径（日志 / 排障报告 / 更新引擎内部错误串）
+    if (Test-Exempt $rel) { continue }
     # 纯测试文件（`render_tests.rs` 这类）整份跳过：断言的说明文字不翻译
     if ($file.Name -match '(_tests|tests)\.rs$') { continue }
     # 纯测试文件（
@@ -83,7 +116,8 @@ foreach ($file in $files) {
             }
         }
         if ($skipRest) { break }
-        if (Test-Skippable $line) { continue }
+        $prev = if ($i -gt 0) { $lines[$i - 1] } else { '' }
+        if (Test-Skippable $line $prev) { continue }
 
         # 去掉行内注释后再找字面量（`//` 之后不再看；含 `//` 的字符串会被截断，
         # 但那类字符串不含 CJK，不影响判定）
@@ -105,7 +139,7 @@ if ($Verbose) {
 }
 
 Write-Host ("已迁移范围内剩余硬编码：{0}" -f $problems.Count)
-Write-Host ("未迁移批次范围内硬编码：{0}（B2 覆盖层 / B3 长截图 / B4 app 系统串分批处理）" -f $pendingHits.Count)
+Write-Host ("未迁移批次范围内硬编码：{0}（B3 长截图待迁；日志 / 排障报告 / 更新内部错误串在 $EXEMPT 里永久不迁）" -f $pendingHits.Count)
 
 if ($problems.Count -gt 0) {
     Write-Host ""

@@ -23,7 +23,7 @@ pub(super) fn create_window(owner: HWND, x: i32, y: i32, w: i32, h: i32) -> Resu
             ..Default::default()
         };
         if RegisterClassW(&wc) == 0 && GetLastError().0 != 1410 {
-            return Err("菜单窗口类注册失败".into());
+            return Err(crate::i18n::AppKey::MenuWindowClassFailed.text().into());
         }
         let hwnd = CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
@@ -39,7 +39,12 @@ pub(super) fn create_window(owner: HWND, x: i32, y: i32, w: i32, h: i32) -> Resu
             Some(GetModuleHandleW(None).unwrap_or_default().into()),
             None,
         )
-        .map_err(|e| format!("创建菜单窗口失败：{e}"))?;
+        .map_err(|e| {
+            crate::i18n::fill(
+                crate::i18n::AppKey::MenuWindowCreateFailed.text(),
+                &[("e", &e.to_string())],
+            )
+        })?;
         Ok(hwnd)
     }
 }

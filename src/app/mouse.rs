@@ -69,15 +69,16 @@ pub fn install(hwnd: HWND, wanted: bool) {
     }];
     let ok = unsafe { RegisterRawInputDevices(&devices, std::mem::size_of::<RAWINPUTDEVICE>() as u32) }.is_ok();
     if debug_enabled() {
+        // 日志不翻译（i18n:keep）；写成一行以便 `scripts/check-i18n.ps1` 识别为日志
         eprintln!(
             "[airsnip] Raw Input 注册{}（鼠标热键）",
-            if ok { "成功" } else { "失败" }
+            if ok { "ok" } else { "failed" }
         );
     }
     if !ok && wanted {
         message_box(
             Some(hwnd),
-            "无法注册鼠标输入，鼠标热键不会生效。\n请在设置中改用键盘热键。",
+            crate::i18n::AppKey::MouseRawFailed.text(),
             MB_OK | MB_ICONWARNING,
         );
     }

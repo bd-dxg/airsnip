@@ -58,11 +58,7 @@ impl App {
         let (vx, vy, vw, vh) = virtual_screen();
         // 贴图过大、编辑窗口放不下整个屏幕：直接拒绝并提示（否则工具栏会跑到屏外，审查 P2）
         if win_w > vw || win_h > vh {
-            message_box(
-                None,
-                "该贴图过大，编辑窗口在当前屏幕上放不下。\n请先缩小贴图后再编辑。",
-                MB_OK | MB_ICONERROR,
-            );
+            message_box(None, crate::i18n::AppKey::PinEditTooLarge.text(), MB_OK | MB_ICONERROR);
             OVERLAY_RUNNING.store(false, Ordering::Release);
             return;
         }
@@ -74,7 +70,11 @@ impl App {
         let cap = match crate::capture::capture_region(win_x, win_y, win_w as u32, win_h as u32) {
             Ok(c) => c,
             Err(e) => {
-                message_box(None, &format!("抓屏失败：{e}"), MB_OK | MB_ICONERROR);
+                message_box(
+                    None,
+                    &crate::i18n::fill(crate::i18n::AppKey::CaptureFailed.text(), &[("e", &e)]),
+                    MB_OK | MB_ICONERROR,
+                );
                 OVERLAY_RUNNING.store(false, Ordering::Release);
                 return;
             }
@@ -169,7 +169,11 @@ impl App {
         // 文件写出（含 WebP 编码）丢到后台线程，避免阻塞主线程 UI（审查 P3）
         std::thread::spawn(move || {
             if let Err(e) = crate::output::save_file(&pm, &path) {
-                message_box(None, &format!("保存失败：{e}"), MB_OK | MB_ICONERROR);
+                message_box(
+                    None,
+                    &crate::i18n::fill(crate::i18n::OverlayKey::OutputSaveFailed.text(), &[("e", &e)]),
+                    MB_OK | MB_ICONERROR,
+                );
             }
         });
     }

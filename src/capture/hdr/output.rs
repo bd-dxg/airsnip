@@ -130,7 +130,7 @@ where
     ) -> Result<bool, String>,
 {
     unsafe {
-        let factory: IDXGIFactory1 = CreateDXGIFactory1().map_err(|e| format!("CreateDXGIFactory1 失败：{e}"))?;
+        let factory: IDXGIFactory1 = CreateDXGIFactory1().map_err(|e| format!("CreateDXGIFactory1 failed: {e}"))?;
         let mut adapter_index = 0;
         loop {
             let Ok(adapter) = factory.EnumAdapters1(adapter_index) else {
@@ -173,7 +173,7 @@ fn create_context(output: &IDXGIOutput6) -> Result<(ID3D11Device, ID3D11DeviceCo
     unsafe {
         let adapter = output
             .GetParent::<windows::Win32::Graphics::Dxgi::IDXGIAdapter>()
-            .map_err(|e| format!("取 IDXGIAdapter 失败：{e}"))?;
+            .map_err(|e| format!("Failed to get IDXGIAdapter: {e}"))?;
         let mut device: Option<ID3D11Device> = None;
         let mut context: Option<ID3D11DeviceContext> = None;
         // BGRA_SUPPORT 是 DDA 的硬性要求；10_0 兜底老显卡。
@@ -188,10 +188,10 @@ fn create_context(output: &IDXGIOutput6) -> Result<(ID3D11Device, ID3D11DeviceCo
             None,
             Some(&mut context),
         )
-        .map_err(|e| format!("D3D11CreateDevice 失败：{e}"))?;
+        .map_err(|e| format!("D3D11CreateDevice failed: {e}"))?;
         match (device, context) {
             (Some(d), Some(c)) => Ok((d, c)),
-            _ => Err("D3D11CreateDevice 未返回设备".into()),
+            _ => Err("D3D11CreateDevice returned no device".into()),
         }
     }
 }
@@ -215,7 +215,7 @@ pub fn blit_into(canvas: &mut [u8], cw: u32, ch: u32, dst_x: i32, dst_y: i32, fr
         let src_off = ((sy0 + y) as usize * frame.width as usize + sx0 as usize) * 4;
         let dst_off = ((y0 + y) as usize * cw as usize + x0 as usize) * 4;
         if src_off + row_bytes > frame.rgba.len() || dst_off + row_bytes > canvas.len() {
-            return Err("贴图层越界".into());
+            return Err("Pin layer out of bounds".into());
         }
         canvas[dst_off..dst_off + row_bytes].copy_from_slice(&frame.rgba[src_off..src_off + row_bytes]);
     }

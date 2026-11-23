@@ -85,19 +85,24 @@ pub fn pick_save_file(owner: HWND, dir: Option<&Path>, name: &str, default_ext: 
         if let Ok(opts) = dlg.GetOptions() {
             let _ = dlg.SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_OVERWRITEPROMPT);
         }
-        let _ = dlg.SetTitle(w!("保存截图"));
+        // 文案随界面语言（I18N-2 / ADR 0047）：COM 接口吃 PCWSTR，宽串必须靠 wide 在运行时构造，
+        // 且要活到 SetTitle / SetFileTypes 返回。
+        use crate::i18n::AppKey as A;
+        let title = wide(A::DialogSaveImage.text());
+        let _ = dlg.SetTitle(PCWSTR(title.as_ptr()));
         // 筛选器顺序即默认选中项（索引 1 = PNG）
+        let names = [A::DialogPng.text(), A::DialogJpeg.text(), A::DialogWebp.text()].map(wide);
         let filters = [
             COMDLG_FILTERSPEC {
-                pszName: w!("PNG 图片"),
+                pszName: PCWSTR(names[0].as_ptr()),
                 pszSpec: w!("*.png"),
             },
             COMDLG_FILTERSPEC {
-                pszName: w!("JPEG 图片"),
+                pszName: PCWSTR(names[1].as_ptr()),
                 pszSpec: w!("*.jpg;*.jpeg"),
             },
             COMDLG_FILTERSPEC {
-                pszName: w!("WebP 图片（无损）"),
+                pszName: PCWSTR(names[2].as_ptr()),
                 pszSpec: w!("*.webp"),
             },
         ];
@@ -126,7 +131,8 @@ pub fn pick_folder(owner: HWND, initial: Option<&Path>) -> Option<PathBuf> {
         if let Ok(opts) = dlg.GetOptions() {
             let _ = dlg.SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
         }
-        let _ = dlg.SetTitle(w!("选择保存文件夹"));
+        let title = wide(crate::i18n::AppKey::DialogPickFolder.text());
+        let _ = dlg.SetTitle(PCWSTR(title.as_ptr()));
         if let Some(item) = initial.and_then(shell_item) {
             let _ = dlg.SetFolder(&item);
         }

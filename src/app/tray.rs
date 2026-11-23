@@ -49,7 +49,7 @@ impl App {
             uFlags: NIF_MESSAGE | NIF_ICON | NIF_TIP,
             uCallbackMessage: WM_TRAY,
             hIcon: unsafe { LoadIconW(Some(self.hinstance), icon_resource()).unwrap_or_default() },
-            szTip: wide_array("AirSnip 轻截"),
+            szTip: wide_array(crate::i18n::AppKey::TrayTooltip.text()),
             ..Default::default()
         };
         let ok = unsafe { Shell_NotifyIconW(NIM_ADD, &nid) }.as_bool();
@@ -129,25 +129,26 @@ impl App {
     /// 右键托源自绘菜单：截图 / 从剪贴板贴图 / 设置 / 退出。
     /// 截图与贴图不只有全局热键入口：热键被用户清空（SYS-2）时仍能从菜单触发。
     fn show_tray_menu(&mut self) {
+        use crate::i18n::AppKey as A;
         let items = vec![
             popmenu::Item {
                 id: IDM_SHOT,
-                text: "截图",
+                text: A::TrayCapture.text(),
                 separator_before: false,
             },
             popmenu::Item {
                 id: IDM_PIN,
-                text: "从剪贴板贴图",
+                text: A::TrayPinFromClipboard.text(),
                 separator_before: false,
             },
             popmenu::Item {
                 id: IDM_SETTINGS,
-                text: "设置...",
+                text: A::TraySettings.text(),
                 separator_before: true,
             },
             popmenu::Item {
                 id: IDM_EXIT,
-                text: "退出",
+                text: A::TrayQuit.text(),
                 separator_before: false,
             },
         ];

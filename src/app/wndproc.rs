@@ -28,7 +28,10 @@ pub(super) fn create_message_window(hinstance: HINSTANCE) -> Result<HWND, String
             ..Default::default()
         };
         if RegisterClassW(&wc) == 0 {
-            return Err(format!("注册窗口类失败，错误码 {}", GetLastError().0));
+            return Err(crate::i18n::fill(
+                crate::i18n::AppKey::WindowClassFailed.text(),
+                &[("code", &GetLastError().0.to_string())],
+            ));
         }
 
         let hwnd = match CreateWindowExW(
@@ -46,7 +49,12 @@ pub(super) fn create_message_window(hinstance: HINSTANCE) -> Result<HWND, String
             None,
         ) {
             Ok(h) => h,
-            Err(e) => return Err(format!("创建窗口失败：{e}")),
+            Err(e) => {
+                return Err(crate::i18n::fill(
+                    crate::i18n::AppKey::WindowCreateFailed.text(),
+                    &[("e", &e.to_string())],
+                ));
+            }
         };
         // UIPI：本进程 requireAdministrator，explorer 是普通权限。不放行的话，
         // explorer 重启后的 TaskbarCreated 广播与托盘点击的 WM_TRAY 都会被静默
@@ -255,8 +263,8 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 && let crate::update::state::Phase::Available { version } = crate::update::state::phase()
             {
                 app.balloon(
-                    "AirSnip 有新版本",
-                    &format!("v{version} 已发布，点托盘图标打开设置更新"),
+                    crate::i18n::AppKey::UpdateBalloonTitle.text(),
+                    &crate::i18n::fill(crate::i18n::AppKey::UpdateBalloonBody.text(), &[("version", &version)]),
                 );
             }
             LRESULT(0)

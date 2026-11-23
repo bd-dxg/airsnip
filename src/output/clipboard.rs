@@ -26,18 +26,18 @@ pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
     let units = text_units(text);
     let bytes = units.len() * size_of::<u16>();
     unsafe {
-        let h = GlobalAlloc(GMEM_MOVEABLE, bytes).map_err(|e| format!("GlobalAlloc 文本失败：{e}"))?;
+        let h = GlobalAlloc(GMEM_MOVEABLE, bytes).map_err(|e| format!("GlobalAlloc (text) failed: {e}"))?;
         let ptr = GlobalLock(h);
         if ptr.is_null() {
             let _ = GlobalFree(Some(h));
-            return Err("GlobalLock 文本失败".into());
+            return Err("GlobalLock (text) failed".into());
         }
         std::ptr::copy_nonoverlapping(units.as_ptr(), ptr as *mut u16, units.len());
         let _ = GlobalUnlock(h);
 
         if OpenClipboard(None).is_err() {
             let _ = GlobalFree(Some(h));
-            return Err("OpenClipboard 失败".into());
+            return Err("OpenClipboard failed".into());
         }
         let fail = |msg: String| {
             let _ = CloseClipboard();
@@ -45,11 +45,11 @@ pub fn copy_text_to_clipboard(text: &str) -> Result<(), String> {
         };
         if EmptyClipboard().is_err() {
             let _ = GlobalFree(Some(h));
-            return Err(fail("EmptyClipboard 失败".into()));
+            return Err(fail("EmptyClipboard failed".into()));
         }
         if SetClipboardData(CF_UNICODETEXT.0 as u32, Some(HANDLE(h.0))).is_err() {
             let _ = GlobalFree(Some(h));
-            return Err(fail("SetClipboardData CF_UNICODETEXT 失败".into()));
+            return Err(fail("SetClipboardData (CF_UNICODETEXT) failed".into()));
         }
         let _ = CloseClipboard();
         Ok(())

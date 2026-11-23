@@ -112,7 +112,7 @@ impl RegionCapture {
                         self.have_frame = true;
                     }
                     Ok(None) => {}
-                    Err(GrabError::Lost) => return Err("HDR 会话重建后再次失效".into()),
+                    Err(GrabError::Lost) => return Err("HDR session failed again after rebuild".into()),
                     Err(GrabError::Other(e)) => return Err(e),
                 }
                 self.hdr = Some(next);
@@ -120,7 +120,7 @@ impl RegionCapture {
             Err(GrabError::Other(e)) => return Err(e),
         }
         if self.last.is_empty() {
-            return Err("HDR 抓屏会话未取到首帧".into());
+            return Err("HDR capture produced no first frame".into());
         }
         Ok(&self.last)
     }

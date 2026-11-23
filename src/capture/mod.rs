@@ -88,7 +88,7 @@ fn swap_rb_parallel(buf: &mut [u8]) {
 /// HDR 模式下走 DDA + 色调映射（否则长截图同样会过曝），纯 SDR 仍用 BitBlt。
 pub fn capture_region(x: i32, y: i32, w: u32, h: u32) -> Result<CapturedScreen, String> {
     if w == 0 || h == 0 {
-        return Err("区域尺寸为 0，无法抓屏".into());
+        return Err("Region has zero size".into());
     }
     if let Some(result) = hdr::capture_region(x, y, w, h) {
         return result;
@@ -105,7 +105,7 @@ fn capture_region_bitblt(x: i32, y: i32, w: u32, h: u32, captureblt: bool) -> Re
     unsafe {
         let hdc_screen = GetDC(None);
         if hdc_screen.0.is_null() {
-            return Err("GetDC 失败".into());
+            return Err("GetDC failed".into());
         }
         let hdc_mem = CreateCompatibleDC(None);
         if hdc_mem.0.is_null() {
@@ -141,7 +141,7 @@ fn capture_region_bitblt(x: i32, y: i32, w: u32, h: u32, captureblt: bool) -> Re
             let _ = DeleteObject(hbmp.into());
             let _ = DeleteDC(hdc_mem);
             let _ = ReleaseDC(None, hdc_screen);
-            return Err("BitBlt 失败".into());
+            return Err("BitBlt failed".into());
         }
 
         let len = (w * h * 4) as usize;
@@ -183,12 +183,12 @@ fn capture_virtual_screen_bitblt() -> Result<CapturedScreen, String> {
         let vw = GetSystemMetrics(SM_CXVIRTUALSCREEN) as u32;
         let vh = GetSystemMetrics(SM_CYVIRTUALSCREEN) as u32;
         if vw == 0 || vh == 0 {
-            return Err("虚拟屏幕尺寸为 0，无法抓屏".into());
+            return Err("Virtual screen has zero size".into());
         }
 
         let hdc_screen = GetDC(None);
         if hdc_screen.0.is_null() {
-            return Err("GetDC 失败".into());
+            return Err("GetDC failed".into());
         }
         let hdc_mem = CreateCompatibleDC(None);
         if hdc_mem.0.is_null() {
@@ -237,7 +237,7 @@ fn capture_virtual_screen_bitblt() -> Result<CapturedScreen, String> {
             let _ = DeleteObject(hbmp.into());
             let _ = DeleteDC(hdc_mem);
             let _ = ReleaseDC(None, hdc_screen);
-            return Err("BitBlt 失败".into());
+            return Err("BitBlt failed".into());
         }
         let blt = t_blt.elapsed();
 

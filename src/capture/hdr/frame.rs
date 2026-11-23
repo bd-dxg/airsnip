@@ -68,18 +68,18 @@ pub fn open_duplication(out: &HdrOutput) -> Result<IDXGIOutputDuplication, Strin
         let device_iunk = out
             .device
             .cast::<windows::core::IUnknown>()
-            .map_err(|e| format!("取 IUnknown 失败：{e}"))?;
+            .map_err(|e| format!("QueryInterface (IUnknown) failed: {e}"))?;
         let output5 = out
             .output
             .cast::<IDXGIOutput5>()
-            .map_err(|e| format!("取 IDXGIOutput5 失败：{e}"))?;
+            .map_err(|e| format!("QueryInterface (IDXGIOutput5) failed: {e}"))?;
         output5
             .DuplicateOutput1(
                 &device_iunk,
                 0,
                 &[DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_B8G8R8A8_UNORM],
             )
-            .map_err(|e| format!("DuplicateOutput1 失败：{e}（需进程为 Per-Monitor V2 DPI aware，且无其他抓屏占用）"))
+            .map_err(|e| format!("DuplicateOutput1 failed: {e} (the process must be Per-Monitor V2 DPI aware and no other capture may be active)"))
     }
 }
 
@@ -107,7 +107,7 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
             match dup.AcquireNextFrame(timeout, &mut info, &mut res) {
                 Ok(()) => {
                     if info.LastPresentTime != 0 {
-                        break res.ok_or_else(|| GrabError::Other("桌面资源为空".into()))?;
+                        break res.ok_or_else(|| GrabError::Other("Desktop resource is null".into()))?;
                     }
                     // 只有指针更新，内容未定义：丢弃。
                     let _ = dup.ReleaseFrame();
@@ -123,14 +123,14 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
                     attempts += 1;
                 }
                 Err(e) if e.code().0 == DXGI_ERROR_ACCESS_LOST => return Err(GrabError::Lost),
-                Err(e) => return Err(GrabError::Other(format!("AcquireNextFrame 失败：{e}"))),
+                Err(e) => return Err(GrabError::Other(format!("AcquireNextFrame failed: {e}"))),
             }
         };
 
         let frame_guard = FrameGuard { dup };
         let texture: ID3D11Texture2D = resource
             .cast()
-            .map_err(|e| GrabError::Other(format!("取纹理失败：{e}")))?;
+            .map_err(|e| GrabError::Other(format!("Failed to get the texture: {e}")))?;
         let mut desc = Default::default();
         texture.GetDesc(&mut desc);
 
@@ -143,8 +143,8 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
         let mut staging: Option<ID3D11Texture2D> = None;
         out.device
             .CreateTexture2D(&staging_desc, None, Some(&mut staging))
-            .map_err(|e| GrabError::Other(format!("CreateTexture2D（staging）失败：{e}")))?;
-        let staging = staging.ok_or_else(|| GrabError::Other("staging 纹理为空".into()))?;
+            .map_err(|e| GrabError::Other(format!("CreateTexture2D (staging) failed: {e}")))?;
+        let staging = staging.ok_or_else(|| GrabError::Other("Staging texture is null".into()))?;
         out.context.CopyResource(&staging, &texture);
         // 帧内容已拷入 staging，释放桌面帧（guard 负责配对，此处显式释放）。
         drop(frame_guard);
@@ -152,7 +152,7 @@ pub fn acquire(out: &HdrOutput, dup: &IDXGIOutputDuplication, need_frame: bool) 
         let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
         out.context
             .Map(&staging, 0, D3D11_MAP_READ, 0, Some(&mut mapped))
-            .map_err(|e| GrabError::Other(format!("Map 失败：{e}")))?;
+            .map_err(|e| GrabError::Other(format!("Map failed: {e}")))?;
         let pitch = mapped.RowPitch as usize;
         let len = pitch * desc.Height as usize;
         let data = std::slice::from_raw_parts(mapped.pData as *const u8, len);
@@ -191,8 +191,8 @@ pub fn grab_frame(out: &HdrOutput) -> Result<Frame, String> {
     let dup = open_duplication(out)?;
     match acquire(out, &dup, true) {
         Ok(Some(f)) => Ok(f),
-        Ok(None) => Err("桌面复制连续取不到有效帧".into()),
-        Err(GrabError::Lost) => Err("桌面复制会话失效".into()),
+        Ok(None) => Err("Desktop Duplication produced no valid frame".into()),
+        Err(GrabError::Lost) => Err("Desktop Duplication session lost".into()),
         Err(GrabError::Other(e)) => Err(e),
     }
 }

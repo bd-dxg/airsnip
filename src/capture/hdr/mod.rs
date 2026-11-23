@@ -46,7 +46,7 @@ pub fn capture_virtual_screen() -> Option<Result<CapturedScreen, String>> {
         )
     };
     if vw == 0 || vh == 0 {
-        return Some(Err("虚拟屏幕尺寸为 0，无法抓屏".into()));
+        return Some(Err("Virtual screen has zero size".into()));
     }
 
     let rects: Vec<windows::Win32::Foundation::RECT> = attached.iter().map(|o| o.rect).collect();
@@ -204,7 +204,7 @@ mod tests {
             let w = (out.rect.right - out.rect.left) as u32;
             let h = (out.rect.bottom - out.rect.top) as u32;
             let shot =
-                super::super::capture_region_bitblt(out.rect.left, out.rect.top, w, h, true).expect("BitBlt 失败");
+                super::super::capture_region_bitblt(out.rect.left, out.rect.top, w, h, true).expect("BitBlt failed");
             assert_eq!((shot.width, shot.height), (w, h), "矩形口径不一致：{:?}", out.rect);
             assert!(
                 shot.rgba.chunks_exact(4).any(|p| p[0] | p[1] | p[2] != 0),

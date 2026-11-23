@@ -88,7 +88,11 @@ impl App {
                         crate::longshot::run(x, y, w, h, hinstance, max_height, palette, ui_scale, longshot_save);
                     }
                 }
-                Err(e) => message_box(None, &format!("抓屏失败：{e}"), MB_OK | MB_ICONERROR),
+                Err(e) => message_box(
+                    None,
+                    &crate::i18n::fill(crate::i18n::AppKey::CaptureFailed.text(), &[("e", &e)]),
+                    MB_OK | MB_ICONERROR,
+                ),
             }
             OVERLAY_RUNNING.store(false, Ordering::Release);
             // 通知主线程重注册贴图热键（截图已结束）
@@ -97,7 +101,10 @@ impl App {
     }
 
     pub fn not_yet(&self, feature: &str, milestone: &str) {
-        let text = format!("{feature}尚未实现（{milestone}）。");
+        let text = crate::i18n::fill(
+            crate::i18n::AppKey::NotImplemented.text(),
+            &[("feature", feature), ("milestone", milestone)],
+        );
         message_box(Some(self.hwnd), &text, MB_OK | MB_ICONINFORMATION);
     }
 
@@ -123,6 +130,9 @@ impl App {
         self.config.last_save_dir = last_save_dir;
         self.config.save();
         self.register_hotkeys();
+        // 托盘 tooltip 是建图标时写进 `NOTIFYICONDATA` 的（菜单每次点击重建，不用管）：
+        // 改语言后要重设一次，否则切了语言、tooltip 还是旧文案。NIM_ADD 对已存在项是原地更新。
+        self.ensure_tray();
         // 贴图内边框快捷键（M2b）：立即下发给贴图窗口（含已存在的）
         crate::pin::set_border_key(cfg.hotkey.border_key, cfg.hotkey.border_modifiers);
     }

@@ -20,8 +20,14 @@ impl App {
             let _ = UnregisterHotKey(Some(self.hwnd), ID_HOTKEY_PIN);
         }
         let hk = &self.config.hotkey;
-        self.register_one(ID_HOTKEY_SHOT, hk.screenshot_key, hk.screenshot_modifiers, "截图");
-        self.register_one(ID_HOTKEY_PIN, hk.pin_key, hk.pin_modifiers, "贴图");
+        use crate::i18n::AppKey as A;
+        self.register_one(
+            ID_HOTKEY_SHOT,
+            hk.screenshot_key,
+            hk.screenshot_modifiers,
+            A::HotkeyNameCapture.text(),
+        );
+        self.register_one(ID_HOTKEY_PIN, hk.pin_key, hk.pin_modifiers, A::HotkeyNamePin.text());
     }
 
     fn register_one(&self, id: i32, key: u32, modifiers: u32, name: &str) {
@@ -37,10 +43,12 @@ impl App {
         let ok = unsafe { RegisterHotKey(Some(self.hwnd), id, mods, key) }.is_ok();
         if !ok {
             let err = unsafe { GetLastError() };
+            use crate::i18n::{self, AppKey as A};
+            let code = err.0.to_string();
             let text = if err.0 == ERROR_HOTKEY_ALREADY_REGISTERED {
-                format!("热键 {name} 注册失败：该键已被其他程序占用。\n请在设置中更换热键。")
+                i18n::fill(A::HotkeyTaken.text(), &[("name", name)])
             } else {
-                format!("热键 {name} 注册失败，错误码 {}.", err.0)
+                i18n::fill(A::HotkeyFailed.text(), &[("name", name), ("code", &code)])
             };
             message_box(Some(self.hwnd), &text, MB_OK | MB_ICONWARNING);
         }
@@ -60,11 +68,14 @@ impl App {
         {
             self.config.hotkey_warned = true;
             self.config.save();
-            message_box(
-                Some(self.hwnd),
-                "截图(F1)与贴图(F3)热键未使用修饰键，会覆盖其他程序的按键。\n如影响其他软件使用，请在设置中更换热键。",
-                MB_OK | MB_ICONINFORMATION,
+            // 提示里的键名必须取**当前实际键位**：写死 F1 / F3 在用户改键后就是谎报。
+            let shot = crate::settings::hotkey::key_name(hk.screenshot_key, 0);
+            let pin = crate::settings::hotkey::key_name(hk.pin_key, 0);
+            let text = crate::i18n::fill(
+                crate::i18n::AppKey::HotkeyNoModifier.text(),
+                &[("shot", &shot), ("pin", &pin)],
             );
+            message_box(Some(self.hwnd), &text, MB_OK | MB_ICONINFORMATION);
         }
     }
 

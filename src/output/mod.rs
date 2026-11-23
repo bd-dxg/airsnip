@@ -32,7 +32,7 @@ pub fn copy_to_clipboard(pixmap: &Pixmap) -> Result<(), String> {
 
     unsafe {
         if OpenClipboard(None).is_err() {
-            return Err("OpenClipboard 失败".into());
+            return Err("OpenClipboard failed".into());
         }
         let fail = |msg: String| {
             let _ = CloseClipboard();
@@ -40,7 +40,7 @@ pub fn copy_to_clipboard(pixmap: &Pixmap) -> Result<(), String> {
         };
 
         if EmptyClipboard().is_err() {
-            return Err(fail("EmptyClipboard 失败".into()));
+            return Err(fail("EmptyClipboard failed".into()));
         }
 
         // CF_DIB：BITMAPINFOHEADER + BGRA 像素。
@@ -52,11 +52,11 @@ pub fn copy_to_clipboard(pixmap: &Pixmap) -> Result<(), String> {
         let header_size = size_of::<BITMAPINFOHEADER>() as usize;
         let hdib = match GlobalAlloc(GMEM_MOVEABLE, header_size + bgra.len()) {
             Ok(h) => h,
-            Err(e) => return Err(fail(format!("GlobalAlloc CF_DIB 失败：{e}"))),
+            Err(e) => return Err(fail(format!("GlobalAlloc (CF_DIB) failed: {e}"))),
         };
         let ptr = GlobalLock(hdib);
         if ptr.is_null() {
-            return Err(fail("GlobalLock CF_DIB 失败".into()));
+            return Err(fail("GlobalLock (CF_DIB) failed".into()));
         }
         let header = BITMAPINFOHEADER {
             biSize: header_size as u32,
@@ -79,27 +79,27 @@ pub fn copy_to_clipboard(pixmap: &Pixmap) -> Result<(), String> {
         if SetClipboardData(CF_DIB.0 as u32, Some(HANDLE(hdib.0))).is_err() {
             // SetClipboardData 失败时剪贴板未接管句柄，必须自行释放
             let _ = GlobalFree(Some(HGLOBAL(hdib.0)));
-            return Err(fail("SetClipboardData CF_DIB 失败".into()));
+            return Err(fail("SetClipboardData (CF_DIB) failed".into()));
         }
 
         // PNG 格式（延迟渲染的简化：直接同步提供完整数据）。
         let fmt = RegisterClipboardFormatW(w!("PNG"));
         if fmt == 0 {
-            return Err(fail("RegisterClipboardFormatW(PNG) 返回 0".into()));
+            return Err(fail("RegisterClipboardFormatW(PNG) returned 0".into()));
         }
         let hpng = match GlobalAlloc(GMEM_MOVEABLE, png_bytes.len()) {
             Ok(h) => h,
-            Err(e) => return Err(fail(format!("GlobalAlloc PNG 失败：{e}"))),
+            Err(e) => return Err(fail(format!("GlobalAlloc (PNG) failed: {e}"))),
         };
         let pptr = GlobalLock(hpng);
         if pptr.is_null() {
-            return Err(fail("GlobalLock PNG 失败".into()));
+            return Err(fail("GlobalLock (PNG) failed".into()));
         }
         std::ptr::copy_nonoverlapping(png_bytes.as_ptr(), pptr as *mut u8, png_bytes.len());
         let _ = GlobalUnlock(hpng);
         if SetClipboardData(fmt, Some(HANDLE(hpng.0))).is_err() {
             let _ = GlobalFree(Some(HGLOBAL(hpng.0)));
-            return Err(fail("SetClipboardData PNG 失败".into()));
+            return Err(fail("SetClipboardData (PNG) failed".into()));
         }
 
         let _ = CloseClipboard();
@@ -120,22 +120,33 @@ pub fn save_file(pixmap: &Pixmap, path: &Path) -> Result<(), String> {
         Some("png") => save_png(pixmap, path),
         Some("jpg") | Some("jpeg") => save_jpeg(pixmap, path),
         Some("webp") => save_webp(pixmap, path),
-        other => Err(format!(
-            "不支持的图片格式：{}（请用 .png / .jpg / .webp）",
-            other.unwrap_or("（无扩展名）")
-        )),
+        other => {
+            use crate::i18n::{self, AppKey as A};
+            let ext = other.unwrap_or(A::NoExtension.text());
+            Err(i18n::fill(A::UnsupportedFormat.text(), &[("ext", ext)]))
+        }
     }
 }
 
 /// 保存 PNG（快速压缩，OUT-2）。
 pub fn save_png(pixmap: &Pixmap, path: &Path) -> Result<(), String> {
     let bytes = encode_png(pixmap)?;
-    std::fs::write(path, bytes).map_err(|e| format!("写入 {path:?} 失败：{e}"))
+    std::fs::write(path, bytes).map_err(|e| {
+        crate::i18n::fill(
+            crate::i18n::AppKey::SaveWriteFailed.text(),
+            &[("path", &path.display().to_string()), ("e", &e.to_string())],
+        )
+    })
 }
 
 /// 保存 JPEG（质量 90，OUT-2）。
 pub fn save_jpeg(pixmap: &Pixmap, path: &Path) -> Result<(), String> {
-    let file = std::fs::File::create(path).map_err(|e| format!("创建 {path:?} 失败：{e}"))?;
+    let file = std::fs::File::create(path).map_err(|e| {
+        crate::i18n::fill(
+            crate::i18n::AppKey::SaveCreateFailed.text(),
+            &[("path", &path.display().to_string()), ("e", &e.to_string())],
+        )
+    })?;
     let enc = jpeg_encoder::Encoder::new(file, 90);
     enc.encode(
         pixmap.data(),
@@ -143,7 +154,7 @@ pub fn save_jpeg(pixmap: &Pixmap, path: &Path) -> Result<(), String> {
         pixmap.height() as u16,
         jpeg_encoder::ColorType::Rgba,
     )
-    .map_err(|e| format!("JPEG 编码失败：{e}"))
+    .map_err(|e| crate::i18n::fill(crate::i18n::AppKey::EncodeJpegFailed.text(), &[("e", &e.to_string())]))
 }
 
 /// 默认保存目录：`%USERPROFILE%\Pictures\airsnip`。
@@ -172,8 +183,13 @@ pub fn save_webp(pixmap: &Pixmap, path: &Path) -> Result<(), String> {
             pixmap.height(),
             image_webp::ColorType::Rgba8,
         )
-        .map_err(|e| format!("WebP 编码失败：{e}"))?;
-    std::fs::write(path, out).map_err(|e| format!("写入 {path:?} 失败：{e}"))
+        .map_err(|e| crate::i18n::fill(crate::i18n::AppKey::EncodeWebpFailed.text(), &[("e", &e.to_string())]))?;
+    std::fs::write(path, out).map_err(|e| {
+        crate::i18n::fill(
+            crate::i18n::AppKey::SaveWriteFailed.text(),
+            &[("path", &path.display().to_string()), ("e", &e.to_string())],
+        )
+    })
 }
 
 /// 按命名模板生成基础文件名（不含扩展名，OUT-2）：
