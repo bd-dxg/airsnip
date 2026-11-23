@@ -166,7 +166,7 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         WindowClassFailed => "Failed to register the settings window class",
         WindowCreateFailed => "Failed to create the settings window: {e}",
         AutostartFailed => {
-            "Could not set up auto-start: the scheduled task could not be created or removed.\nRun AirSnip as administrator and try again."
+            "Could not set up auto-start: the scheduled task could not be created or removed.\nCheck whether scheduled tasks are blocked by policy, or whether this account can manage them."
         }
     }
 }

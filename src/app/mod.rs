@@ -5,6 +5,7 @@
 
 mod actions;
 pub mod autostart;
+pub(crate) mod elevation;
 pub mod filedlg;
 pub(crate) mod hotkey;
 pub(crate) mod mouse;

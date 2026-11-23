@@ -10,6 +10,9 @@ pub(in crate::i18n) fn app(k: crate::i18n::AppKey) -> &'static str {
         TraySettings => "设置...",
         TrayQuit => "退出",
 
+        PermissionBalloonTitle => "以普通权限运行",
+        PermissionBalloonBody => "管理员窗口可能截不到，需要时请以管理员身份重开。",
+
         DialogSaveImage => "保存截图",
         DialogPng => "PNG 图片",
         DialogJpeg => "JPEG 图片",

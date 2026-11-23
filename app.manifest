@@ -8,11 +8,13 @@
       <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
     </dependentAssembly>
   </dependency>
-  <!-- 始终以管理员运行：可覆盖管理员窗口、可向管理员窗口发送输入（见 ADR 0003） -->
+  <!-- 权限按账户能力取最高（ADR 0003 / 0048）：管理员账户照旧自动提权（可覆盖、可截管理员窗口），
+       标准用户（含被组策略限制提权的公司电脑）以普通权限直接启动，不被 UAC 拦住。
+       代价：普通权限下截不到以管理员运行的程序窗口，启动后弹一次气泡说明（issue #198）。 -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <requestedExecutionLevel level="highestAvailable" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>

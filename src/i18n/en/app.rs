@@ -10,6 +10,11 @@ pub(in crate::i18n) fn app(k: crate::i18n::AppKey) -> &'static str {
         TraySettings => "Settings...",
         TrayQuit => "Exit",
 
+        PermissionBalloonTitle => "Running with standard permissions",
+        PermissionBalloonBody => {
+            "Windows run as administrator may not be captured. Restart as administrator if you need them."
+        }
+
         DialogSaveImage => "Save screenshot",
         DialogPng => "PNG image",
         DialogJpeg => "JPEG image",

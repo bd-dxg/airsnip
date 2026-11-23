@@ -8,7 +8,7 @@
       <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
     </dependentAssembly>
   </dependency>
-  <!-- 开发构建不提权，便于 cargo run / cargo test；正式发布用 app.manifest（requireAdministrator），见 ADR 0003 -->
+  <!-- 开发构建不提权，便于 cargo run / cargo test；正式发布用 app.manifest（highestAvailable），见 ADR 0003 / 0048 -->
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>

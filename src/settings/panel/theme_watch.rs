@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 系统主题变化监听（SYS-6）：注册表通知线程，变化时给设置面板投递消息。
 //!
-//! 不用 `WM_SETTINGCHANGE` 做唯一入口：AirSnip 以管理员权限运行，而深/浅色切换的
-//! 广播通常由用户级进程（设置应用 / explorer）发出，会被 UIPI 挡在高完整性窗口之外，
-//! 表现为「选了跟随系统，切主题面板毫无反应」。
+//! 不用 `WM_SETTINGCHANGE` 做唯一入口：AirSnip 通常以管理员权限运行（ADR 0048），
+//! 而深/浅色切换的广播通常由用户级进程（设置应用 / explorer）发出，会被 UIPI 挡在
+//! 高完整性窗口之外，表现为「选了跟随系统，切主题面板毫无反应」。
 //! 注册表通知不经过窗口消息过滤，且 `RegNotifyChangeKeyValue` 是事件驱动的
 //! （线程阻塞在 `WaitForSingleObject`），不违反「待机 0% CPU、无轮询」红线。
 

@@ -56,7 +56,8 @@ pub(super) fn create_message_window(hinstance: HINSTANCE) -> Result<HWND, String
                 ));
             }
         };
-        // UIPI：本进程 requireAdministrator，explorer 是普通权限。不放行的话，
+        // UIPI：本进程通常已提权（manifest highestAvailable，ADR 0048），explorer
+        // 是普通权限。不放行的话，
         // explorer 重启后的 TaskbarCreated 广播与托盘点击的 WM_TRAY 都会被静默
         // 丢弃（图标消失且点击无响应，见 ADR 0013）。
         let taskbar_msg = tray::taskbar_created_message();

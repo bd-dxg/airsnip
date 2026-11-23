@@ -71,7 +71,7 @@
 ## 复现
 
 ```powershell
-# 管理员 PowerShell（release 版 manifest 要求提权）
+# 管理员 PowerShell（release 版在管理员账户下会提权，脚本需与目标同权限）
 $env:AIRSNIP_TIMING = "1"
 .\scripts\perf-capture.ps1 -Rounds 5     # 热键延迟 + 帧耗时
 .\scripts\perf.ps1 -Seconds 10           # 待机 CPU / 内存（需程序在运行）

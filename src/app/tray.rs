@@ -69,6 +69,8 @@ impl App {
             unsafe {
                 let _ = KillTimer(Some(self.hwnd), TIMER_TRAY_RETRY);
             }
+            // 图标就绪才有地方挂气泡，所以降权提示放在这个分支（静态标记保证每次运行只弹一次）
+            self.note_not_elevated();
             return;
         }
         if self.tray_retry >= TRAY_RETRY_MAX {
@@ -84,6 +86,21 @@ impl App {
     pub fn restore_tray(&mut self) {
         self.tray_retry = 0;
         self.ensure_tray();
+    }
+
+    /// 普通权限运行时的一条提示（issue #198，ADR 0048）：
+    /// 程序能正常用，但 UIPI 会让以管理员身份运行的程序窗口截不到（黑块 / 盖不住），
+    /// 用户不知道就会当成新 bug 来报。每次运行只弹一次。
+    fn note_not_elevated(&self) {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static SHOWN: AtomicBool = AtomicBool::new(false);
+        if super::elevation::is_elevated() || SHOWN.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        self.balloon(
+            crate::i18n::AppKey::PermissionBalloonTitle.text(),
+            crate::i18n::AppKey::PermissionBalloonBody.text(),
+        );
     }
 
     /// 托盘气泡提示（SYS-7）：静默检查发现新版本时用，不用模态框打断用户。

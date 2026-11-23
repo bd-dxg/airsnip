@@ -10,6 +10,11 @@ pub(in crate::i18n) fn app(k: crate::i18n::AppKey) -> &'static str {
         TraySettings => "設定...",
         TrayQuit => "終了",
 
+        PermissionBalloonTitle => "標準権限で実行中",
+        PermissionBalloonBody => {
+            "管理者として実行中のウインドウは撮影できない場合があります。必要なら管理者として起動し直してください。"
+        }
+
         DialogSaveImage => "スクリーンショットを保存",
         DialogPng => "PNG 画像",
         DialogJpeg => "JPEG 画像",

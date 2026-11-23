@@ -158,6 +158,8 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         WindowTitle => "AirSnip 设置",
         WindowClassFailed => "设置窗口类注册失败",
         WindowCreateFailed => "创建设置窗口失败：{e}",
-        AutostartFailed => "开机自启设置失败：无法创建或删除任务计划。\n请以管理员权限重新运行本程序后再试。",
+        AutostartFailed => {
+            "开机自启设置失败：无法创建或删除任务计划。\n请检查是否被系统策略限制，或确认当前账户有权限管理计划任务。"
+        }
     }
 }

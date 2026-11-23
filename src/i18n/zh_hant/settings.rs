@@ -157,6 +157,8 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         WindowTitle => "AirSnip 設定",
         WindowClassFailed => "設定視窗類別註冊失敗",
         WindowCreateFailed => "建立設定視窗失敗：{e}",
-        AutostartFailed => "開機自啟設定失敗：無法建立或刪除工作排程。\n請以管理員權限重新執行本程式後再試。",
+        AutostartFailed => {
+            "開機自啟設定失敗：無法建立或刪除工作排程。\n請檢查是否被系統策略限制，或確認目前帳戶有權限管理工作排程。"
+        }
     }
 }

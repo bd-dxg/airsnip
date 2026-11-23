@@ -1,5 +1,5 @@
 # 性能采集（M5）：启动 AirSnip → 模拟 F1 截图 + 拖框绘制多帧 → 解析 AIRSNIP_TIMING 日志。
-# 用法（需与目标程序同权限；release 版要管理员）：
+# 用法（需与目标程序同权限；release 版管理员账户下会提权）：
 #   pwsh -File scripts/perf-capture.ps1                     # 默认 release
 #   pwsh -File scripts/perf-capture.ps1 -Exe .\target\debug\airsnip.exe -Rounds 3
 # 结果对照 PRD §6：热键→覆盖层 ≤150ms(1080p)/≤250ms(4K)，交互 ≥60FPS（每帧 ≤16.7ms）。

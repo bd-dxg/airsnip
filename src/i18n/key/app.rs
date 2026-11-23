@@ -13,6 +13,12 @@ keys!(
         TraySettings,
         TrayQuit,
 
+        // ── 权限提示（app.elevation.*，ADR 0048）──
+        /// 普通权限启动时的托盘气泡标题。
+        PermissionBalloonTitle,
+        /// 普通权限启动时的托盘气泡正文。
+        PermissionBalloonBody,
+
         // ── 文件对话框（app.dialog.*）──
         DialogSaveImage,
         DialogPng,

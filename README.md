@@ -138,7 +138,7 @@ AirSnip 免费、开源、无广告、无内购，也没有商业化计划。开
 ### 安装
 
 1. 从 [Releases](https://github.com/bd-dxg/airsnip/releases) 下载 `airsnip-v*-win-x64.zip`，解压到任意目录（绿色单文件，无需安装）
-2. 双击 `airsnip.exe`：程序**需要管理员权限**（否则无法覆盖管理员权限的窗口，见 ADR 0003），首次运行会弹 UAC，请选「是」
+2. 双击 `airsnip.exe`：程序按**当前账户的最高可达权限**运行（manifest `highestAvailable`，见 ADR 0048）——管理员账户会弹 UAC，选「是」即可完整使用（能截取管理员权限的窗口）；标准账户不提权、不弹框，直接以普通权限运行，代价是截不到以管理员身份运行的程序窗口（启动时会弹一次托盘气泡说明）
 3. 启动后托盘常驻（无主窗口），按 `F1` 截图 / `F3` 贴图；托盘左键打开设置，右键为「设置 / 退出」
 4. 配置位置：`%APPDATA%\airsnip\config.toml`
 
@@ -250,9 +250,12 @@ AirSnip 免费、开源、无广告、无内购，也没有商业化计划。开
 ## 常见问题
 
 <details>
-<summary><strong>需要管理员权限吗？为什么必须提权？</strong></summary>
+<summary><strong>需要管理员权限吗？</strong></summary>
 
-需要。要覆盖 / 操作管理员权限的窗口必须先有同等权限（见 ADR 0003），因此开机自启走任务计划而不是注册表 `Run` 键。首次运行会弹 UAC，请选「是」。
+不一定要。程序按当前账户的最高可达权限运行（manifest `highestAvailable`，见 ADR 0048）：
+
+- **管理员账户**：首次运行会弹 UAC，请选「是」。要覆盖 / 操作以管理员权限运行的窗口必须先有同等权限（见 ADR 0003），开机自启也因此走任务计划而不是注册表 `Run` 键。
+- **标准账户**（如公司 / 学校统一管理的电脑）：不提权、不弹框，直接以普通权限运行。绝大部分截图不受影响，只是以管理员身份运行的程序窗口可能截不到（画面全黑），启动时会弹一次托盘气泡说明。
 
 </details>
 
@@ -320,7 +323,7 @@ exe 未做代码签名，Windows SmartScreen 会拦一下：点「更多信息�
 
 ```powershell
 cargo run                 # 开发版（不提权，可调试）
-cargo build --release     # 发布版（manifest 要求管理员权限，单文件）
+cargo build --release     # 发布版（manifest 为 highestAvailable：管理员账户提权、标准用户普通权限）
 cargo test                # 单测（另有需 --ignored 手动触发的集成测试）
 cargo fmt --check         # 格式化检查
 cargo deny check          # 依赖许可证 / 安全公告 / 来源检查

@@ -4,7 +4,8 @@
 //! Windows 下运行中的 exe 不能被覆盖，所以流程是：
 //! 下载到 `%TEMP%` → 校验和比对 → 写一个 `.cmd` → 启动脚本 → 主进程退出 →
 //! 脚本等进程消失后 `copy` 覆盖并重启 → 脚本自删。
-//! 程序始终以管理员运行（ADR 0003），脚本继承提权，无需再弹 UAC。
+//! 程序通常已提权（manifest `highestAvailable`，ADR 0048），脚本继承当前权限，
+//! 提权情形下无需再弹 UAC；普通权限下若安装目录不可写，替换会失败（旧进程仍在）。
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

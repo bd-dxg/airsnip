@@ -104,7 +104,7 @@ fn main() {
         return;
     }
     println!(
-        "探针进程：提权={}（AirSnip 本体是 requireAdministrator，所以这里的提权结果才是真实运行环境）",
+        "探针进程：提权={}（AirSnip 本体通常会提权（highestAvailable），所以这里的提权结果才是真实运行环境）",
         match is_elevated() {
             Some(true) => "是",
             Some(false) => "否",

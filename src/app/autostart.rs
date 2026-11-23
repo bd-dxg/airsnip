@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 开机自启（SYS-4）：任务计划 ONLOGON + 最高权限（见 ADR 0003）。
-//! 程序始终以管理员运行，HKCU Run 键无法启动需提权的程序，故改用 schtasks。
+//! 开机自启（SYS-4）：任务计划 ONLOGON + 与当前权限一致的最高执行级别（见 ADR 0003 / 0048）。
+//! 用任务计划而不是 HKCU Run 键：需要提权的程序 Run 键启不起来。
 
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 
@@ -12,13 +12,22 @@ pub fn autostart_enabled() -> bool {
     run_schtasks(&["/Query", "/TN", TASK_NAME])
 }
 
-/// 设置开机自启（SYS-4）：创建/删除登录时以最高权限运行的任务计划。
+/// 设置开机自启（SYS-4）：创建/删除登录时运行的任务计划。
 /// 返回是否成功（通常因权限不足失败，调用方负责提示）。
+///
+/// 执行级别跟随当前进程（ADR 0048）：已提权时 `/RL HIGHEST`，否则 `/RL LIMITED`。
+/// 标准用户建不了 HIGHEST 任务（schtasks 直接拒绝），而降级任务本身也拿不到
+/// 更高权限，所以普通权限下只有 LIMITED 有意义。
 pub fn set_autostart(enabled: bool) -> bool {
     if enabled {
         let path = exe_path_quoted();
+        let level = if crate::app::elevation::is_elevated() {
+            "HIGHEST"
+        } else {
+            "LIMITED"
+        };
         run_schtasks(&[
-            "/Create", "/F", "/TN", TASK_NAME, "/TR", &path, "/SC", "ONLOGON", "/RL", "HIGHEST",
+            "/Create", "/F", "/TN", TASK_NAME, "/TR", &path, "/SC", "ONLOGON", "/RL", level,
         ])
     } else {
         run_schtasks(&["/Delete", "/F", "/TN", TASK_NAME])

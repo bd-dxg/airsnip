@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-only
 //! 构建脚本：嵌入 Windows manifest 与图标资源。
-//! release 构建声明 requireAdministrator，dev 构建不提权（见 ADR 0003）。
+//! release 构建声明 highestAvailable（管理员账户自动提权、标准用户普通权限），
+//! dev 构建不提权（见 ADR 0003 / 0048）。
 
 fn main() {
     let profile = std::env::var("PROFILE").unwrap_or_default();

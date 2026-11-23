@@ -20,9 +20,15 @@ pub fn render(info: &SystemInfo, cfg: &Config, ui_scale: f32) -> String {
     )
 }
 
-/// 首行：版本 + Windows 版本 + 显卡。版本放最前，方便顺手抄到「版本」字段。
+/// 首行：版本 + 权限 + Windows 版本 + 显卡。版本放最前，方便顺手抄到「版本」字段。
+/// 权限（ADR 0048）：普通权限下截不到管理员窗口，排障时这是第一个要看的信息。
 fn headline(info: &SystemInfo) -> String {
     let mut parts = vec![format!("AirSnip v{}", env!("CARGO_PKG_VERSION"))];
+    parts.push(if crate::app::elevation::is_elevated() {
+        "管理员权限".to_string()
+    } else {
+        "普通权限".to_string()
+    });
     parts.push(info.os.clone());
     if !info.gpus.is_empty() {
         parts.push(format!("显卡 {}", info.gpus.join(" / ")));
@@ -167,6 +173,7 @@ mod tests {
             lines[0].starts_with(&format!("AirSnip v{}", env!("CARGO_PKG_VERSION"))),
             "{text}"
         );
+        assert!(lines[0].contains("权限"), "首行应带上当前权限状态（ADR 0048）：{text}");
         assert!(lines[1].starts_with("显示器："), "{text}");
         assert!(lines[2].starts_with("开关："), "{text}");
         // 不带 issue form 的小节标题（模板字段是分开的，粘不了）

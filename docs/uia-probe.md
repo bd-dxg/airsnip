@@ -64,7 +64,8 @@ cargo run --release --example uia-probe -- follow 60        # 终端 B：把鼠�
 说明失败取决于**该点当时的目标窗口**，不是探针代码。常见成因：目标属于更高完整性级别的进程（UIPI），
 或 AppContainer / WebView2 内容区不接受非 `UIAccess` 调用方。
 
-这一点必须是 go/no-go 级的实测：**AirSnip 本体是 `requireAdministrator`**，与探针的普通权限上下文不同，
+这一点必须是 go/no-go 级的实测：**AirSnip 本体通常会提权**（manifest `highestAvailable`，管理员账户下等同 `requireAdministrator`，
+标准用户下为普通权限，见 ADR 0048），与探针的普通权限上下文不同，
 所以要用「普通终端 vs 管理员终端」各跑一次 `point` 对比。
 
 `scan` 共 70 次采样，其中 50 次因上方窗口遮挡被跳过；可统计目标是 Edge（Chromium）与任务栏。
