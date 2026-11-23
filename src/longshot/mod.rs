@@ -47,9 +47,15 @@ pub fn run(
     };
     let window::Outcome { pixmap, save_as } = outcome;
     // 输出：复制 + 保存（与普通截图 Enter / Ctrl+S 行为一致，OUT-1/OUT-2）
+    // 错误文案与覆盖层共用（`OverlayKey::OutputCopyFailed` / `OutputSaveFailed`），
+    // 同一件事不维护两份译文。
     std::thread::spawn(move || {
         if let Err(e) = crate::output::copy_to_clipboard(&pixmap) {
-            crate::app::message_box(None, &format!("复制失败：{e}"), MB_OK | MB_ICONERROR);
+            let text = crate::i18n::fill(
+                crate::i18n::OverlayKey::OutputCopyFailed.text(),
+                &[("e", &e.to_string())],
+            );
+            crate::app::message_box(None, &text, MB_OK | MB_ICONERROR);
         }
         // 另存为：用户已选好路径与格式，不再额外往默认目录写一份
         let path = match save_as {
@@ -61,7 +67,11 @@ pub fn run(
             }
         };
         if let Err(e) = crate::output::save_file(&pixmap, &path) {
-            crate::app::message_box(None, &format!("保存失败：{e}"), MB_OK | MB_ICONERROR);
+            let text = crate::i18n::fill(
+                crate::i18n::OverlayKey::OutputSaveFailed.text(),
+                &[("e", &e.to_string())],
+            );
+            crate::app::message_box(None, &text, MB_OK | MB_ICONERROR);
         }
     });
 }

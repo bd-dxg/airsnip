@@ -38,10 +38,24 @@ impl Source for ScreenSource {
         let (w, h) = (self.w, self.h);
         let rgba = self.region.grab()?;
         if rgba.len() != (w * h * 4) as usize {
-            return Err("抓帧尺寸不符".into());
+            return Err("Frame size mismatch".into());
         }
         Ok(rgba.to_vec())
     }
+}
+
+/// 状态条提示（I18N-2 / ADR 0047）：这里只给「哪种状态」，文案由 `bar` 按当前语言查表——
+/// 存字符串的话，界面上会留着按旧语言渲染的一段字。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Hint {
+    /// 正常进度（状态条显示常驻提示）。
+    None,
+    /// 用户取消。
+    Cancelled,
+    /// 拼接完成。
+    Finished,
+    /// 连续定位失败（`FAIL_HINT` 拍），提示向回滚动。
+    Failed,
 }
 
 /// 长截图会话状态。
@@ -57,8 +71,6 @@ pub struct Session {
     fail_run: u32,
     pub finished: bool,
     pub cancelled: bool,
-    /// 最近一条状态文本（调试/测试用）。
-    pub status: String,
     /// 抓帧序号（调试用）。
     frame_seq: u32,
 }
@@ -72,7 +84,7 @@ impl Session {
     /// 用指定帧源构造（测试注入模拟页面）。
     pub fn with_source(source: Box<dyn Source>, w: u32, h: u32, max_height: u32) -> Result<Self, String> {
         if w == 0 || h == 0 {
-            return Err("长截图视口尺寸非法".into());
+            return Err(crate::i18n::LongshotKey::ErrorViewport.text().into());
         }
         Ok(Self {
             w,
@@ -83,7 +95,6 @@ impl Session {
             fail_run: 0,
             finished: false,
             cancelled: false,
-            status: String::new(),
             frame_seq: 0,
         })
     }
@@ -132,12 +143,8 @@ impl Session {
             Ok(frame) => {
                 self.canvas.seed(&frame);
                 self.seeded = true;
-                self.status = format!("已拼 {} px · 滚轮滚动页面，Enter 完成", self.canvas.height());
             }
-            Err(e) => {
-                self.cancelled = true;
-                self.status = format!("抓屏失败：{e}");
-            }
+            Err(_) => self.cancelled = true,
         }
         true
     }
@@ -148,32 +155,18 @@ impl Session {
             Ok(frame) => match self.canvas.push(&frame, self.h) {
                 Step::Appended { rows, .. } => {
                     self.fail_run = 0;
-                    self.status = format!(
-                        "已拼 {} px(+{rows}) · Enter 完成 / Esc 取消 / Ctrl+Z 撤销",
-                        self.canvas.height()
-                    );
                     super::debug::log(&format!("appended +{rows}, total {}", self.canvas.height()));
                 }
-                Step::Still => {
-                    // 画面静止：之前的错位已不相关，清掉失败提示
-                    self.fail_run = 0;
-                    self.status = format!("已拼 {} px · 滚轮滚动页面，Enter 完成", self.canvas.height());
-                }
+                // 画面静止：之前的错位已不相关，清掉失败提示
+                Step::Still => self.fail_run = 0,
                 Step::Failed => {
                     self.fail_run += 1;
-                    // 失败时引擎不推进参考帧，向回滚一点就能重新接上。
-                    self.status = "检测到滚动但拼接失败，请向回滚动一点或放慢速度".to_string();
+                    // 失败时引擎不推进参考帧，向回滚一点就能重新接上（提示由 `hint` 给）。
                     super::debug::log("failed: locate mismatch");
                 }
-                Step::Limit => {
-                    self.finished = true;
-                    self.status = "已达高度上限，长截图完成".to_string();
-                }
+                Step::Limit => self.finished = true,
             },
-            Err(e) => {
-                self.cancelled = true;
-                self.status = format!("抓屏失败：{e}");
-            }
+            Err(_) => self.cancelled = true,
         }
         true
     }
@@ -193,16 +186,16 @@ impl Session {
         self.canvas.can_undo()
     }
 
-    /// 状态条提示（空串 = 正常进度）。
-    pub fn hint(&self) -> &'static str {
+    /// 状态条提示（`Hint::None` = 正常进度）。
+    pub fn hint(&self) -> Hint {
         if self.cancelled {
-            "已取消"
+            Hint::Cancelled
         } else if self.finished {
-            "已完成"
+            Hint::Finished
         } else if self.fail_run >= FAIL_HINT {
-            "拼接定位失败，请向回滚动一点"
+            Hint::Failed
         } else {
-            ""
+            Hint::None
         }
     }
 
@@ -210,18 +203,15 @@ impl Session {
     pub fn undo(&mut self) {
         if self.canvas.undo_last() {
             self.fail_run = 0;
-            self.status = format!("已撤销，当前 {} px", self.canvas.height());
-        } else {
-            self.status = "没有可撤销的段".to_string();
         }
     }
 
     /// 导出拼接结果；失败返回错误文本。
     pub fn result(&self) -> Result<tiny_skia::Pixmap, String> {
         if self.canvas.height() == 0 {
-            return Err("画布为空".into());
+            return Err("Canvas is empty".into());
         }
-        self.canvas.to_pixmap().ok_or_else(|| "画布转像素图失败".into())
+        self.canvas.to_pixmap().ok_or_else(|| "Canvas to pixmap failed".into())
     }
 }
 
@@ -342,7 +332,7 @@ mod tests {
         }
         assert_eq!(s.height(), settled, "到底后画布不应继续增长");
         assert!(!s.finished, "手动模式不自动结束");
-        assert_eq!(s.hint(), "", "到底后不应显示失败提示");
+        assert_eq!(s.hint(), Hint::None, "到底后不应显示失败提示");
     }
 
     /// 撤销最后一段：高度回退，且无段可撤时不再变化。

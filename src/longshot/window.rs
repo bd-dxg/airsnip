@@ -146,7 +146,8 @@ pub fn run(
     let session = match Session::new(x, y, w, h, max_height) {
         Ok(s) => s,
         Err(e) => {
-            crate::app::message_box(None, &format!("长截图初始化失败：{e}"), MB_OK | MB_ICONERROR);
+            let text = crate::i18n::fill(crate::i18n::LongshotKey::ErrorInit.text(), &[("e", &e)]);
+            crate::app::message_box(None, &text, MB_OK | MB_ICONERROR);
             return None;
         }
     };
@@ -191,7 +192,7 @@ pub fn run(
             // WS_EX_NOACTIVATE：不抢焦点（手动模式下用户自行在目标页面滚动，状态条不抢焦点）。
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             w!("airsnip.longshot"),
-            w!("长截图"),
+            w!("长截图"), // i18n:keep（WS_POPUP 无标题栏，标题不可见；仅调试身份标识）
             WS_POPUP,
             bx,
             by,
@@ -203,7 +204,8 @@ pub fn run(
             None,
         )
         .map_err(|e| {
-            crate::app::message_box(None, &format!("创建长截图窗口失败：{e}"), MB_OK | MB_ICONERROR);
+            let text = crate::i18n::fill(crate::i18n::LongshotKey::ErrorWindow.text(), &[("e", &e.to_string())]);
+            crate::app::message_box(None, &text, MB_OK | MB_ICONERROR);
         })
         .ok()?;
         // 执行窗口禁输入法：中文 IME 会截走 Enter/Esc/Space 等按键。

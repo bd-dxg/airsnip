@@ -8,12 +8,15 @@
 use tiny_skia::{Pixmap, Transform};
 
 use crate::editor::Point;
+use crate::i18n::LongshotKey as L;
 use crate::overlay::geometry::SelRect;
 use crate::overlay::shape::{paint_of, rounded_path, rounded_rect};
 use crate::overlay::ui::Ui;
 use crate::render::icon::{self, Icon};
 use crate::render::text as dwrite;
 use crate::theme::Palette;
+
+use super::session::Hint;
 
 /// 状态条高度基准值（物理像素）。
 const BAR_H_BASE: f32 = 40.0;
@@ -54,12 +57,12 @@ impl Button {
     /// 改键时两处要一起改，否则气泡会谎报。
     pub(super) fn tip_text(self) -> String {
         let (label, key) = match self {
-            Button::Undo => ("撤销", "Ctrl+Z"),
-            Button::SaveAs => ("另存为", "Ctrl+S"),
+            Button::Undo => (L::BarTipUndo.text(), "Ctrl+Z"),
+            Button::SaveAs => (L::BarTipSaveAs.text(), "Ctrl+S"),
             // 图标统一成复制（见 `render`）：文案里说明“复制 + 落盘 + 结束”，
             // 否则容易被读成“只复制不结束”（与普通截图的复制按钮不同，那个才是只复制）
-            Button::Done => ("完成（复制并保存）", "Enter"),
-            Button::Cancel => ("取消", "Esc"),
+            Button::Done => (L::BarTipDone.text(), "Enter"),
+            Button::Cancel => (L::BarTipCancel.text(), "Esc"),
         };
         format!("{label} · {key}")
     }
@@ -115,8 +118,8 @@ impl Bar {
 pub struct State {
     /// 是否可撤销。
     pub can_undo: bool,
-    /// 提示文字（拼接失败等）。
-    pub hint: &'static str,
+    /// 提示状态（文案在 `render` 里按当前语言查表，I18N-2）。
+    pub hint: Hint,
     /// 悬停中的按钮：与普通截图工具栏一致，立即给底色、气泡延迟出现。
     pub hover: Option<Button>,
 }
@@ -206,10 +209,11 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
     }
 
     // 中间提示文字（像素数不再显示：右侧预览窗已给出拼接结果，LNG-3）
-    let text = if state.hint.is_empty() {
-        "滚轮滚动 · Enter 完成 · Ctrl+S 另存为"
-    } else {
-        state.hint
+    let text = match state.hint {
+        Hint::None => L::BarIdle.text(),
+        Hint::Cancelled => L::HintCancelled.text(),
+        Hint::Finished => L::HintFinished.text(),
+        Hint::Failed => L::HintFailed.text(),
     };
     let tx = ui.px(PAD_BASE) as f32;
     let spec = dwrite::FontSpec::new(ui.f(FONT_BASE));
@@ -235,6 +239,43 @@ mod tests {
         Ui::from_dpi(96)
     }
 
+    /// 状态条一行文字的可量宽（最窄条的可用宽度）：从内边距右缘到「撤销」左侧留白。
+    fn text_avail(bar: &Bar) -> f32 {
+        let undo_x = bar
+            .hits
+            .iter()
+            .find(|(_, b)| *b == Button::Undo)
+            .map(|(r, _)| r.x)
+            .unwrap_or(bar.rect.w);
+        undo_x as f32 - ui_pad(bar.ui) - bar.ui.f(4.0)
+    }
+
+    fn ui_pad(ui: Ui) -> f32 {
+        ui.px(PAD_BASE) as f32
+    }
+
+    /// 四门语言的状态条文案在最窄条（470 基准像素）下都能完整画出。
+    /// 放不下时 `render` 会**整段不画**（不是截断），所以这里必须按语言逐个量（ADR 0047 B3）。
+    #[test]
+    fn every_language_text_fits_minimal_bar() {
+        use crate::i18n::Lang;
+        let ui = base();
+        let bar = layout(100, 300, 100, 600, 1080, ui);
+        let avail = text_avail(&bar);
+        for lang in Lang::ALL {
+            let spec =
+                dwrite::FontSpec::from_parts(&std::sync::Arc::from(lang.ui_family()), ui.f(FONT_BASE), false, false);
+            for key in [L::BarIdle, L::HintCancelled, L::HintFinished, L::HintFailed] {
+                let text = crate::i18n::text(lang, crate::i18n::Key::Longshot(key));
+                let (tw, _) = dwrite::measure(text, &spec);
+                assert!(
+                    tw <= avail,
+                    "{lang:?} 的 {key:?} 宽 {tw:.1}px 超过最窄条的可用宽度 {avail:.1}px（状态条会整段不画）"
+                );
+            }
+        }
+    }
+
     #[test]
     fn layout_hits_all_buttons() {
         let ui = base();
@@ -253,24 +294,6 @@ mod tests {
         assert_eq!(bar.hit(bar.rect.w / 2, cy), None);
     }
 
-    /// 提示文字在最窄状态下也能完整放下（四个按钮不能把文字挤没）。
-    #[test]
-    fn hint_text_fits_min_width() {
-        let ui = base();
-        let bar = layout(100, 300, 100, 600, 1080, ui);
-        let btn = ui.px(BTN_BASE);
-        let undo_x = bar
-            .hits
-            .iter()
-            .find(|(_, b)| *b == Button::Undo)
-            .map(|(r, _)| r.x)
-            .unwrap_or(bar.rect.w);
-        let avail = undo_x as f32 - ui.px(PAD_BASE) as f32 - ui.f(4.0);
-        let spec = dwrite::FontSpec::new(ui.f(FONT_BASE));
-        let (tw, _) = dwrite::measure("滚轮滚动 · Enter 完成 · Ctrl+S 另存为", &spec);
-        assert!(tw < avail, "提示文字宽 {tw} 应小于可用宽度 {avail}（按钮 {btn}px）");
-    }
-
     #[test]
     fn bar_falls_back_above_when_no_room_below() {
         let bar = layout(100, 800, 900, 160, 1080, base());
@@ -283,7 +306,7 @@ mod tests {
         let mut px = Pixmap::new(bar.rect.w as u32, bar.rect.h as u32).unwrap();
         let state = State {
             can_undo: true,
-            hint: "",
+            hint: Hint::None,
             hover: None,
         };
         render(&mut px, &bar, &state, &crate::theme::LIGHT);
@@ -300,7 +323,7 @@ mod tests {
             let mut px = Pixmap::new(bar.rect.w as u32, bar.rect.h as u32).unwrap();
             let state = State {
                 can_undo: true,
-                hint: "",
+                hint: Hint::None,
                 hover,
             };
             render(&mut px, &bar, &state, &crate::theme::LIGHT);
@@ -342,7 +365,8 @@ mod tests {
             let t = b.tip_text();
             assert!(t.contains(" · "), "{b:?} 的提示应带快捷键：{t}");
         }
-        assert_eq!(Button::Done.tip_text(), "完成（复制并保存） · Enter");
+        // 文案走语言表，断言取同一个来源，不写死某一种语言的句子
+        assert_eq!(Button::Done.tip_text(), format!("{} · Enter", L::BarTipDone.text()));
     }
 
     /// 高 DPI 下状态条整体放大，按钮命中区同步（CAP-5）。
@@ -355,6 +379,32 @@ mod tests {
         // 最右侧按钮中心仍可命中
         let x = hidpi.rect.w - hidpi.ui.px(PAD_BASE) - hidpi.ui.px(BTN_BASE) / 2;
         assert_eq!(hidpi.hit(x, hidpi.rect.h / 2), Some(Button::Cancel));
+    }
+
+    /// 人工核对用：`cargo test bar_lang_dump -- --ignored --nocapture` 按语言各落两张 PNG
+    /// （常驻提示 + 最长的那条失败提示），确认译文真的画得出来、也不截断。
+    /// 量宽有单测守门，但「字体族缺字变豆腐块」这类只能靠眍着看。
+    #[test]
+    #[ignore]
+    fn bar_lang_dump() {
+        let bar = layout(0, 600, 0, 400, 1080, base());
+        let prev = crate::i18n::current();
+        for lang in crate::i18n::Lang::ALL {
+            crate::i18n::set_current(lang);
+            for (name, hint) in [("idle", Hint::None), ("failed", Hint::Failed)] {
+                let mut px = Pixmap::new(bar.rect.w as u32, bar.rect.h as u32).unwrap();
+                let state = State {
+                    can_undo: true,
+                    hint,
+                    hover: None,
+                };
+                render(&mut px, &bar, &state, &crate::theme::LIGHT);
+                let path = std::env::temp_dir().join(format!("airsnip-bar-{lang:?}-{name}.png"));
+                std::fs::write(&path, px.encode_png().expect("png")).expect("写入 dump");
+                eprintln!("已输出 {path:?}");
+            }
+        }
+        crate::i18n::set_current(prev);
     }
 
     /// 人工核对用：`cargo test bar_visual_dump -- --ignored --nocapture` 落一张悬停态 PNG，
@@ -370,7 +420,7 @@ mod tests {
             let mut px = Pixmap::new(bar.rect.w as u32, bar.rect.h as u32).unwrap();
             let state = State {
                 can_undo: true,
-                hint: "",
+                hint: Hint::None,
                 hover: Some(Button::Done),
             };
             render(&mut px, &bar, &state, palette);

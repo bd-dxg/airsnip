@@ -17,6 +17,7 @@ pub enum Key {
     Settings(SettingsKey),
     Overlay(OverlayKey),
     App(AppKey),
+    Longshot(LongshotKey),
 }
 
 impl Key {
@@ -28,6 +29,7 @@ impl Key {
             .map(Key::Settings)
             .chain(OverlayKey::ALL.iter().copied().map(Key::Overlay))
             .chain(AppKey::ALL.iter().copied().map(Key::App))
+            .chain(LongshotKey::ALL.iter().copied().map(Key::Longshot))
     }
 }
 
@@ -55,10 +57,12 @@ macro_rules! keys {
 }
 
 mod app;
+mod longshot;
 mod overlay;
 mod settings;
 
 pub use app::AppKey;
+pub use longshot::LongshotKey;
 pub use overlay::OverlayKey;
 pub use settings::SettingsKey;
 
@@ -72,7 +76,7 @@ mod tests {
     fn all_keys_are_listed_once() {
         assert_eq!(
             Key::all().count(),
-            SettingsKey::ALL.len() + OverlayKey::ALL.len() + AppKey::ALL.len()
+            SettingsKey::ALL.len() + OverlayKey::ALL.len() + AppKey::ALL.len() + LongshotKey::ALL.len()
         );
         let mut seen = std::collections::HashSet::new();
         for k in SettingsKey::ALL {
@@ -84,6 +88,10 @@ mod tests {
         }
         let mut seen = std::collections::HashSet::new();
         for k in AppKey::ALL {
+            assert!(seen.insert(*k), "键重复：{k:?}");
+        }
+        let mut seen = std::collections::HashSet::new();
+        for k in LongshotKey::ALL {
             assert!(seen.insert(*k), "键重复：{k:?}");
         }
     }

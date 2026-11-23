@@ -17,7 +17,7 @@ mod lang;
 mod zh_hans;
 mod zh_hant;
 
-pub use key::{AppKey, Key, OverlayKey, SettingsKey};
+pub use key::{AppKey, Key, LongshotKey, OverlayKey, SettingsKey};
 pub use lang::{Lang, LangPref, current, set_current};
 
 /// 当前界面语言的文案。
@@ -32,21 +32,25 @@ pub fn text(lang: Lang, key: Key) -> &'static str {
             Key::Settings(k) => zh_hans::settings(k),
             Key::Overlay(k) => zh_hans::overlay(k),
             Key::App(k) => zh_hans::app(k),
+            Key::Longshot(k) => zh_hans::longshot(k),
         },
         Lang::ZhHant => match key {
             Key::Settings(k) => zh_hant::settings(k),
             Key::Overlay(k) => zh_hant::overlay(k),
             Key::App(k) => zh_hant::app(k),
+            Key::Longshot(k) => zh_hant::longshot(k),
         },
         Lang::En => match key {
             Key::Settings(k) => en::settings(k),
             Key::Overlay(k) => en::overlay(k),
             Key::App(k) => en::app(k),
+            Key::Longshot(k) => en::longshot(k),
         },
         Lang::Ja => match key {
             Key::Settings(k) => ja::settings(k),
             Key::Overlay(k) => ja::overlay(k),
             Key::App(k) => ja::app(k),
+            Key::Longshot(k) => ja::longshot(k),
         },
     }
 }

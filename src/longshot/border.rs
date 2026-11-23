@@ -48,7 +48,7 @@ pub fn spawn(x: i32, y: i32, w: u32, h: u32, hinstance: HINSTANCE, ui: Ui) -> Op
             // 颜色键区域本身命中后也穿透（LWA_COLORKEY）。
             WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
             CLASS,
-            w!("长截图边框"),
+            w!("长截图边框"), // i18n:keep（WS_POPUP 无标题栏，标题不可见；仅调试身份标识）
             WS_POPUP,
             bx,
             by,

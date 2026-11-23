@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 简体中文 文案（区域分文件：设置面板 / 覆盖层与贴图）。
+//! 简体中文 文案（区域分文件：设置面板 / 覆盖层与贴图 / 长截图）。
 
 mod app;
+mod longshot;
 mod overlay;
 mod settings;
 
 pub(in crate::i18n) use app::app;
+pub(super) use longshot::longshot;
 pub(super) use overlay::overlay;
 pub(super) use settings::settings;

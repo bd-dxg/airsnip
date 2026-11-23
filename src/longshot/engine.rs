@@ -179,7 +179,7 @@ impl Canvas {
         }
         // 画面明显变了却判「没动」：把两帧落盘，区分「页面真没滚」与「抓到的是旧帧」。
         if m.confident && m.offset == 0 && chg > 0.5 {
-            super::debug::log("still-but-changed: 画面在变但判无位移");
+            super::debug::log("still-but-changed: 画面在变但判无位移"); // i18n:keep（日志，ADR 0047）
             super::debug::dump_pair("still", &self.prev, frame, self.w, h);
         }
         if !m.confident {

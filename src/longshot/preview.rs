@@ -101,7 +101,7 @@ impl Preview {
                 // TRANSPARENT：点击与滚轮穿透到目标页面，预览窗不挡操作。
                 WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
                 CLASS,
-                w!("长截图预览"),
+                w!("长截图预览"), // i18n:keep（WS_POPUP 无标题栏，标题不可见；仅调试身份标识）
                 WS_POPUP,
                 rect.x,
                 rect.y,

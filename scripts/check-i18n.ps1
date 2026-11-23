@@ -19,7 +19,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-# 已迁移完毕、应当零硬编码的路径（前缀匹配，小写比较）。B1 设置面板 + B2 覆盖层/贴图 + B4 app。
+# 已迁移完毕、应当零硬编码的路径（前缀匹配，小写比较）。B1 设置面板 + B2 覆盖层/贴图 + B3 长截图 + B4 app。
 $MIGRATED = @(
     'src\settings\',
     'src\update\state.rs',
@@ -38,6 +38,7 @@ $MIGRATED = @(
     'src\pin\window.rs',
     'src\pin\edit.rs',
     'src\pin\clipboard.rs',
+    'src\longshot\',
     'src\i18n\'
 )
 
@@ -139,7 +140,7 @@ if ($Verbose) {
 }
 
 Write-Host ("已迁移范围内剩余硬编码：{0}" -f $problems.Count)
-Write-Host ("未迁移批次范围内硬编码：{0}（B3 长截图待迁；日志 / 排障报告 / 更新内部错误串在 $EXEMPT 里永久不迁）" -f $pendingHits.Count)
+Write-Host ("未迁移批次范围内硬编码：{0}（日志 / 排障报告 / 更新内部错误串在 $EXEMPT 里永久不迁）" -f $pendingHits.Count)
 
 if ($problems.Count -gt 0) {
     Write-Host ""
