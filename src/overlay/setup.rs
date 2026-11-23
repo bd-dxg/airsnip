@@ -47,7 +47,12 @@ impl Overlay {
                 Some(hinstance),
                 None,
             )
-            .map_err(|e| format!("创建覆盖层窗口失败：{e}"))?;
+            .map_err(|e| {
+                crate::i18n::fill(
+                    crate::i18n::OverlayKey::ErrorOverlayWindow.text(),
+                    &[("e", &e.to_string())],
+                )
+            })?;
             if crate::perf::enabled() {
                 eprintln!("[airsnip] 建窗：CreateWindowEx {:?}", t_reg.elapsed());
             }

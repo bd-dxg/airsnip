@@ -69,12 +69,13 @@ pub(super) fn spawn(
         // 入库：straight → premultiplied；随后按设置烘焙边框（扩大原图）
         let data = scale::premultiply_rgba(pixmap.data());
         let Some(in_size) = tiny_skia::IntSize::from_wh(pixmap.width(), pixmap.height()) else {
-            return Err("贴图像素图尺寸非法".into());
+            return Err(crate::i18n::OverlayKey::ErrorPinSize.text().into());
         };
-        let premul = Pixmap::from_vec(data, in_size).ok_or("贴图像素图尺寸非法")?;
+        let premul = Pixmap::from_vec(data, in_size).ok_or_else(|| crate::i18n::OverlayKey::ErrorPinSize.text())?;
         let pad = if show_border { BORDER_PAD } else { 0 };
         let raw = premul;
-        let framed = border::with_border(&raw, show_border).ok_or("贴图边框合成失败")?;
+        let framed = border::with_border(&raw, show_border)
+            .ok_or_else(|| crate::i18n::OverlayKey::ErrorPinBorderFailed.text())?;
         pixmap = framed;
 
         let wc = WNDCLASSW {
@@ -87,7 +88,7 @@ pub(super) fn spawn(
             ..Default::default()
         };
         if RegisterClassW(&wc) == 0 && windows::Win32::Foundation::GetLastError().0 != 1410 {
-            return Err("贴图窗口类注册失败".into());
+            return Err(crate::i18n::OverlayKey::ErrorPinWindowClass.text().into());
         }
         let hwnd = CreateWindowExW(
             // WS_EX_LAYERED：UpdateLayeredWindow 提交带 alpha 的像素（PNG 透明区域透出桌面）
@@ -104,7 +105,12 @@ pub(super) fn spawn(
             Some(hinstance),
             None,
         )
-        .map_err(|e| format!("创建贴图窗口失败：{e}"))?;
+        .map_err(|e| {
+            crate::i18n::fill(
+                crate::i18n::OverlayKey::ErrorPinWindowCreate.text(),
+                &[("e", &e.to_string())],
+            )
+        })?;
 
         // 禁用输入法：中文 IME 会截走 Y 等字母键（出候选字），贴图窗口内的
         // 边框快捷键将失效；贴图不输入文本，直接永久屏蔽（M2b 实测缺陷）。

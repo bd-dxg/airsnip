@@ -50,10 +50,10 @@ impl Overlay {
         // 开新一张截图时清掉静态槽，避免陈旧结果与本次保存混在一起。
         super::quicksave::discard_reply();
         let Some(size) = tiny_skia::IntSize::from_wh(w, h) else {
-            return Err("虚拟屏幕尺寸非法".into());
+            return Err("Invalid virtual screen size".into());
         };
         let rgba = std::mem::take(&mut capture.rgba);
-        let mut original = Pixmap::from_vec(rgba, size).ok_or("创建原图像素图失败")?;
+        let mut original = Pixmap::from_vec(rgba, size).ok_or("Failed to create the source pixmap")?;
         let timing = crate::perf::enabled();
         let t_init = std::time::Instant::now();
         let mut dimmed = original.clone();

@@ -52,10 +52,11 @@ impl PinWindow {
         let show_border = self.pad > 0;
         let data = scale::premultiply_rgba(pixmap.data());
         let Some(size) = tiny_skia::IntSize::from_wh(pixmap.width(), pixmap.height()) else {
-            return Err("贴图内容尺寸非法".into());
+            return Err(crate::i18n::OverlayKey::ErrorPinSize.text().into());
         };
-        let raw = Pixmap::from_vec(data, size).ok_or("贴图内容尺寸非法")?;
-        let framed = border::with_border(&raw, show_border).ok_or("贴图边框合成失败")?;
+        let raw = Pixmap::from_vec(data, size).ok_or_else(|| crate::i18n::OverlayKey::ErrorPinSize.text())?;
+        let framed = border::with_border(&raw, show_border)
+            .ok_or_else(|| crate::i18n::OverlayKey::ErrorPinBorderFailed.text())?;
         self.pad = if show_border { BORDER_PAD } else { 0 };
         self.raw = raw;
         self.scaled = framed.clone();

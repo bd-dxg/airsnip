@@ -31,7 +31,9 @@ pub(super) enum ReadError {
 pub(super) fn read_image() -> Result<Pixmap, ReadError> {
     unsafe {
         if OpenClipboard(None).is_err() {
-            return Err(ReadError::Failed("无法打开剪贴板".into()));
+            return Err(ReadError::Failed(
+                crate::i18n::OverlayKey::ErrorClipboardOpen.text().into(),
+            ));
         }
 
         // 1) "PNG" 注册格式（现代程序偏好，直接 PNG 字节解码）

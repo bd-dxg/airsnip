@@ -17,7 +17,7 @@ mod lang;
 mod zh_hans;
 mod zh_hant;
 
-pub use key::{Key, SettingsKey};
+pub use key::{Key, OverlayKey, SettingsKey};
 pub use lang::{Lang, LangPref, current, set_current};
 
 /// 当前界面语言的文案。
@@ -27,12 +27,22 @@ pub fn t(key: Key) -> &'static str {
 
 /// 指定语言的文案。测试与需要固定语言的调用点走这里（避免并行测试改全局语言）。
 pub fn text(lang: Lang, key: Key) -> &'static str {
-    match key {
-        Key::Settings(k) => match lang {
-            Lang::ZhHans => zh_hans::settings(k),
-            Lang::ZhHant => zh_hant::settings(k),
-            Lang::En => en::settings(k),
-            Lang::Ja => ja::settings(k),
+    match lang {
+        Lang::ZhHans => match key {
+            Key::Settings(k) => zh_hans::settings(k),
+            Key::Overlay(k) => zh_hans::overlay(k),
+        },
+        Lang::ZhHant => match key {
+            Key::Settings(k) => zh_hant::settings(k),
+            Key::Overlay(k) => zh_hant::overlay(k),
+        },
+        Lang::En => match key {
+            Key::Settings(k) => en::settings(k),
+            Key::Overlay(k) => en::overlay(k),
+        },
+        Lang::Ja => match key {
+            Key::Settings(k) => ja::settings(k),
+            Key::Overlay(k) => ja::overlay(k),
         },
     }
 }
@@ -82,35 +92,39 @@ mod tests {
     /// 繁中与简中必须真的有差异（不是同一张表复制两遍）：抽样若干条常见异形词。
     #[test]
     fn traditional_differs_from_simplified() {
-        let differ = SettingsKey::ALL
+        let all: Vec<Key> = Key::all().collect();
+        let differ = all
             .iter()
-            .filter(|k| text(Lang::ZhHans, Key::Settings(**k)) != text(Lang::ZhHant, Key::Settings(**k)))
+            .filter(|k| text(Lang::ZhHans, **k) != text(Lang::ZhHant, **k))
             .count();
         assert!(
-            differ >= SettingsKey::ALL.len() / 2,
+            differ >= all.len() / 2,
             "繁中与简中仅有 {differ}/{} 条不同，疑似直接复制了简体表",
-            SettingsKey::ALL.len()
+            all.len()
         );
         // 抽查几条确定的异形词，防止「大面积相同但个别词错」
         assert_eq!(text(Lang::ZhHant, Key::Settings(SettingsKey::NavSave)), "儲存");
         assert_eq!(text(Lang::ZhHant, Key::Settings(SettingsKey::ToolFreehand)), "手繪");
+        assert_eq!(text(Lang::ZhHant, Key::Overlay(OverlayKey::TipUndo)), "復原");
+        assert_eq!(text(Lang::ZhHant, Key::Overlay(OverlayKey::PinMenuSave)), "儲存");
     }
 
     /// 日文表里必须有假名（否则是直接抄了中文）。
     #[test]
     fn japanese_actually_contains_kana() {
-        let kana = SettingsKey::ALL
+        let all: Vec<Key> = Key::all().collect();
+        let kana = all
             .iter()
             .filter(|k| {
-                text(Lang::Ja, Key::Settings(**k))
+                text(Lang::Ja, **k)
                     .chars()
                     .any(|c| matches!(c, '\u{3040}'..='\u{30ff}'))
             })
             .count();
         assert!(
-            kana >= SettingsKey::ALL.len() / 2,
+            kana >= all.len() / 2,
             "日文表只有 {kana}/{} 条含假名，疑似抄了中文",
-            SettingsKey::ALL.len()
+            all.len()
         );
     }
 

@@ -31,13 +31,21 @@ impl super::Overlay {
         let px_total = w as usize * h as usize * 4;
         unsafe {
             let Ok(hg) = GlobalAlloc(GMEM_MOVEABLE, 16 + px_total) else {
-                crate::app::message_box(None, "贴图更新内存分配失败。", MB_OK | MB_ICONERROR);
+                crate::app::message_box(
+                    None,
+                    crate::i18n::OverlayKey::PinEditAllocFailed.text(),
+                    MB_OK | MB_ICONERROR,
+                );
                 return;
             };
             let ptr = GlobalLock(hg);
             if ptr.is_null() {
                 let _ = GlobalFree(Some(hg));
-                crate::app::message_box(None, "贴图更新内存锁失败。", MB_OK | MB_ICONERROR);
+                crate::app::message_box(
+                    None,
+                    crate::i18n::OverlayKey::PinEditLockFailed.text(),
+                    MB_OK | MB_ICONERROR,
+                );
                 return;
             }
             let hp = ptr as *mut u32;

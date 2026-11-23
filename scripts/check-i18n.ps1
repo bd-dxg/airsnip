@@ -19,11 +19,23 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-# 已迁移完毕、应当零硬编码的路径（前缀匹配，小写比较）。B1 批次范围。
+# 已迁移完毕、应当零硬编码的路径（前缀匹配，小写比较）。B1 设置面板 + B2 覆盖层/贴图。
 $MIGRATED = @(
     'src\settings\',
     'src\update\state.rs',
     'src\output\quick.rs',
+    'src\overlay\toolbar\tip.rs',
+    'src\overlay\cancel_hint.rs',
+    'src\overlay\toast.rs',
+    'src\overlay\quicksave.rs',
+    'src\overlay\setup.rs',
+    'src\overlay\pin_edit.rs',
+    'src\overlay\annotate\output.rs',
+    'src\pin\menu.rs',
+    'src\pin\mod.rs',
+    'src\pin\window.rs',
+    'src\pin\edit.rs',
+    'src\pin\clipboard.rs',
     'src\i18n\'
 )
 

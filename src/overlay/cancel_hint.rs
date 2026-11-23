@@ -171,12 +171,18 @@ pub(super) fn fade_alpha(elapsed_ms: f32) -> f32 {
 
 /// 提示文案：随退出键与「截图 / 贴图编辑」模式变化。
 pub(super) fn hint_text(key: u32, editing: bool) -> String {
-    let k = if key == KEY_RBUTTON { "右键" } else { "Esc" };
-    if editing {
-        format!("再按一次 {k} 放弃标注并退出编辑")
+    use crate::i18n::{self, OverlayKey as O};
+    let k = if key == KEY_RBUTTON {
+        O::CancelKeyRightButton.text()
     } else {
-        format!("再按一次 {k} 放弃标注并退出截图")
-    }
+        "Esc"
+    };
+    let template = if editing {
+        O::CancelHintEditing.text()
+    } else {
+        O::CancelHintCapture.text()
+    };
+    i18n::fill(template, &[("key", k)])
 }
 
 /// 提示几何：优先贴在**选区内部右上角**；选区塞不下整个提示时退到**选区上方**，

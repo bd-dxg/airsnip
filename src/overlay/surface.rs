@@ -190,7 +190,7 @@ pub(crate) fn create_dib_surface(w: u32, h: u32) -> Result<(HDC, HBITMAP, *mut u
     unsafe {
         let hdc = CreateCompatibleDC(None);
         if hdc.0.is_null() {
-            return Err("CreateCompatibleDC 失败".into());
+            return Err("CreateCompatibleDC failed".into());
         }
         let bmi = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
@@ -209,7 +209,7 @@ pub(crate) fn create_dib_surface(w: u32, h: u32) -> Result<(HDC, HBITMAP, *mut u
             Ok(b) => b,
             Err(e) => {
                 let _ = DeleteDC(hdc);
-                return Err(format!("CreateDIBSection 失败：{e}"));
+                return Err(format!("CreateDIBSection failed: {e}"));
             }
         };
         let _ = SelectObject(hdc, hbmp.into());

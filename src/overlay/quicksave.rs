@@ -103,7 +103,7 @@ impl Overlay {
                 && result.is_ok()
                 && let Err(e) = output::copy_to_clipboard(&cropped)
             {
-                debug(&format!("also_copy 失败：{e}"));
+                debug(&format!("also_copy 失败：{e}")); // i18n:keep 内部日志（不进语言表）
             }
             if let Ok(mut g) = REPLY.lock() {
                 *g = Some(Reply { result });
@@ -121,7 +121,11 @@ impl Overlay {
             return;
         };
         match reply.result {
-            Err(e) => crate::app::message_box(None, &format!("快速保存失败：{e}"), MB_OK | MB_ICONERROR),
+            Err(e) => crate::app::message_box(
+                None,
+                &crate::i18n::fill(crate::i18n::OverlayKey::QuickSaveFailed.text(), &[("e", &e)]),
+                MB_OK | MB_ICONERROR,
+            ),
             Ok(path) => {
                 self.quick.saved_path = Some(path.clone());
                 if self.quick.config.notify {

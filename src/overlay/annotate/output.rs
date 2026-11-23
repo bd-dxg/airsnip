@@ -40,13 +40,21 @@ impl super::super::Overlay {
                 // 载荷头：u32 w + u32 h + i32 x + i32 y（选区在屏幕上的位置，PIN 定位用）
                 let Ok(hg) = GlobalAlloc(GMEM_MOVEABLE, 16 + px_total) else {
                     // 分配失败：提示并保留覆盖层（用户可重按 F3 重试，审查 P2-1）
-                    crate::app::message_box(None, "贴图内存分配失败，请关闭部分贴图后重试。", MB_OK | MB_ICONERROR);
+                    crate::app::message_box(
+                        None,
+                        crate::i18n::OverlayKey::OutputPinAllocFailed.text(),
+                        MB_OK | MB_ICONERROR,
+                    );
                     return;
                 };
                 let ptr = GlobalLock(hg);
                 if ptr.is_null() {
                     let _ = GlobalFree(Some(hg));
-                    crate::app::message_box(None, "贴图内存锁失败。", MB_OK | MB_ICONERROR);
+                    crate::app::message_box(
+                        None,
+                        crate::i18n::OverlayKey::OutputPinLockFailed.text(),
+                        MB_OK | MB_ICONERROR,
+                    );
                     return;
                 }
                 let hp = ptr as *mut u32;
@@ -94,7 +102,14 @@ impl super::super::Overlay {
             };
             std::thread::spawn(move || {
                 if let Err(e) = output::copy_to_clipboard(&cropped) {
-                    crate::app::message_box(None, &format!("复制失败：{e}"), MB_OK | MB_ICONERROR);
+                    crate::app::message_box(
+                        None,
+                        &crate::i18n::fill(
+                            crate::i18n::OverlayKey::OutputCopyFailed.text(),
+                            &[("e", &e.to_string())],
+                        ),
+                        MB_OK | MB_ICONERROR,
+                    );
                 }
             });
         }
@@ -153,7 +168,14 @@ impl super::super::Overlay {
         std::thread::spawn(move || {
             if let Err(e) = output::save_file(&cropped, &path) {
                 // 保存失败必须提示：静默吞掉会让用户以为截图已保存（OUT-2）
-                crate::app::message_box(None, &format!("保存失败：{e}"), MB_OK | MB_ICONERROR);
+                crate::app::message_box(
+                    None,
+                    &crate::i18n::fill(
+                        crate::i18n::OverlayKey::OutputSaveFailed.text(),
+                        &[("e", &e.to_string())],
+                    ),
+                    MB_OK | MB_ICONERROR,
+                );
             }
         });
         self.cancelled = false;

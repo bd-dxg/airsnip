@@ -49,7 +49,7 @@ impl Overlay {
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| path.display().to_string());
-        let text = format!("已保存 {name} · 点击定位文件");
+        let text = crate::i18n::fill(crate::i18n::OverlayKey::ToastSaved.text(), &[("name", &name)]);
         let (vw, vh) = (self.display.width() as i32, self.display.height() as i32);
         let anchor = self.selection.unwrap_or(SelRect {
             x: 0,

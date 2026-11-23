@@ -70,12 +70,13 @@ pub fn create(
     show_border: bool,
 ) -> Result<HWND, String> {
     if pins().len() >= MAX_PINS {
+        let limit = MAX_PINS.to_string();
         message_box(
             None,
-            &format!("贴图数量已达上限（{MAX_PINS} 张）。\n请关闭部分贴图后再试。"),
+            &crate::i18n::fill(crate::i18n::OverlayKey::PinLimitReached.text(), &[("limit", &limit)]),
             MB_OK | MB_ICONERROR,
         );
-        return Err("数量上限".into());
+        return Err(crate::i18n::OverlayKey::PinLimitTitle.text().into());
     }
     let (w, h) = (pixmap.width() as i32, pixmap.height() as i32);
     let (px, py) = place::resolve(place, at, (w, h), pins().len() as i32);
@@ -193,12 +194,16 @@ pub unsafe fn from_payload(hg: HGLOBAL, hinstance: HINSTANCE, place: PinPosition
     unsafe {
         // 锁内仅拷贝载荷、随即释放句柄（`decode_payload` 内完成）；后续创建/弹窗不再持有锁
         let Some((pm, (x, y))) = decode_payload(hg) else {
-            message_box(None, "贴图载荷尺寸非法", MB_OK | MB_ICONERROR);
+            message_box(None, crate::i18n::OverlayKey::ErrorPinSize.text(), MB_OK | MB_ICONERROR);
             return;
         };
         if let Err(e) = create(pm, hinstance, place, Some((x, y)), show_border) {
             // 数量上限已提示；窗口创建失败必须让用户知道（M2b 静默缺陷）
-            message_box(None, &format!("贴图创建失败：{e}"), MB_OK | MB_ICONERROR);
+            message_box(
+                None,
+                &crate::i18n::fill(crate::i18n::OverlayKey::ErrorPinCreate.text(), &[("e", &e)]),
+                MB_OK | MB_ICONERROR,
+            );
         }
     }
 }

@@ -8,6 +8,7 @@
 use windows::Win32::UI::WindowsAndMessaging::{KillTimer, SetTimer};
 
 use crate::editor::Tool;
+use crate::i18n::{self, OverlayKey as O};
 use crate::overlay::Overlay;
 use crate::overlay::geometry::{SelRect, expand_rect, union_rect};
 use crate::overlay::objedit;
@@ -71,31 +72,31 @@ impl Tip {
 
 /// 按钮名称；返回 None 表示该控件不提示（第二行字体控件，ADR 0020）。
 /// 色块例外：提示由 `hintable` 单独开启，文案见 `color_tip_text`（issue #122 / #123）。
-fn action_label(action: Action) -> Option<&'static str> {
+fn action_label(action: Action) -> Option<O> {
     match action {
-        Action::Tool(Tool::Rect) => Some("矩形工具"),
-        Action::Tool(Tool::Arrow) => Some("箭头工具"),
-        Action::Tool(Tool::Text) => Some("文本工具"),
-        Action::Tool(Tool::Highlight) => Some("荧光笔"),
-        Action::Tool(Tool::Blur) => Some("高斯模糊"),
-        Action::Tool(Tool::Glow) => Some("聚光灯"),
-        Action::Tool(Tool::Number) => Some("序号标记"),
+        Action::Tool(Tool::Rect) => Some(O::TipToolRect),
+        Action::Tool(Tool::Arrow) => Some(O::TipToolArrow),
+        Action::Tool(Tool::Text) => Some(O::TipToolText),
+        Action::Tool(Tool::Highlight) => Some(O::TipToolHighlight),
+        Action::Tool(Tool::Blur) => Some(O::TipToolBlur),
+        Action::Tool(Tool::Glow) => Some(O::TipToolGlow),
+        Action::Tool(Tool::Number) => Some(O::TipToolNumber),
         // EDT-20：序号格子右下角的形态下拉（数字 / 对勾 / 叉号）
-        Action::BadgeMenu => Some("徽标形态"),
-        Action::Tool(Tool::Line) => Some("直线工具"),
-        Action::Tool(Tool::Ellipse) => Some("椭圆工具"),
-        Action::Tool(Tool::Freehand) => Some("手绘"),
+        Action::BadgeMenu => Some(O::TipBadgeMenu),
+        Action::Tool(Tool::Line) => Some(O::TipToolLine),
+        Action::Tool(Tool::Ellipse) => Some(O::TipToolEllipse),
+        Action::Tool(Tool::Freehand) => Some(O::TipToolFreehand),
         // ADR 0036：移动态（指针）——拖选区内空白平移选区，拖对象移动该对象
-        Action::Move => Some("移动选区"),
-        Action::ToggleFill => Some("填充"),
-        Action::LineMenu => Some("线型"),
-        Action::Undo => Some("撤销"),
-        Action::Redo => Some("重做"),
-        Action::Pin => Some("贴图"),
-        Action::Longshot => Some("长截图"),
-        Action::Copy => Some("复制"),
-        Action::Save => Some("保存（另存为）"),
-        Action::QuickSave => Some("快速保存"),
+        Action::Move => Some(O::TipToolMove),
+        Action::ToggleFill => Some(O::TipFill),
+        Action::LineMenu => Some(O::TipLineStyle),
+        Action::Undo => Some(O::TipUndo),
+        Action::Redo => Some(O::TipRedo),
+        Action::Pin => Some(O::TipPin),
+        Action::Longshot => Some(O::TipLongshot),
+        Action::Copy => Some(O::TipCopy),
+        Action::Save => Some(O::TipSave),
+        Action::QuickSave => Some(O::TipQuickSave),
         _ => None,
     }
 }
@@ -113,15 +114,19 @@ fn hintable(action: Action) -> bool {
 
 /// 色块气泡文案：纯色块显示十六进制色值与双击改色；渐变色块显示起止色与双击换一套（EDT-19）。
 fn color_tip_text(c: [u8; 4]) -> String {
-    format!("#{:02X}{:02X}{:02X} · 双击改色", c[0], c[1], c[2])
+    let hex = format!("{:02X}{:02X}{:02X}", c[0], c[1], c[2]);
+    i18n::fill(O::TipColorSwatch.text(), &[("hex", &hex)])
 }
 
 /// 渐变色块气泡：起色 → 止色，双击换一套（不手选色标，见 ADR 0043）。
 fn gradient_tip_text(g: &crate::editor::Gradient) -> String {
     let (a, b) = (g.stops[0], g.stops[crate::editor::GRADIENT_STOPS - 1]);
-    format!(
-        "#{:02X}{:02X}{:02X} → #{:02X}{:02X}{:02X} · 双击换一套",
-        a[0], a[1], a[2], b[0], b[1], b[2]
+    i18n::fill(
+        O::TipGradientSwatch.text(),
+        &[
+            ("from", &format!("{:02X}{:02X}{:02X}", a[0], a[1], a[2])),
+            ("to", &format!("{:02X}{:02X}{:02X}", b[0], b[1], b[2])),
+        ],
     )
 }
 
@@ -236,9 +241,9 @@ impl Overlay {
                 Some(gradient_tip_text(&self.gradient))
             }
             Hit::Button(Action::Color(i)) => Some(color_tip_text(self.colors[i])),
-            Hit::Button(a) => Some(compose(action_label(a)?, self.key_suffix(a).as_deref())),
+            Hit::Button(a) => Some(compose(action_label(a)?.text(), self.key_suffix(a).as_deref())),
             // 圆角控制柄（EDT-1/ADR 0010）没有快捷键
-            Hit::Radius => Some("圆角 · 拖动调节".into()),
+            Hit::Radius => Some(O::TipRadius.text().into()),
         }
     }
 
@@ -400,7 +405,8 @@ mod tests {
         assert_eq!(combo_key_name(0x53, MOD_ALT_BIT).as_deref(), Some("Alt+S"));
         assert_eq!(combo_key_name(UNBOUND, 0), None, "清空后不应出现后缀");
         assert_eq!(compose("快速保存", combo_key_name(UNBOUND, 0).as_deref()), "快速保存");
-        assert_eq!(action_label(Action::QuickSave), Some("快速保存"));
+        assert_eq!(action_label(Action::QuickSave), Some(O::TipQuickSave));
+        assert_eq!(O::TipQuickSave.text(), "快速保存");
         assert!(hintable(Action::QuickSave), "快存按钮必须有悬浮提示");
     }
 

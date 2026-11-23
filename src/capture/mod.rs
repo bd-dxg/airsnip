@@ -110,7 +110,7 @@ fn capture_region_bitblt(x: i32, y: i32, w: u32, h: u32, captureblt: bool) -> Re
         let hdc_mem = CreateCompatibleDC(None);
         if hdc_mem.0.is_null() {
             let _ = ReleaseDC(None, hdc_screen);
-            return Err("CreateCompatibleDC 失败".into());
+            return Err("CreateCompatibleDC failed".into());
         }
 
         let bmi = BITMAPINFO {
@@ -131,7 +131,7 @@ fn capture_region_bitblt(x: i32, y: i32, w: u32, h: u32, captureblt: bool) -> Re
             Err(e) => {
                 let _ = DeleteDC(hdc_mem);
                 let _ = ReleaseDC(None, hdc_screen);
-                return Err(format!("CreateDIBSection 失败：{e}"));
+                return Err(format!("CreateDIBSection failed: {e}"));
             }
         };
 
@@ -193,7 +193,7 @@ fn capture_virtual_screen_bitblt() -> Result<CapturedScreen, String> {
         let hdc_mem = CreateCompatibleDC(None);
         if hdc_mem.0.is_null() {
             let _ = ReleaseDC(None, hdc_screen);
-            return Err("CreateCompatibleDC 失败".into());
+            return Err("CreateCompatibleDC failed".into());
         }
 
         let bmi = BITMAPINFO {
@@ -214,7 +214,7 @@ fn capture_virtual_screen_bitblt() -> Result<CapturedScreen, String> {
             Err(e) => {
                 let _ = DeleteDC(hdc_mem);
                 let _ = ReleaseDC(None, hdc_screen);
-                return Err(format!("CreateDIBSection 失败：{e}"));
+                return Err(format!("CreateDIBSection failed: {e}"));
             }
         };
 
