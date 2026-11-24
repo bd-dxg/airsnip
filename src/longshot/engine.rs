@@ -15,6 +15,11 @@ use super::stitch::{self, Params, Signs};
 /// 检测粘滞侧栏所需的最小滚动位移（像素）：位移太小时「静止列」与「滚动列」分不开。
 const MIN_MASK_SHIFT: u32 = 16;
 
+/// 连续多少拍「画面在变却定位失败」就认定抓帧有问题（≈0.25s，与状态条一拍 60ms 对齐）。
+const FAIL_CHANGED_HINT: u32 = 4;
+/// 「画面在变」的门槛：同位置行不一致的占比。
+const FAIL_CHANGED_MIN: f32 = 0.3;
+
 /// 拼接画布：宽度固定为视口宽，高度随帧增长。
 pub struct Canvas {
     w: u32,
@@ -42,6 +47,9 @@ pub struct Canvas {
     max_height: u32,
     /// 连续无位移帧数（LNG-6：达到上限即到底）。
     pub still_run: u32,
+    /// 连续「画面在变却定位失败」的拍数：典型是半透明窗口（背景不透明度 < 100%）
+    /// 抓不到可比帧，状态条据此换成更具体的提示（见 `suspect_transparency`）。
+    fail_changed_run: u32,
     /// 已拼内容行数（不含页眉/页脚）。
     pub content_rows: u32,
     /// 段历史（撤销最后一段用）：(是否在顶部插入, 行数)。
@@ -81,6 +89,7 @@ impl Canvas {
             params,
             max_height,
             still_run: 0,
+            fail_changed_run: 0,
             content_rows: 0,
             segments: Vec::new(),
             pushes: 0,
@@ -89,6 +98,15 @@ impl Canvas {
 
     pub fn height(&self) -> u32 {
         self.header_h + self.content_rows + self.footer_h
+    }
+
+    /// 是否像「半透明窗口」导致抓不到可用帧：连续多拍画面在变却定位不上。
+    ///
+    /// 只用来换状态条的一句提示，不影响拼接行为（失败仍由调用方按 `Step::Failed` 处理）。
+    /// 实测：`BitBlt` 读不到半透明窗口的内容，DDA 能读到但帧与帧时像素不可比（alpha 混合）。
+    /// 机理与数据见 `docs/longshot-known-issues.md`。
+    pub fn suspect_transparency(&self) -> bool {
+        self.fail_changed_run >= FAIL_CHANGED_HINT
     }
 
     /// 缓冲首帧。画布实际在第二次推帧时建立。
@@ -188,14 +206,23 @@ impl Canvas {
         // 不确定：保持 prev 不变（它必须始终是「最后一次成功拼入的帧」），
         // 用户下一拍继续滚动或动画停在某个状态时还能接上。
         if !m.confident {
+            // 画面一直在变却一直定位不上：这不是「用户没滚」，多半是抓到的帧根本不可比
+            // （半透明窗口的内容由系统合成，见 docs/longshot-known-issues.md）。
+            if chg > FAIL_CHANGED_MIN {
+                self.fail_changed_run += 1;
+            } else {
+                self.fail_changed_run = 0;
+            }
             return Step::Failed;
         }
         // 无位移：同样不更新 prev，避免动画把参考帧一点点带偏。
         if m.offset == 0 {
             self.still_run += 1;
+            self.fail_changed_run = 0;
             return Step::Still;
         }
         self.still_run = 0;
+        self.fail_changed_run = 0;
 
         // 追加/前置新增内容（m.start/m.end 为全天坐标，已剔除固定区域）。
         let rows = (m.end - m.start) as u32;
@@ -711,5 +738,52 @@ mod tests {
 
         // 内容不透明（页面每行 alpha=255）
         assert_eq!(t.data()[3], 255, "缩略图像素应不透明");
+    }
+
+    /// 完全不相关的帧：用于模拟「画面在变但无法定位」（半透明窗口的实际现象）。
+    fn noise_frame(w: u32, h: u32, seed: u32) -> Vec<u8> {
+        let mut v = vec![0u8; (w * h * 4) as usize];
+        for y in 0..h {
+            for x in 0..w {
+                let o = ((y * w + x) * 4) as usize;
+                let t = y * 31 + x * 17 + seed * 101;
+                v[o] = (t & 0xff) as u8;
+                v[o + 1] = ((t >> 3) & 0xff) as u8;
+                v[o + 2] = (((t >> 5) ^ (y * 13)) & 0xff) as u8;
+                v[o + 3] = 255;
+            }
+        }
+        v
+    }
+
+    /// 连续「画面在变却定位失败」多拍 → 判定为抓帧问题（半透明窗口）；
+    /// 一旦真的拼入一段，提示状态要立刻复位。
+    #[test]
+    fn suspect_transparency_needs_repeated_failed_frames() {
+        let (w, view_h) = (64u32, 40u32);
+        let page = make_page(w, 0, 200, 0);
+        let mut c = Canvas::new(w, params(), 30000);
+        c.seed(&view(&page, w, 0, view_h));
+        c.push(&view(&page, w, 0, view_h), view_h);
+        assert!(!c.suspect_transparency(), "静止帧不应误报");
+
+        for i in 0..4u32 {
+            assert_eq!(c.push(&noise_frame(w, view_h, i), view_h), Step::Failed);
+        }
+        assert!(c.suspect_transparency(), "连续失败且画面在变应判为抓帧问题");
+
+        // 恢复：能正常拼入一段后立刻清掉
+        let mut c2 = Canvas::new(w, params(), 30000);
+        c2.seed(&view(&page, w, 0, view_h));
+        c2.push(&view(&page, w, 0, view_h), view_h);
+        for i in 0..4u32 {
+            c2.push(&noise_frame(w, view_h, i), view_h);
+        }
+        assert!(c2.suspect_transparency());
+        assert!(matches!(
+            c2.push(&view(&page, w, 20, view_h), view_h),
+            Step::Appended { .. }
+        ));
+        assert!(!c2.suspect_transparency(), "成功拼入后应复位");
     }
 }

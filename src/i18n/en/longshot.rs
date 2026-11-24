@@ -15,6 +15,7 @@ pub(in crate::i18n) fn longshot(k: crate::i18n::LongshotKey) -> &'static str {
         HintCancelled => "Cancelled",
         HintFinished => "Finished",
         HintFailed => "Stitching failed: scroll back a little",
+        HintTransparent => "No frames captured · set window opacity to 100%",
 
         ErrorInit => "Failed to start the long screenshot: {e}",
         ErrorWindow => "Failed to create the long screenshot window: {e}",

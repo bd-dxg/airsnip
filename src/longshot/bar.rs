@@ -214,6 +214,7 @@ pub fn render(pixmap: &mut Pixmap, bar: &Bar, state: &State, p: &Palette) {
         Hint::Cancelled => L::HintCancelled.text(),
         Hint::Finished => L::HintFinished.text(),
         Hint::Failed => L::HintFailed.text(),
+        Hint::Transparent => L::HintTransparent.text(),
     };
     let tx = ui.px(PAD_BASE) as f32;
     let spec = dwrite::FontSpec::new(ui.f(FONT_BASE));
@@ -265,7 +266,13 @@ mod tests {
         for lang in Lang::ALL {
             let spec =
                 dwrite::FontSpec::from_parts(&std::sync::Arc::from(lang.ui_family()), ui.f(FONT_BASE), false, false);
-            for key in [L::BarIdle, L::HintCancelled, L::HintFinished, L::HintFailed] {
+            for key in [
+                L::BarIdle,
+                L::HintCancelled,
+                L::HintFinished,
+                L::HintFailed,
+                L::HintTransparent,
+            ] {
                 let text = crate::i18n::text(lang, crate::i18n::Key::Longshot(key));
                 let (tw, _) = dwrite::measure(text, &spec);
                 assert!(

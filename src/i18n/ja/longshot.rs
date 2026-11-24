@@ -14,6 +14,7 @@ pub(in crate::i18n) fn longshot(k: crate::i18n::LongshotKey) -> &'static str {
         HintCancelled => "キャンセルしました",
         HintFinished => "完了しました",
         HintFailed => "つなぎ合わせに失敗しました。少し戻ってください",
+        HintTransparent => "画面を取得できません · 不透明度を 100% に",
 
         ErrorInit => "長いスクリーンショットの開始に失敗しました：{e}",
         ErrorWindow => "長いスクリーンショットのウィンドウ作成に失敗しました：{e}",

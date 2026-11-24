@@ -13,6 +13,7 @@ pub(in crate::i18n) fn longshot(k: crate::i18n::LongshotKey) -> &'static str {
         HintCancelled => "已取消",
         HintFinished => "已完成",
         HintFailed => "拼接定位失敗，請往回捲動一點",
+        HintTransparent => "抓不到畫面 · 視窗半透明時請調到 100%",
 
         ErrorInit => "長截圖初始化失敗：{e}",
         ErrorWindow => "建立長截圖視窗失敗：{e}",

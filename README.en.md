@@ -145,6 +145,7 @@ Rectangles, highlighter, blur and spotlight all support **rounded corners** — 
 - Uses the current selection as the viewport; you scroll the page yourself, then `Enter` finishes. `Ctrl+Z` drops the last segment.
 - Segments are matched by full-overlap consistency, with sticky headers and footers detected and not repeated.
 - A live thumbnail of the stitched result is shown while you scroll.
+- **Window half-transparency is not supported** (background opacity below 100%, e.g. Windows Terminal's 70% default): such content is composited by the system and the captured frames cannot be stitched. Set the opacity to 100% first (the "Acrylic material" switch does not matter) — see `docs/longshot-known-issues.md` for the measurements.
 
 ### Pin to screen
 

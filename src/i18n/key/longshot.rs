@@ -25,6 +25,9 @@ keys!(
         HintFinished,
         /// 状态条：连续定位失败，提示向回滚动。
         HintFailed,
+        /// 状态条：连续失败且画面一直在变（典型是目标窗口半透明、背景不透明度 < 100%），
+        /// 提示把不透明度调到 100%。
+        HintTransparent,
 
         /// `{e}`
         ErrorInit,

@@ -56,6 +56,8 @@ pub enum Hint {
     Finished,
     /// 连续定位失败（`FAIL_HINT` 拍），提示向回滚动。
     Failed,
+    /// 连续失败且画面一直在变：多半是目标窗口半透明（背景不透明度 < 100%），抓到的帧不可比。
+    Transparent,
 }
 
 /// 长截图会话状态。
@@ -193,7 +195,12 @@ impl Session {
         } else if self.finished {
             Hint::Finished
         } else if self.fail_run >= FAIL_HINT {
-            Hint::Failed
+            // 画面在变却定位不上：换一条更具体的提示（“向回滚一点”对它们无效）。
+            if self.canvas.suspect_transparency() {
+                Hint::Transparent
+            } else {
+                Hint::Failed
+            }
         } else {
             Hint::None
         }
