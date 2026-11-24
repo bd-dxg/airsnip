@@ -159,6 +159,7 @@ keys!(
 
         // ── 关于页（settings.about.*）──
         AboutAppName,
+        AboutHomepage,
         AboutRepo,
         AboutLicenses,
         AboutCheckUpdate,
@@ -169,6 +170,8 @@ keys!(
         AboutRewardLine3,
         AboutRewardLine4,
         AboutFeedback,
+        /// 关于页底部退款提示（第三方购买请向卖方退款）。
+        AboutRefundNote,
         AboutLicensesLink,
         AboutToastCopied,
         AboutToastFailed,

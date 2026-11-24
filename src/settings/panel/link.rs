@@ -17,8 +17,9 @@ use super::controls::RowId;
 /// 外部链接行：右侧强调色文字 + 「›」箭头，文案按行类型取。
 pub(super) fn draw_link(pixmap: &mut Pixmap, panel: &Panel, row: &super::controls::Row) {
     let text = match row.id {
-        // 仓库地址是 ASCII 标识，不翻译
+        // 仓库地址与官网域名是 ASCII 标识，不翻译
         RowId::Repo => "github.com/bd-dxg/airsnip \u{203a}",
+        RowId::Homepage => "airsnip.bddxg.top \u{203a}",
         RowId::Licenses => K::AboutLicensesLink.text(),
         _ => "",
     };

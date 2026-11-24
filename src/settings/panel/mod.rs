@@ -9,6 +9,7 @@ mod controls;
 mod copyinfo;
 mod draw;
 mod editkeys;
+mod footer;
 mod interact;
 mod keycap;
 mod link;

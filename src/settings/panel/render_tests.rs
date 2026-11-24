@@ -194,6 +194,43 @@ fn general_page_paints_log_folder_row() {
     }
 }
 
+/// 关于页的「官网」行（唯一官方下载渠道）渲染过一遍：左侧标签与右侧域名链接都得有墨。
+/// 回归背景：关于页是第二高的页（520 里用了 516），新加一行若算错高度会让它落到
+/// 固定窗口底缘外——几何测试看得见、真界面被裁掉。
+#[test]
+fn about_page_paints_homepage_row() {
+    use crate::overlay::geometry::SelRect;
+    use crate::settings::panel::controls::RowId;
+    for theme in [crate::theme::Theme::Light, crate::theme::Theme::Dark] {
+        let panel = panel_for_test(Section::About, theme, KeyGroup::Capture);
+        let (pm, layout) = paint(&panel);
+        let bg = panel.palette.bg;
+        let row = layout
+            .items
+            .iter()
+            .find_map(|it| match it {
+                Item::Row(r) if r.id == RowId::Homepage => Some(r),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{theme:?} 关于页应有「官网」行"));
+        let label_rect = SelRect {
+            x: row.rect.x + row.label_pad,
+            y: row.rect.y,
+            w: row.control.x - (row.rect.x + row.label_pad),
+            h: row.rect.h,
+        };
+        assert!(
+            ink_of(&pm, label_rect, bg) > 10,
+            "{theme:?} 「官网」标签没画出来：{label_rect:?}"
+        );
+        assert!(
+            ink_of(&pm, row.control, bg) > 10,
+            "{theme:?} 官网域名链接没画出来：{:?}",
+            row.control
+        );
+    }
+}
+
 /// 保存页渲染过一遍（OUT-2 / ADR 0041）：**文件名输入框**里有模板文本、
 /// **保存位置**行有目录文本、**预览**行有完整路径——三者都必须真有墨迹。
 #[test]

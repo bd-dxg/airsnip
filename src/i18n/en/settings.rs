@@ -139,6 +139,7 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         ScaleAutoValue => "Auto",
 
         AboutAppName => "AirSnip",
+        AboutHomepage => "Site: always free",
         AboutRepo => "Project page",
         AboutLicenses => "Licenses",
         AboutCheckUpdate => "Version",
@@ -149,6 +150,7 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         AboutRewardLine3 => "Scan with WeChat to support it \u{2014}",
         AboutRewardLine4 => "every bit keeps it going.",
         AboutFeedback => "Feedback",
+        AboutRefundNote => "Free of charge · Bought from a third party? Ask them for a refund",
         AboutLicensesLink => "View list \u{203a}",
         AboutToastCopied => "System info copied",
         AboutToastFailed => "Could not copy system info",

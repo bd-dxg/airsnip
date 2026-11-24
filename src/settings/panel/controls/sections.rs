@@ -108,6 +108,7 @@ pub(super) fn section_rows(
         }
         Section::About => {
             push(RowId::About, RowKind::About, K::AboutAppName.text(), &mut y, items);
+            push(RowId::Homepage, RowKind::Link, K::AboutHomepage.text(), &mut y, items);
             push(RowId::Repo, RowKind::Link, K::AboutRepo.text(), &mut y, items);
             push(RowId::Licenses, RowKind::Link, K::AboutLicenses.text(), &mut y, items);
             push(
@@ -291,6 +292,7 @@ mod tests {
             K::Scale175,
             K::Scale200,
             K::AboutAppName,
+            K::AboutHomepage,
             K::AboutRepo,
             K::AboutLicenses,
             K::AboutCheckUpdate,

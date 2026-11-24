@@ -20,6 +20,7 @@ use crate::overlay::shape::rounded_rect;
 use crate::render::text as dwrite;
 
 use super::Panel;
+use super::controls::Section;
 
 /// 通知停留时长：够把鼠标移过来点按钮，又不至于挡住面板（改这里即可调整）。
 pub(super) const HOLD: Duration = Duration::from_secs(4);
@@ -71,7 +72,12 @@ pub(super) fn toast_rects(panel: &Panel, height: i32) -> Option<(SelRect, SelRec
     let w = pad * 2.0 + tw + gap + btn_w;
     let h = bh + 12.0 * s;
     let x = (panel.content_w() as f32 - w) / 2.0;
-    let y = height as f32 - h - 12.0 * s;
+    // 关于页底部有退款提示条（`footer`）：toast 若贴窗口下缘会压在提示条上，
+    // 改坐到提示条上方（它本来就只出现在关于页，其他页保持贴底）。
+    let mut y = height as f32 - h - 12.0 * s;
+    if panel.section == Section::About {
+        y = y.min(super::footer::bar_rect(s, height).y as f32 - h - 12.0 * s);
+    }
     let toast = SelRect {
         x: x as i32,
         y: y as i32,

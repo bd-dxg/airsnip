@@ -228,6 +228,11 @@ impl Panel {
                 self.end_capture();
                 crate::output::quick::open_folder(&crate::longshot::debug::log_dir());
             }
+            // 官网（关于页）：用浏览器打开，落实「唯一官方下载渠道」
+            RowId::Homepage => {
+                self.end_capture();
+                crate::app::open::url(crate::app::open::HOMEPAGE_URL);
+            }
             // 项目主页（关于页）：用浏览器打开
             RowId::Repo => {
                 self.end_capture();

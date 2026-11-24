@@ -50,6 +50,8 @@ pub(super) fn render(pixmap: &mut Pixmap, panel: &Panel, layout: &Layout) {
     super::savepage::draw_list(pixmap, panel, layout);
     // 「工具栏」页脚注（文件组全隐时的提醒，EDT-16 R7）
     super::toolbar_page::draw_hint(pixmap, panel, layout);
+    // 关于页底部退款提示条（SYS-8 后续）
+    super::footer::draw(pixmap, panel, layout);
     // 导航与内容分隔线
     let h = layout.height;
     let nav_w = (NAV_W as f32 * panel.scale) as f32;

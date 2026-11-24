@@ -136,6 +136,7 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         ScaleAutoValue => "自動",
 
         AboutAppName => "AirSnip",
+        AboutHomepage => "サイト·永久無料",
         AboutRepo => "プロジェクトページ",
         AboutLicenses => "サードパーティライセンス",
         AboutCheckUpdate => "バージョン更新",
@@ -146,6 +147,7 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         AboutRewardLine3 => "WeChat で応援していただけると、",
         AboutRewardLine4 => "それが更新の原動力になります。",
         AboutFeedback => "フィードバック",
+        AboutRefundNote => "本ソフトは無料·第三者からの購入は販売元へ返金をご依頼ください",
         AboutLicensesLink => "一覧を見る \u{203a}",
         AboutToastCopied => "システム情報をコピーしました",
         AboutToastFailed => "システム情報をコピーできませんでした",

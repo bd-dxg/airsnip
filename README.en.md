@@ -74,6 +74,19 @@ Screenshot tools usually force a choice: an Electron wrapper that ships tens or 
 
 ## Download & install
 
+### Official download channels
+
+**AirSnip is free, forever — there is no paid or "pro" edition.** Only these two are official:
+
+| Channel | Address |
+| --- | --- |
+| Website | <https://airsnip.bddxg.top> |
+| GitHub Releases | <https://github.com/bd-dxg/airsnip/releases> |
+
+Packages from file-hosting sites, chat groups or download portals are not official: they may be bundled with ads or malware, and they lose the signed auto-update protection. **If you paid for AirSnip somewhere else, ask that seller for a refund first, then get it free from the website** (Settings → About → website also opens it).
+
+Licensed under GPL-3.0, which permits verbatim redistribution (including for a fee) but not closed-source modification or stripping the copyright notice. If you run into such a case, please open an [issue](https://github.com/bd-dxg/airsnip/issues).
+
 **Requirements:** Windows 10 or later, 64-bit (tested on Windows 11; x64 builds only). Windows 7 / 8 / 8.1 cannot run it — the exe statically imports `WaitOnAddress`, `GetDpiForMonitor` and `GetDpiForWindow`, which do not exist there, so the loader rejects it before any code runs. Details and the import list are in [#94](https://github.com/bd-dxg/airsnip/issues/94).
 
 1. Download `airsnip-v*-win-x64.zip` from [Releases](https://github.com/bd-dxg/airsnip/releases) and unzip it anywhere.

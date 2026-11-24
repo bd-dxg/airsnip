@@ -132,6 +132,7 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         ScaleAutoValue => "自动",
 
         AboutAppName => "AirSnip 轻截",
+        AboutHomepage => "官网·永久免费",
         AboutRepo => "项目地址",
         AboutLicenses => "第三方许可",
         AboutCheckUpdate => "版本更新",
@@ -142,6 +143,7 @@ pub(in crate::i18n) fn settings(k: SettingsKey) -> &'static str {
         AboutRewardLine3 => "微信扫码支持一下，",
         AboutRewardLine4 => "每份心意都是它继续更新的动力。",
         AboutFeedback => "我要反馈",
+        AboutRefundNote => "软件免费·第三方购买·请向卖方申请退款",
         AboutLicensesLink => "查看清单 ›",
         AboutToastCopied => "已复制系统基本信息",
         AboutToastFailed => "未能复制系统信息，请手动填写",
