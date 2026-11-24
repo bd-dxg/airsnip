@@ -345,7 +345,7 @@ pwsh scripts/package.ps1  # 打包 dist\airsnip-v{版本}-win-x64.zip / .exe
 pwsh scripts/gen-latest-json.ps1 -Notes "说明"  # 生成并签名自动更新清单 latest.json
 ```
 
-**技术栈**：Rust 1.98（edition 2024）· windows-rs 0.62 · tiny-skia 0.12（矢量栅格化）· DirectWrite（文字）· serde / toml · png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v0.14.0。
+**技术栈**：Rust 1.98（edition 2024）· windows-rs 0.62 · tiny-skia 0.12（矢量栅格化）· DirectWrite（文字）· serde / toml · png / jpeg-encoder / image-webp。MSVC 运行时**静态链接**，exe 不依赖 VC++ Redistributable。当前版本 v1.0.0。
 
 欢迎 issue 与 PR：动手前先开 issue 讨论方案；提交前确保 `cargo fmt --check`、`cargo test`、`cargo deny check` 通过。模块划分、单文件行数上限、文档与 ADR 约定见 `AGENTS.md`。
 

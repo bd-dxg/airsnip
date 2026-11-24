@@ -276,7 +276,7 @@ pwsh scripts/package.ps1  # dist\airsnip-v{version}-win-x64.zip and the auto-upd
 pwsh scripts/gen-latest-json.ps1 -Notes "notes"  # sign and emit latest.json
 ```
 
-**Stack:** Rust 1.98 (edition 2024) · windows-rs 0.62 · tiny-skia 0.12 (vector rasterisation) · DirectWrite (text) · serde / toml · png / jpeg-encoder / image-webp. The MSVC runtime is **statically linked**, so the exe does not need the VC++ Redistributable. Current version: v0.14.0.
+**Stack:** Rust 1.98 (edition 2024) · windows-rs 0.62 · tiny-skia 0.12 (vector rasterisation) · DirectWrite (text) · serde / toml · png / jpeg-encoder / image-webp. The MSVC runtime is **statically linked**, so the exe does not need the VC++ Redistributable. Current version: v1.0.0.
 
 Issues and PRs are welcome. Please open an issue to discuss an approach before writing code, and make sure `cargo fmt --check`, `cargo test` and `cargo deny check` pass. Module layout, file-size limits and documentation conventions are in `AGENTS.md` (Chinese).
 
