@@ -36,6 +36,11 @@ pub(in crate::i18n) fn overlay(k: crate::i18n::OverlayKey) -> &'static str {
 
         ToastSaved => "已儲存 {name} · 點擊定位檔案",
 
+        TextCopied => "已複製 {n} 字",
+        TextCopyFailed => "複製失敗，請重試",
+        TextPasteEmpty => "剪貼簿裡沒有文字",
+        TextPasteTruncated => "已貼上（截斷至 {n} 字）",
+
         OutputPinAllocFailed => "貼圖記憶體配置失敗，請關閉部分貼圖後重試。",
         OutputPinLockFailed => "貼圖記憶體鎖定失敗。",
         OutputCopyFailed => "複製失敗：{e}",

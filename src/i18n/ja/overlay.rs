@@ -36,6 +36,11 @@ pub(in crate::i18n) fn overlay(k: crate::i18n::OverlayKey) -> &'static str {
 
         ToastSaved => "{name} を保存しました · クリックで場所を開く",
 
+        TextCopied => "{n} 文字をコピーしました",
+        TextCopyFailed => "コピーに失敗しました",
+        TextPasteEmpty => "クリップボードに文字がありません",
+        TextPasteTruncated => "貼り付けました（{n} 文字に切り詰め）",
+
         OutputPinAllocFailed => "ピン留め用のメモリを確保できません。一部のピンを閉じて再試行してください。",
         OutputPinLockFailed => "ピン留め画像のロックに失敗しました。",
         OutputCopyFailed => "コピーに失敗しました：{e}",

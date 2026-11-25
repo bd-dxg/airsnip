@@ -36,6 +36,11 @@ pub(in crate::i18n) fn overlay(k: crate::i18n::OverlayKey) -> &'static str {
 
         ToastSaved => "已保存 {name} · 点击定位文件",
 
+        TextCopied => "已复制 {n} 字",
+        TextCopyFailed => "复制失败，请重试",
+        TextPasteEmpty => "剪贴板里没有文字",
+        TextPasteTruncated => "已粘贴（截断至 {n} 字）",
+
         OutputPinAllocFailed => "贴图内存分配失败，请关闭部分贴图后重试。",
         OutputPinLockFailed => "贴图内存锁失败。",
         OutputCopyFailed => "复制失败：{e}",

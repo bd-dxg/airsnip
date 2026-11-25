@@ -10,6 +10,13 @@
 
 ## 项目状态
 
+- **文本标注与系统剪贴板互通**（EDT-21 / ADR 0049，`feat/text-clipboard-220`，issue #220）：文本输入态支持 `Ctrl+V` 粘贴（归一 `\r\n`、丢控制字符、**4096 字上限截断并提示**）、`Ctrl+C` 复制已编辑文字、`Ctrl+A` 全选（整块半透明蓝底），提示「已复制 N 字」画在输入框下方、**活到下一次按键**（不新增 `WM_TIMER` ID）。
+  **本批只做「全选 / 无」两态，不做任意区间选区**（拖选 / `Shift` 扩选 / 只复制一句）：自绘文本（ADR 0004）原先只有光标、没有选区概念，真要按行拆条的选中高亮与 #221（自动换行）改的是同一段排版代码，等 #221 落地一起做。全选高亮因此就是**一块矩形**（`draw_select_all`）；`Ctrl+A` 后打字 / 粘贴 **替换全部**（标准编辑器语义），方向键 / `Home` / `End` 只收掉全选不删字（`TextEdit::replace_all` / `set_caret`）。
+  **`Ctrl+C` 的既有语义（复制截图并退出）不变**：编辑态按键在 `wndproc::keydown::on_keydown` 开头就整体转给 `on_text_key` 并 `return`，全局 `Ctrl+C` 根本进不来 —— 不需要动优先级判定。`Ctrl+X` 剪切不做（没有区间选区时它就是「清空全部」，误触代价大）。
+  **提示与脏区**：提示画在输入框**之外**，清掉后 `region()` 就不再包含它 → 必须把它原来的矩形单独重绘（`Overlay::drop_text_hint`），否则「已复制」永留屏上；`repaint_whole_selection` 顺带改成「选区 ∪ 输入框 region」，框外文字（#221 未做换行前会超出选区）与提示都不再留残影。
+  **踩到的坑**：中文输入法待输入时 `WM_KEYDOWN` 的 `wparam` 是 `VK_PROCESSKEY(0xE5)`，编辑态此前不做翻译 → **输入法开着时 `Ctrl+V` 拿到 0xE5 直接失效**；现在只在 `ctrl_down()` 时用 `ImmGetVirtualKey` 取真实键（无条件翻译会让打拼音时的退格去删我们自己缓冲的字符）。
+  结构：新增 `overlay/textinput/clip.rs`（按键映射 / 复制粘贴 / `normalize_paste` / 提示几何与绘制），`textinput.rs` 245 → 约 270 行；`text_edit_state.rs` 加 `select_all` / `hint` 与 `insert_str` / `all_text` / `set_caret`。徽标内容编辑（EDT-12 / EDT-20）在 `handle_clip_key` 开头早退（那里只收单个数字或 ✓ / ✕）。新文案 4 条走 `OverlayKey::{TextCopied,TextCopyFailed,TextPasteEmpty,TextPasteTruncated}`，四门语言齐全；`check-i18n.ps1` 的 `$MIGRATED` 加上 `src\overlay\textinput*` 与 `text_edit_state.rs`。`cargo test` 545 项绿。
+  **`Win+V` 实测可用**（Windows 11）：系统剪贴板历史选条目后等于往剪贴板写回 + 向前台窗口发一次 `Ctrl+V`，`Ctrl+V` 一通它就跟着通，不需要也不应该为它单独适配。
 - **国际化一期 B1（骨架 + 设置面板）**（I18N / ADR 0047，`feat/i18n-151`，issue #151）：界面文案从源码抽到**编译期嵌入**的语言表，四门语言 = 简体中文（源语言）/ 繁體中文 / English / 日本語。配置 `[ui] language` 默认 `auto`（跟随 `GetUserDefaultUILanguage`，未支持语言一律回落 English），设置面板「通用」页一行真下拉，选完**立即生效**（纯查表、无资源重载）。
   结构：`Key` 是汇总枚举，`Key::Settings(SettingsKey)` 是第一个区域（130 条）；每门语言每个区域写一个**无 `_ =>` 兜底**的 `match` —— 漏文案是**编译错误**，且每个文件 ≤150 行（大枚举 + 大表会撞 300 行硬上限）。查表是 `match` 跳转表，O(1) 无分配。
   **踩过的坑**：`Config.language` 从 `String` 改枚举时**必须手写容错反序列化** —— serde 的 `#[serde(default)]` 只在字段缺失时生效，旧配置的 `"zh-CN"` 会让 `toml::from_str` 失败，而 `Config::load` 的兜底是 `unwrap_or_default()`，**用户全部设置一起被重置**。

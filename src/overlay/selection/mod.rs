@@ -176,7 +176,7 @@ impl super::Overlay {
         let edit_color = self.current_color();
         if let Some(edit) = &self.text_edit {
             if intersect_rect(expand_rect(edit.region(), 2), region).is_some() {
-                textinput::draw_edit(&mut self.display, edit, edit_color);
+                textinput::draw_edit(&mut self.display, edit, edit_color, self.ui);
             }
         }
         // 3) 选区边框与手柄（只在与选区装饰区域相交时重画）

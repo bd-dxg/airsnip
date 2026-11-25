@@ -19,7 +19,16 @@ pub(super) fn on_keydown(overlay: &mut Overlay, hwnd: HWND, wparam: WPARAM) -> L
     // 文本输入中：只处理输入相关按键（光标移动/退格/Enter 提交/Esc 取消），
     // 拦截全局快捷键与空格抓手切换（空格作为普通字符经 WM_CHAR 进入文本）
     if overlay.is_editing_text() {
-        overlay.on_text_key(wparam.0 as u32, shift_down(), ctrl_down());
+        // IME 活动时按键会被改写成 VK_PROCESSKEY(0xE5)、真实键另存（同下方注释）。
+        // 编辑态只在**带 Ctrl 的组合键**上取回真实键（Ctrl+V 粘贴 / Ctrl+A 全选，issue #220）——
+        // 打拼音时的退格必须留给输入法，不能在这里翻译成「删我们自己缓冲的字」。
+        let raw = wparam.0 as u32;
+        let vk = if raw == 0xE5 && ctrl_down() {
+            unsafe { ImmGetVirtualKey(hwnd) }
+        } else {
+            raw
+        };
+        overlay.on_text_key(vk, shift_down(), ctrl_down());
         return LRESULT(0);
     }
     // 中文输入法活动时，按键会被改写为 VK_PROCESSKEY(0xE5)，真实键另存。

@@ -85,6 +85,8 @@ impl super::Overlay {
             bold: true,
             italic: false,
             number: true,
+            select_all: false,
+            hint: None,
         });
         self.set_ime_enabled(true);
         self.repaint_text_edit();

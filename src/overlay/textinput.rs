@@ -2,6 +2,7 @@
 //! 文本输入接线（EDT-4）：「输入中」状态的开始/提交/取消、IME 消息读取与输入框绘制。
 //! 编辑状态数据与字符级逻辑见 `text_edit_state`；绘制在覆盖层像素图上，不创建系统控件（ADR 0004）。
 
+mod clip;
 mod draw;
 pub(super) use draw::draw_edit;
 
@@ -10,7 +11,7 @@ use windows::Win32::UI::Input::Ime::{GCS_COMPSTR, GCS_RESULTSTR};
 use crate::editor::{Kind, Object, Point};
 use crate::render;
 
-use super::geometry::expand_rect;
+use super::geometry::{expand_rect, union_rect};
 use super::text_edit_state::TextEdit;
 use super::wndproc::ime_string;
 
@@ -31,6 +32,8 @@ impl super::Overlay {
             bold: self.bold,
             italic: self.italic,
             number: false,
+            select_all: false,
+            hint: None,
         };
         self.text_edit = Some(edit);
         self.set_ime_enabled(true);
@@ -71,6 +74,8 @@ impl super::Overlay {
             bold,
             italic,
             number: false,
+            select_all: false,
+            hint: None,
         });
         self.set_ime_enabled(true);
         self.sync_ime_window_pos(); // 再编辑从对象末尾的光标起（issue #139）
@@ -149,8 +154,12 @@ impl super::Overlay {
     pub(super) fn repaint_whole_selection(&mut self) {
         // 输入态的开始/结束会影响第二行显隐（EDT-4）
         self.refresh_toolbar();
-        if let Some(sel) = self.selection {
-            self.repaint(expand_rect(sel, 2));
+        // 脏区取「选区 + 输入框」的并集：输入框可能超出选区（#221 自动换行尚未做），
+        // 只重绘选区会把框外那段文字与「已复制」提示（issue #220）的残影留在屏上。
+        let sel = self.selection.map(|s| expand_rect(s, 2));
+        let edit = self.text_edit.as_ref().map(|e| expand_rect(e.region(), 2));
+        if let Some(r) = union_rect(sel, edit) {
+            self.repaint(r);
         }
     }
 
@@ -205,17 +214,26 @@ impl super::Overlay {
     /// 输入中的按键（WM_KEYDOWN）；返回是否已处理。`shift`/`ctrl`：
     /// Enter + Shift/Ctrl 换行（EDT-4），单独 Enter 提交。
     pub(super) fn on_text_key(&mut self, vk: u32, shift: bool, ctrl: bool) -> bool {
+        if !self.is_editing_text() {
+            return false;
+        }
+        // issue #220：剪贴板组合键（全选 / 复制 / 粘贴）在取 `edit` 借用之前处理，
+        // 那一侧要碰剪贴板与提示几何（`&mut self`），不能同时握着 `edit`。
+        if let Some(action) = clip::action(vk, ctrl) {
+            self.handle_clip_key(action);
+            return true;
+        }
         let Some(edit) = self.text_edit.as_mut() else {
             return false;
         };
         let mut handled = true;
         match vk {
-            0x08 => edit.backspace(),              // Backspace
-            0x2E => edit.delete_forward(),         // Delete
-            0x25 => edit.move_caret(-1),           // ←
-            0x27 => edit.move_caret(1),            // →
-            0x24 => edit.caret = 0,                // Home
-            0x23 => edit.caret = edit.chars.len(), // End
+            0x08 => edit.backspace(),                 // Backspace
+            0x2E => edit.delete_forward(),            // Delete
+            0x25 => edit.move_caret(-1),              // ←
+            0x27 => edit.move_caret(1),               // →
+            0x24 => edit.set_caret(0),                // Home
+            0x23 => edit.set_caret(edit.chars.len()), // End
             // Enter：Shift/Ctrl 组合换行（编号编辑不换行），单独 Enter 提交
             0x0D if (shift || ctrl) && !edit.number => edit.insert_char('\n'),
             0x0D => self.commit_text(), // Enter：提交
@@ -239,7 +257,9 @@ impl super::Overlay {
 
     /// 输入框重绘：整个选区重绘（文本变短/光标位移时旧像素可能落在新 region 外，
     /// 局部重绘必然残留；文本输入是低频按键事件，选区级重绘成本可接受）。
+    /// 轻提示（issue #220）只活到下一次按键，所以先把它收掉。
     pub(super) fn repaint_text_edit(&mut self) {
+        self.drop_text_hint();
         self.repaint_whole_selection();
     }
 }

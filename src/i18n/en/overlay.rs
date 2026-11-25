@@ -36,6 +36,11 @@ pub(in crate::i18n) fn overlay(k: crate::i18n::OverlayKey) -> &'static str {
 
         ToastSaved => "Saved {name} \u{b7} click to locate",
 
+        TextCopied => "Copied {n} chars",
+        TextCopyFailed => "Copy failed, please retry",
+        TextPasteEmpty => "No text in clipboard",
+        TextPasteTruncated => "Pasted (truncated to {n} chars)",
+
         OutputPinAllocFailed => "Not enough memory to pin. Close some pins and retry.",
         OutputPinLockFailed => "Could not lock the pin image.",
         OutputCopyFailed => "Copy failed: {e}",

@@ -48,6 +48,14 @@ keys!(
         /// 快速保存成功（`{name}`）。
         ToastSaved,
 
+        // ── 文本输入与剪贴板互通（issue #220 / ADR 0049）──
+        /// 复制标注文字成功（`{n}`）。
+        TextCopied,
+        TextCopyFailed,
+        TextPasteEmpty,
+        /// 粘贴超出 4096 字被截断（`{n}`）。
+        TextPasteTruncated,
+
         // ── 输出错误（overlay.output.*）──
         OutputPinAllocFailed,
         OutputPinLockFailed,

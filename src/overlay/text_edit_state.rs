@@ -5,7 +5,15 @@
 use crate::editor::Point;
 use crate::render;
 
-use super::geometry::SelRect;
+use super::geometry::{SelRect, union_rect};
+
+/// 输入期的轻提示（issue #220）：「已复制 12 字」这类一次性反馈。
+/// 矩形在产生时就算好（那边有画布尺寸与 UI 缩放），绘制只负责贴字；
+/// 它只活到下一次按键，所以不需要定时器（与 `toast` / `cancel_hint` 不同）。
+pub(super) struct TextHint {
+    pub rect: SelRect,
+    pub text: String,
+}
 
 /// 输入中状态（EDT-4）。
 pub(super) struct TextEdit {
@@ -29,6 +37,11 @@ pub(super) struct TextEdit {
     pub italic: bool,
     /// EDT-12：本次输入是在改序号标记的编号（只收数字字符，提交时写回 `n`）。
     pub number: bool,
+    /// 全选状态（issue #220）：`Ctrl+A` 置位，任何编辑动作清掉。
+    /// 本批只有「全选 / 无」两态，没有任意区间选（见 ADR 0049）。
+    pub select_all: bool,
+    /// 剪贴板操作的轻提示（issue #220），不落文档、不进导出。
+    pub hint: Option<TextHint>,
 }
 
 impl TextEdit {
@@ -77,19 +90,55 @@ impl TextEdit {
         h.max(self.font_size * 1.2)
     }
 
-    /// 输入框占据的像素区域（含内边距，供脏区与绘制使用）。
+    /// 输入框占据的像素区域（含内边距与轻提示，供脏区与绘制使用）。
     pub fn region(&self) -> SelRect {
         let (w, h) = render::text::measure(&self.display(), &self.spec());
         let h = h.max(self.line_height());
         let pad = crate::editor::text::pad(self.font_size);
         let x0 = (self.pos.x - pad).floor() as i32;
         let y0 = (self.pos.y - pad).floor() as i32;
-        SelRect {
+        let text = SelRect {
             x: x0,
             y: y0,
             w: (self.pos.x + w + pad).ceil() as i32 - x0,
             h: (self.pos.y + h + pad).ceil() as i32 - y0,
+        };
+        // 轻提示画在输入框**下方**（issue #220）：并进区域，绘制裁剪与脏区都跟着它走。
+        match &self.hint {
+            Some(h) => union_rect(Some(text), Some(h.rect)).unwrap_or(text),
+            None => text,
         }
+    }
+
+    /// 全部已确认文本（不含 IME 组合串：组合串还没落定，复制它等于复制尚未输入的东西）。
+    pub fn all_text(&self) -> String {
+        self.chars.iter().collect()
+    }
+
+    /// `Ctrl+A` 全选（issue #220）：本批只有「全选 / 无」两态。
+    pub fn select_all_text(&mut self) {
+        self.select_all = true;
+        self.hint = None;
+    }
+
+    /// 有全选时清空全部内容（标准「选区被输入替换」语义）。
+    fn replace_all(&mut self) {
+        if self.select_all {
+            self.chars.clear();
+            self.caret = 0;
+            self.select_all = false;
+        }
+    }
+
+    /// 在光标处插入一串字符（`Ctrl+V` 粘贴，issue #220）；返回插入的字符数。
+    pub fn insert_str(&mut self, text: &str) -> usize {
+        self.replace_all();
+        let incoming: Vec<char> = text.chars().collect();
+        let start = self.caret;
+        self.chars.splice(start..start, incoming.iter().copied());
+        self.caret = start + incoming.len();
+        self.hint = None;
+        incoming.len()
     }
 
     /// WM_CHAR：单个 UTF-16 码元入缓冲（补充平面字符按代理对组合）。
@@ -111,11 +160,16 @@ impl TextEdit {
 
     /// 在光标处插入字符。
     pub fn insert_char(&mut self, c: char) {
+        self.replace_all();
         self.chars.insert(self.caret, c);
         self.caret += 1;
     }
 
     pub fn backspace(&mut self) {
+        if self.select_all {
+            self.replace_all();
+            return;
+        }
         if self.caret > 0 {
             self.caret -= 1;
             self.chars.remove(self.caret);
@@ -123,13 +177,25 @@ impl TextEdit {
     }
 
     pub fn delete_forward(&mut self) {
+        if self.select_all {
+            self.replace_all();
+            return;
+        }
         if self.caret < self.chars.len() {
             self.chars.remove(self.caret);
         }
     }
 
+    /// 移动光标（`Shift` 不扩选：本批没有区间选区，只把全选收掉）。
     pub fn move_caret(&mut self, delta: i32) {
+        self.select_all = false;
         self.caret = (self.caret as i32 + delta).clamp(0, self.chars.len() as i32) as usize;
+    }
+
+    /// 光标跳到行首 / 行尾（`Home` / `End`）：同样只收掉全选，不扩选。
+    pub fn set_caret(&mut self, caret: usize) {
+        self.select_all = false;
+        self.caret = caret.min(self.chars.len());
     }
 
     /// IME 组合串更新（GCS_COMPSTR）。
@@ -139,6 +205,7 @@ impl TextEdit {
 
     /// IME 结果串（GCS_RESULTSTR）：在光标处插入结果字符并清空组合预览。
     pub fn commit_composition(&mut self, result: String) {
+        self.replace_all();
         let out: Vec<char> = result.chars().collect();
         let start = self.caret;
         self.chars.splice(start..start, out.iter().copied());
@@ -164,6 +231,8 @@ mod tests {
             bold: false,
             italic: false,
             number: false,
+            select_all: false,
+            hint: None,
         }
     }
 
@@ -265,5 +334,83 @@ mod tests {
             "第二行行首 x 应≈0（不累计第一行宽度）：{}",
             multi.caret_x()
         );
+    }
+
+    /// issue #220：全选后输入字符 = 替换全部（标准编辑器的选区语义）。
+    #[test]
+    fn typing_over_select_all_replaces_everything() {
+        let mut e = edit(); // "你好"
+        e.select_all_text();
+        assert!(e.select_all);
+        e.insert_char('a');
+        assert_eq!(e.chars.iter().collect::<String>(), "a");
+        assert_eq!(e.caret, 1, "光标应在替换后的字符之后");
+        assert!(!e.select_all, "输入后全选应解除");
+    }
+
+    /// issue #220：全选后粘贴 / 退格同样是「替换 / 删除全部」。
+    #[test]
+    fn paste_and_backspace_respect_select_all() {
+        let mut e = edit();
+        e.select_all_text();
+        assert_eq!(e.insert_str("粘贴"), 2);
+        assert_eq!(e.chars.iter().collect::<String>(), "粘贴");
+        assert_eq!(e.caret, 2);
+        // 再全选后粘贴：替换成新内容
+        e.select_all_text();
+        e.insert_str("x");
+        assert_eq!(e.all_text(), "x");
+        // 全选后退格：清空
+        e.select_all_text();
+        e.backspace();
+        assert!(e.chars.is_empty());
+        assert_eq!(e.caret, 0);
+        assert!(!e.select_all);
+    }
+
+    /// issue #220：粘贴插在光标处，不动两侧原内容。
+    #[test]
+    fn paste_inserts_at_caret() {
+        let mut e = edit(); // "你好"
+        e.caret = 1;
+        assert_eq!(e.insert_str("ab"), 2);
+        assert_eq!(e.all_text(), "你ab好");
+        assert_eq!(e.caret, 3);
+    }
+
+    /// issue #220：方向键 / Home / End 只收掉全选，**不删字**。
+    #[test]
+    fn caret_move_cancels_select_all_without_deleting() {
+        let mut e = edit();
+        e.select_all_text();
+        e.move_caret(-1);
+        assert_eq!(e.all_text(), "你好");
+        assert!(!e.select_all);
+        e.select_all_text();
+        e.set_caret(0);
+        assert_eq!(e.caret, 0);
+        assert!(!e.select_all);
+        // 越界光标钳回末尾（不 panic）
+        e.set_caret(99);
+        assert_eq!(e.caret, e.chars.len());
+    }
+
+    /// issue #220：轻提示并进输入框区域（框外那段也要进脏区，否则提示消失后留残影）。
+    #[test]
+    fn region_covers_hint_below_box() {
+        let mut e = edit();
+        let base = e.region();
+        e.hint = Some(TextHint {
+            rect: SelRect {
+                x: base.x,
+                y: base.y + base.h + 4,
+                w: base.w + 10,
+                h: 20,
+            },
+            text: "已复制 2 字".into(),
+        });
+        let with_hint = e.region();
+        assert!(with_hint.h > base.h, "提示应拉高区域：{base:?} → {with_hint:?}");
+        assert!(with_hint.w >= base.w);
     }
 }

@@ -110,6 +110,8 @@ mod tests {
             bold: false,
             italic: false,
             number: false,
+            select_all: false,
+            hint: None,
         }
     }
 
