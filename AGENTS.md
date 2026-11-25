@@ -10,6 +10,12 @@
 
 ## 项目状态
 
+- **文本自动换行**（EDT-22 / ADR 0050，`feat/text-autowrap-221`，issue #221）：文本碰到选区右边界自动折行。换行宽度**固化在对象上**（`Kind::Text::wrap`，创建时按「选区右边界 − 文字起点」定一次、至少 1 个字宽），**拖选区不重排**，双击再编辑提交时按当时选区刷新（算出的宽小于 2em 则沿用原值），缩放对象时 wrap 随横向比例缩并重新排版。折行点 / 标点禁则 / CJK 逐字 **全交给 DirectWrite**；光标改走 `HitTestTextPosition`（`render::text::caret_offset` 返回 `(dx, 行顶)`），`TextEdit::caret_x` / `caret_row` 那套「按 `\n` 切前缀量宽 + 数换行」的手算**删除**（软换行没 `\n`，行号 × 行高也不成立），IME 候选框锚点（ADR 0034）跟着改读 `(dx, top)`。
+  `size` 仍只是缓存 —— `editor::text::{bounds,rect}` 与 `editor::hit` 全读它，所以**包围框 / 命中 / 手柄 / 圆角控制柄一行没改**，只是量测口径换成 `measure_wrapped`。API 是**增量**的：`measure_wrapped` / `draw_wrapped` / `caret_offset` 新增，`measure` / `draw` 变成 `wrap = None` 的薄包装（现有 9 个 `text::draw` 调用点不动）。允许文字溢出选区**底部**（issue 只要求不超右边界），脏区沿用 ADR 0049 的「选区 ∪ 输入框 region」并集，所以越出选区的文字也能正确重绘。
+  **两处踩到的**：① `HitTestTextPosition` 的 `textPosition` 是 **UTF-16 码元**偏移，内部全是 `char`，必须 `chars().take(i).map(char::len_utf16).sum()` 换算（否则代理对之后全错位）；② 单测里不能靠「一行能放几个字」猜 —— CJK 20px 字号的实际行宽是整数像素，直接按量测出来的折行结果写断言（首次写成 4 字/行、实测是 3 字/行）。
+  **`remap` 与缩放的取舍**：文字对象缩放原来只按 `(sx, sy)` 乘缓存 `size`（横向乘与「文字不做横向拉伸」的注释相矛盾，是既有瑕疵）；现在改成 `wrap *= sx` 然后在拖手柄路径里调 `remeasure` 把 `size` 按新字号 / 新 wrap 重算（`objedit/drag.rs` 本来就在缩放后调 `remeasure`）。
+  **已知边界**：行尾空格会被 DirectWrite 折行吃掉（排版常规，光标在行尾空格处会贴近下一行行首）；`Shift+Enter` 硬换行与软换行共存（硬换行永远断，软换行只看宽度）；徽标内容编辑 `wrap = None` 不折行；**不含任意区间选区**（拖选 / 只复制一句仍欠着）。
+  **拆分**：`render/text.rs` 加完折行 API 后非测试行 387（超 300 硬限），按「量测 + 光标」/「栅格化」拆为 `render/text.rs`（225 行）与 `render/text/draw.rs`（177 行，`Renderer` + `draw_wrapped` + 三个栅格化单测）；`text.rs` 用 `mod draw; pub(crate) use draw::{draw, draw_wrapped};` 对外保持原路径不变。`cargo test` 552 项绿。
 - **文本标注与系统剪贴板互通**（EDT-21 / ADR 0049，`feat/text-clipboard-220`，issue #220）：文本输入态支持 `Ctrl+V` 粘贴（归一 `\r\n`、丢控制字符、**4096 字上限截断并提示**）、`Ctrl+C` 复制已编辑文字、`Ctrl+A` 全选（整块半透明蓝底），提示「已复制 N 字」画在输入框下方、**活到下一次按键**（不新增 `WM_TIMER` ID）。
   **本批只做「全选 / 无」两态，不做任意区间选区**（拖选 / `Shift` 扩选 / 只复制一句）：自绘文本（ADR 0004）原先只有光标、没有选区概念，真要按行拆条的选中高亮与 #221（自动换行）改的是同一段排版代码，等 #221 落地一起做。全选高亮因此就是**一块矩形**（`draw_select_all`）；`Ctrl+A` 后打字 / 粘贴 **替换全部**（标准编辑器语义），方向键 / `Home` / `End` 只收掉全选不删字（`TextEdit::replace_all` / `set_caret`）。
   **`Ctrl+C` 的既有语义（复制截图并退出）不变**：编辑态按键在 `wndproc::keydown::on_keydown` 开头就整体转给 `on_text_key` 并 `return`，全局 `Ctrl+C` 根本进不来 —— 不需要动优先级判定。`Ctrl+X` 剪切不做（没有区间选区时它就是「清空全部」，误触代价大）。
@@ -179,6 +185,14 @@
    gh pr merge <n> --squash --delete-branch --subject "<同 PR 标题> (#<n>)" --body ""
    ```
    本仓库 squash 消息模板是 `COMMIT_OR_PR_TITLE` + `COMMIT_MESSAGES`，**但传 `--subject` 会整体覆盖模板、`(#N)` 不再自动追加**；`main` 分支保护不开 force push（`allow_force_pushes=false`、`enforce_admins=true`），漏了就改不回来，只能将错就错。反之若不传 `--subject`（让模板生效），标题取“分支上唯一 commit 的标题”，而 commit 标题在建 PR 前就固定了、写不进 PR 号，所以推荐前者。
+9. **PR 描述末尾必须写 `Closes #<issue>`**（每个被本 PR 真正解决的 issue 各一行）：
+   ```markdown
+   Closes #220
+   ```
+   GitHub **只在描述或 commit 里出现关闭关键字**时才自动关闭，关键词：`Closes` / `Fixes` / `Resolves` / `关闭` / `fix` + `#编号`（也支持一行多个：`Closes #220, #221`）。
+   只写 `issue #220`、`#220` 或正文里提到编号 **只会生成反向链接，合并不关**，要靠人工 `gh issue close`——本项目已因此漏关好几次（#220 是最近一次）。
+   **自查**：建完 PR 立即 `gh pr view <n> --json body` 确认关键词存在；合并后用 `gh issue view <n> --json state` 核对，未关闭则补 `gh issue close <n> --reason completed`。
+   部分交付不写关闭关键字，在描述里写「本批完成 X，Y 另开 issue」即可。
 
 ## 代码约定
 

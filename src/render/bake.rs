@@ -124,8 +124,7 @@ mod tests {
         );
     }
 
-    /// 聚光圆角：烘焙后四角保持暗化，中心恢复原图亮度，且裁剪原点正确平移。
-    #[test]
+    /// 聚光圆角：烘焙后四角保持暗化，中心恢复原图亮度，且裁剪原点正确平移。    #[test]
     fn glow_corner_stays_dim_in_bake() {
         let mut p = canvas(60, 60);
         let obj = Object {
@@ -143,5 +142,30 @@ mod tests {
         assert!(at(&p, 40, 40) > 200, "中心应恢复原图亮度（白）");
         assert!(at(&p, 20, 20) < 150, "左上圆角处应仍是暗化值");
         assert!(at(&p, 40, 20) > 200, "上直边应恢复原图亮度");
+    }
+
+    /// issue #221：带折行宽度的文本烘焙后仍按多行绘制（平移变换不影响折行宽度）。
+    #[test]
+    fn bake_keeps_text_wrapping() {
+        let mut p = canvas(200, 140);
+        let obj = Object {
+            kind: Kind::Text {
+                pos: Point::new(10.0, 10.0),
+                text: std::sync::Arc::from("一二三四五六七八"),
+                font_size: 20.0,
+                font_family: std::sync::Arc::from(crate::editor::DEFAULT_FONT_FAMILY),
+                bold: false,
+                italic: true,
+                wrap: Some(62.0),
+                size: (60.0, 76.0),
+            },
+            style: Style::new([0, 0, 0, 255], 2.0),
+        };
+        bake_objects(&mut p, &[obj], (0, 0));
+        let ink = |y0: u32, y1: u32| (y0..y1).any(|y| (0..200).any(|x| p.pixel(x, y).is_some_and(|c| c.red() < 128)));
+        // 第一行 y≈10、第二行 y≈35、第三行 y≈61（20px 字号、行高 25.4）
+        assert!(ink(10, 34), "第一行应有墨迹");
+        assert!(ink(36, 60), "第二行应有墨迹（折行生效）");
+        assert!(ink(62, 90), "第三行应有墨迹（折行生效）");
     }
 }

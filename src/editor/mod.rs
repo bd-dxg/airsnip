@@ -98,6 +98,10 @@ pub enum Kind {
         font_family: std::sync::Arc<str>,
         bold: bool,
         italic: bool,
+        /// 自动折行的可用宽度（issue #221）：`None` = 不折行（老行为）。
+        /// 创建时按「选区右边界 − 文字起点」定一次（`textinput::commit_text`），
+        /// 之后拖选区不重排，双击再编辑提交时按当时选区刷新；缩放对象时跟着横向比例缩。
+        wrap: Option<f32>,
         size: (f32, f32),
     },
     /// EDT-6 高亮：对角两点，荧光笔效果（半透明色块 + Multiply 混合，不遮挡文字）；
@@ -448,6 +452,7 @@ mod tests {
                 font_family: std::sync::Arc::from(DEFAULT_FONT_FAMILY),
                 bold: false,
                 italic: false,
+                wrap: None,
                 size: (48.0, 33.0), // 渲染层测量后的缓存
             },
             style: Style::new([255, 255, 255, 255], 2.0),
@@ -474,6 +479,7 @@ mod tests {
             font_family: std::sync::Arc::from(DEFAULT_FONT_FAMILY),
             bold: true,
             italic: false,
+            wrap: None,
             size: (64.0, 44.0),
         };
         let b2 = obj.bounds();

@@ -87,8 +87,10 @@ impl Overlay {
 /// 纯函数，几何与 `textinput::draw::draw_edit` 的光标计算一致。
 pub(super) fn caret_client_pos(edit: &TextEdit) -> (i32, i32) {
     let pad = crate::editor::text::pad(edit.font_size);
-    let x = edit.pos.x + edit.caret_x();
-    let y = edit.pos.y + edit.caret_row() as f32 * edit.line_height() + pad * 0.4 + edit.font_size * 1.1;
+    // `caret_pos` 已经给出软换行后的 `(dx, 行顶)`（issue #221），不再自己乘行号行高
+    let (dx, top) = edit.caret_pos();
+    let x = edit.pos.x + dx;
+    let y = edit.pos.y + top + pad * 0.4 + edit.font_size * 1.1;
     (x.round() as i32, y.round() as i32)
 }
 
@@ -112,6 +114,7 @@ mod tests {
             number: false,
             select_all: false,
             hint: None,
+            wrap: None,
         }
     }
 

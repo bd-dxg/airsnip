@@ -87,6 +87,8 @@ impl super::Overlay {
             number: true,
             select_all: false,
             hint: None,
+            // 徽标内容是单个数字 / 勾叉，不绕行（issue #221）
+            wrap: None,
         });
         self.set_ime_enabled(true);
         self.repaint_text_edit();

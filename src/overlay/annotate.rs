@@ -338,6 +338,7 @@ mod tests {
             font_family: "x".into(),
             bold: false,
             italic: false,
+            wrap: None,
         });
         assert!(gradient_enabled_for(None, None), "移动态无选中时渐变色块应彩色可用");
         assert!(gradient_enabled_for(Some(Tool::Rect), None));
@@ -365,6 +366,7 @@ mod tests {
             font_family: "x".into(),
             bold: false,
             italic: false,
+            wrap: None,
         });
         let arrow = obj(Kind::arrow(Point::new(0.0, 0.0), Point::new(10.0, 10.0)));
 
@@ -429,6 +431,7 @@ mod tests {
             font_family: "x".into(),
             bold: false,
             italic: false,
+            wrap: None,
         });
 
         // 工具本身可填充

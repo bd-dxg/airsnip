@@ -42,6 +42,8 @@ pub(super) struct TextEdit {
     pub select_all: bool,
     /// 剪贴板操作的轻提示（issue #220），不落文档、不进导出。
     pub hint: Option<TextHint>,
+    /// 自动折行的可用宽度（issue #221）：`None` = 不折行（徽标编辑、选区过窄时）。
+    pub wrap: Option<f32>,
 }
 
 impl TextEdit {
@@ -55,33 +57,20 @@ impl TextEdit {
         self.chars.iter().chain(self.comp.iter()).collect()
     }
 
-    /// 光标所在 x 偏移（相对文字左上角）：光标行内的前缀宽度；
-    /// IME 组合时光标贴在组合串末尾（组合仅在光标行内）。
-    pub fn caret_x(&self) -> f32 {
-        let pre: String = self.chars[..self.caret].iter().collect();
-        // 多行：只取光标所在行（最后一个换行符之后）的前缀
-        let line = match pre.rsplit_once('\n') {
-            Some((_, after)) => after,
-            None => pre.as_str(),
-        };
-        // 空行行首 x 精确为 0（measure 对空串有最小宽度保护）
-        let (w, _) = if line.is_empty() {
-            (0.0, 0.0)
-        } else {
-            render::text::measure(line, &self.spec())
-        };
-        let comp_w = if self.caret == self.chars.len() {
-            let (cw, _) = render::text::measure(&self.comp.iter().collect::<String>(), &self.spec());
-            cw
-        } else {
-            0.0
-        };
-        w + comp_w
+    /// 光标所在位置（相对文字左上角的 `(dx, top)`，issue #221）。
+    /// 走 DirectWrite 的 `HitTestTextPosition`：软换行后「第几行」不是数 `\n` 能算出来的，
+    /// 而自己按字符累加宽度又与字距 / 合字 / 标点禁则对不齐。
+    pub fn caret_pos(&self) -> (f32, f32) {
+        render::text::caret_offset(&self.display(), &self.spec(), self.wrap, self.caret_index())
     }
 
-    /// 光标所在行号（chars[..caret] 中的换行次数）。
-    pub fn caret_row(&self) -> usize {
-        self.chars[..self.caret].iter().filter(|&&c| c == '\n').count()
+    /// 光标在文本串里的下标：IME 组合串排在光标处（末尾），组合期间光标贴在组合串之后。
+    fn caret_index(&self) -> usize {
+        if self.caret == self.chars.len() {
+            self.caret + self.comp.len()
+        } else {
+            self.caret
+        }
     }
 
     /// 单行高度（测量空串，渲染与光标共用）。
@@ -92,7 +81,7 @@ impl TextEdit {
 
     /// 输入框占据的像素区域（含内边距与轻提示，供脏区与绘制使用）。
     pub fn region(&self) -> SelRect {
-        let (w, h) = render::text::measure(&self.display(), &self.spec());
+        let (w, h) = render::text::measure_wrapped(&self.display(), &self.spec(), self.wrap);
         let h = h.max(self.line_height());
         let pad = crate::editor::text::pad(self.font_size);
         let x0 = (self.pos.x - pad).floor() as i32;
@@ -233,7 +222,14 @@ mod tests {
             number: false,
             select_all: false,
             hint: None,
+            wrap: None,
         }
+    }
+
+    /// 光标所在行号（`chars[..caret]` 里的硬换行数）。
+    /// 只用于「换行符导航」的断言（软换行改写位置后，视觉行不再等于它）。
+    fn hard_row(e: &TextEdit) -> usize {
+        e.chars[..e.caret].iter().filter(|&&c| c == '\n').count()
     }
 
     #[test]
@@ -295,17 +291,17 @@ mod tests {
     fn multiline_insert_and_caret_positioning() {
         let mut e = edit(); // "你好" caret=2
         e.insert_char('\n'); // "你好\n" caret=3
-        assert_eq!(e.caret_row(), 1, "换行后光标应在第二行");
+        assert_eq!(hard_row(&e), 1, "换行后光标应在第二行");
         e.insert_char('x'); // caret=4
         e.insert_char('y'); // caret=5
         e.move_caret(-2); // caret=3，位于换行符之后（第二行行首）
-        assert_eq!(e.caret_row(), 1);
+        assert_eq!(hard_row(&e), 1);
         e.move_caret(-1); // caret=2（跨过换行符回到第一行末尾）
-        assert_eq!(e.caret_row(), 0);
+        assert_eq!(hard_row(&e), 0);
         e.move_caret(1); // caret=3（回到换行符之后），退格删除换行符
         e.backspace();
         assert_eq!(e.chars.iter().collect::<String>(), "你好xy");
-        assert_eq!(e.caret_row(), 0, "删除换行后回到第一行");
+        assert_eq!(hard_row(&e), 0, "删除换行后回到第一行");
     }
 
     #[test]
@@ -326,13 +322,13 @@ mod tests {
         multi.insert_char('\n'); // caret=3
         multi.insert_char('a'); // caret=4
         multi.insert_char('b'); // caret=5
-        let x_mid = multi.caret_x();
+        let x_mid = multi.caret_pos().0;
         assert!(x_mid > 5.0, "第二行有字符时光标 x 应大于 0：{x_mid}");
         multi.move_caret(-2); // 回到第二行行首
         assert!(
-            multi.caret_x() < 1.0,
+            multi.caret_pos().0 < 1.0,
             "第二行行首 x 应≈0（不累计第一行宽度）：{}",
-            multi.caret_x()
+            multi.caret_pos().0
         );
     }
 
@@ -395,8 +391,7 @@ mod tests {
         assert_eq!(e.caret, e.chars.len());
     }
 
-    /// issue #220：轻提示并进输入框区域（框外那段也要进脏区，否则提示消失后留残影）。
-    #[test]
+    /// issue #220：轻提示并进输入框区域（框外那段也要进脏区，否则提示消失后留残影）。    #[test]
     fn region_covers_hint_below_box() {
         let mut e = edit();
         let base = e.region();
@@ -412,5 +407,34 @@ mod tests {
         let with_hint = e.region();
         assert!(with_hint.h > base.h, "提示应拉高区域：{base:?} → {with_hint:?}");
         assert!(with_hint.w >= base.w);
+    }
+
+    /// issue #221：编辑态给定折行宽度后，光标能落到第二行、输入框变高。
+    #[test]
+    fn edit_box_wraps_and_caret_moves_down() {
+        let mut e = edit();
+        e.font_size = 20.0;
+        e.chars = "一二三四五六七八".chars().collect();
+        e.caret = e.chars.len();
+        // 不折行：一行到底，光标 top 为 0
+        e.wrap = None;
+        let free_h = e.region().h;
+        assert_eq!(e.caret_pos().1, 0.0, "不折行时光标应在第一行");
+        // 每行 3 个字：第 8 个字落到第三行
+        e.wrap = Some(62.0);
+        let (x, top) = e.caret_pos();
+        assert!(top > 0.0, "折行后光标应下沉：top={top}");
+        assert!(x <= 62.0, "折行后光标 x 不应越出可用宽：{x}");
+        assert!(e.region().h > free_h, "折行后输入框应变高：{free_h} → {}", e.region().h);
+    }
+
+    /// issue #221：折行宽度不影响单行高度与光标行内语义（回归旧行为）。
+    #[test]
+    fn wrap_does_not_change_line_height() {
+        let e = edit();
+        let a = e.line_height();
+        let mut w = edit();
+        w.wrap = Some(60.0);
+        assert_eq!(a, w.line_height(), "行高与折行宽度无关");
     }
 }
