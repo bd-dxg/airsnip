@@ -121,11 +121,19 @@ impl Kind {
                 *to = map(*to);
             }
             Kind::Text {
-                pos, font_size, size, ..
+                pos,
+                font_size,
+                wrap,
+                size,
+                ..
             } => {
                 *pos = map(*pos);
                 // 字号只跟纵向比例走（文字不做横向拉伸）
                 *font_size = (*font_size * sy).clamp(FONT_RANGE.0, FONT_RANGE.1);
+                // 折行宽度跟**横向**比例走（issue #221）：否则缩窄了框架，文字还按原宽折行
+                *wrap = wrap.map(|w| (w * sx).max(1.0));
+                // `size` 先按比例近似，拖动期间的手柄位置靠它；松手后 overlay 会
+                // 按新的字号 / wrap 重测（`render::text::remeasure`）把值拉正。
                 *size = ((size.0 * sx).max(1.0), (size.1 * sy).max(1.0));
             }
             // 序号标记：圆心与引线尖端各自映射，字号随纵向比例（徽标半径由渲染层重算）
@@ -313,6 +321,7 @@ mod tests {
             font_family: std::sync::Arc::from(crate::editor::DEFAULT_FONT_FAMILY),
             bold: false,
             italic: false,
+            wrap: None,
             size: (40.0, 28.0),
         };
         let from2 = crate::editor::Bounds::around(0.0, 0.0, 50.0, 40.0, 0.0);

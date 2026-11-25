@@ -16,6 +16,14 @@ use super::text_edit_state::TextEdit;
 use super::wndproc::ime_string;
 
 impl super::Overlay {
+    /// 折行可用宽度（issue #221）：选区右边界 − 文字起点，**至少 1 个字宽**。
+    /// 选区窄得装不下一个字时仍给一个字号宽 —— 否则每行只有一个字，文字堆成竖列。
+    /// 没有选区时返回 `None`（不折行）。
+    fn text_wrap_at(&self, x: f32) -> Option<f32> {
+        let sel = self.selection?;
+        Some(((sel.x + sel.w) as f32 - x).max(self.font_size))
+    }
+
     /// 进入文本输入（Text 工具下点击选区内空白，EDT-4）。
     /// 撤销快照不在此时建立：输入期间其它操作（如滚轮微调对象）可能抢先 begin，
     /// 覆盖 pending 导致提交时快照丢失，故统一在 `commit_text` 修改文档前建立。
@@ -34,6 +42,7 @@ impl super::Overlay {
             number: false,
             select_all: false,
             hint: None,
+            wrap: self.text_wrap_at(x as f32),
         };
         self.text_edit = Some(edit);
         self.set_ime_enabled(true);
@@ -52,6 +61,7 @@ impl super::Overlay {
             font_family,
             bold,
             italic,
+            wrap,
             ..
         } = obj.kind
         else {
@@ -76,6 +86,9 @@ impl super::Overlay {
             number: false,
             select_all: false,
             hint: None,
+            // 重编辑按**当前选区**重算折行宽（issue #221）：改完选区想重排，双击进来重新提交即可；
+            // 算出来的宽度小到离谱（对象已被拖到选区右侧外）则沿用原来的，而不是压成一字一列。
+            wrap: self.text_wrap_at(pos.x).filter(|w| *w >= font_size * 2.0).or(wrap),
         });
         self.set_ime_enabled(true);
         self.sync_ime_window_pos(); // 再编辑从对象末尾的光标起（issue #139）
@@ -111,7 +124,7 @@ impl super::Overlay {
             return;
         }
         let text: String = edit.chars.iter().collect();
-        let size = render::text::measure(&text, &edit.spec());
+        let size = render::text::measure_wrapped(&text, &edit.spec(), edit.wrap);
         let kind = Kind::Text {
             pos: edit.pos,
             text: std::sync::Arc::from(text),
@@ -119,6 +132,7 @@ impl super::Overlay {
             font_family: edit.font_family,
             bold: edit.bold,
             italic: edit.italic,
+            wrap: edit.wrap,
             size,
         };
         match edit.obj_index {

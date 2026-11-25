@@ -22,19 +22,21 @@ pub(in crate::overlay) fn draw_edit(pixmap: &mut Pixmap, edit: &TextEdit, color:
         draw_select_all(pixmap, edit, pad);
     }
 
-    // 文本（已确认 + 组合串）
-    crate::render::text::draw(
+    // 文本（已确认 + 组合串）：带折行宽度（issue #221）
+    crate::render::text::draw_wrapped(
         pixmap,
         edit.pos,
         &edit.display(),
         &edit.spec(),
         color,
         tiny_skia::Transform::identity(),
+        edit.wrap,
     );
 
-    // 光标（竖线，白底 + 黑描边，任意底色下可见）；多行时光标按行定位
-    let cx = (edit.pos.x + edit.caret_x()).round();
-    let cy = edit.pos.y + edit.caret_row() as f32 * edit.line_height() + pad * 0.4;
+    // 光标（竖线，白底 + 黑描边，任意底色下可见）；位置与行顶由 layout 给（软换行后自己算不准）
+    let (dx, top) = edit.caret_pos();
+    let cx = (edit.pos.x + dx).round();
+    let cy = edit.pos.y + top + pad * 0.4;
     if let Some(rect) = tiny_skia::Rect::from_xywh(cx, cy, 2.0, edit.font_size * 1.1)
         && let Some(path) = caret_path(rect)
     {
@@ -59,8 +61,8 @@ pub(in crate::overlay) fn draw_edit(pixmap: &mut Pixmap, edit: &TextEdit, color:
     // 组合串下划线（IME 候选标记，贴在光标行文本下方）
     if !edit.comp.is_empty() {
         let (cw, _) = crate::render::text::measure(&edit.comp.iter().collect::<String>(), &edit.spec());
-        let x0 = edit.pos.x + edit.caret_x() - cw;
-        let y = edit.pos.y + (edit.caret_row() + 1) as f32 * edit.line_height() + pad * 0.3;
+        let x0 = edit.pos.x + dx - cw;
+        let y = edit.pos.y + top + edit.line_height() + pad * 0.3;
         if let Some(rect) = tiny_skia::Rect::from_xywh(x0, y, cw.max(1.0), 1.0) {
             let mut pb = tiny_skia::PathBuilder::new();
             pb.push_rect(rect);
@@ -86,7 +88,7 @@ pub(in crate::overlay) fn draw_edit(pixmap: &mut Pixmap, edit: &TextEdit, color:
 
 /// 全选高亮：整块文本包围盒内缩到文字范围（内边距会让高亮看起来「胖了一圈」）。
 fn draw_select_all(pixmap: &mut Pixmap, edit: &TextEdit, pad: f32) {
-    let (w, h) = crate::render::text::measure(&edit.display(), &edit.spec());
+    let (w, h) = crate::render::text::measure_wrapped(&edit.display(), &edit.spec(), edit.wrap);
     let h = h.max(edit.line_height());
     let Some(rect) = tiny_skia::Rect::from_xywh(
         edit.pos.x - pad * 0.25,

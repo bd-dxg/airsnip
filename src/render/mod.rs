@@ -62,14 +62,16 @@ pub fn draw_object_with(pixmap: &mut Pixmap, obj: &Object, transform: Transform)
             font_family,
             bold,
             italic,
+            wrap,
             ..
-        } => text::draw(
+        } => text::draw_wrapped(
             pixmap,
             *pos,
             text,
             &text::FontSpec::from_parts(font_family, *font_size, *bold, *italic),
             obj.style.color,
             transform,
+            *wrap,
         ),
         Kind::Highlight { a, b, corner } => region::draw_highlight(pixmap, *a, *b, *corner, &obj.style, transform),
         Kind::Blur { a, b, radius, corner } => region::draw_blur(pixmap, *a, *b, *radius, *corner, transform),
