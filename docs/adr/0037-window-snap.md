@@ -48,6 +48,14 @@ issue 把方案分成两级：一级整窗矩形吸附（成本低），二级�
    桌面铺满整屏，不排除的话覆盖层一打开光标不在窗口上就整屏高亮、单击变全屏截图，既吵又抢掉
    「按在空白处重新框选」。任务栏与 AirSnip 自己的贴图窗口**仍是候选**（贴图窗口是独立窗口类，
    用户想截自己贴在屏幕上的图很自然）。
+   > 修订（issue #225）：再跳过 **鼠标穿透层（`WS_EX_TRANSPARENT`）**。用户物理上「指」不到它，
+   > 命中它必然是误判。触发场景是 TabTip 的 `ShellHandwritingCanvas`（用过一次手写 / 触摸键盘后
+   > 一直停在 `IsWindowVisible = TRUE`、尺寸整屏、Z 序排在全部真实应用窗口之前，
+   > exstyle `0x0A0800A8` = TOPMOST | TRANSPARENT | TOOLWINDOW | LAYERED | COMPOSITED | NOACTIVATE），
+   > 覆盖层里悬停任何位置都高亮整屏，窗口吸附等于完全失效。
+   > 只判 TRANSPARENT 这一位：**不**加「全屏 + TOOLWINDOW 一律排除」（会误伤真想框全屏的用户），
+   > 也不用类名黑名单（记不完）。本机 Z 序枚举验证：带这一位且可见的只有 `winc` / `clash-verge`
+   > 的 16×16 事件目标窗口（本来就不该被吸附），任务栏与普通窗口都不带。
 6. **查询时机：每次 `WM_MOUSEMOVE` 先比 hwnd，变了才查 DWM 边界与重绘**。`GetTopWindow` 枚举是微秒级，
    DWM 查询与脏区重绘只在真换窗口时各发生一次。不做时间节流（issue 的 30ms 建议会带来「移过去要等一下才亮」
    的迟滞），也不引入定时器——待机 CPU 0% 的红线禁轮询。
@@ -83,3 +91,5 @@ issue 把方案分成两级：一级整窗矩形吸附（成本低），二级�
   `Config::window_snap`。
 - 已知边界：无边框 / 分层窗口的 DWM 边界与视觉边界可能仍有 1～2px 差；DirectX 独占全屏窗口拿不到有意义的矩形
   （DWM 查询失败 → 直接不吸）；只吸顶层窗口，文档式程序的子面板（如浏览器标签栏）仍是整窗。
+- 已知边界（issue #225 遗留）：只排除了 `WS_EX_TRANSPARENT`，**alpha = 0 的 `WS_EX_LAYERED` 窗口仍会被吸附**
+  （同样「视觉上不存在」但不带穿透位）。需要时再按 `GetLayeredWindowAttributes` 的 alpha 补，本批不做。
