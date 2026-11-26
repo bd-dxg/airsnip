@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-only
-//! 窗口命中查询（CAP-6 / ADR 0037，issue #62）：Z 序枚举顶层窗口，第一个「可见、含光标、不是本覆盖层」
-//! 的窗口即目标。边界取 DWM 扩展边框——`GetWindowRect` 含 Win10+ 不可见的缩放边框与阴影，
+//! 窗口命中查询（CAP-6 / ADR 0037，issue #62）：Z 序枚举顶层窗口，第一个「可见、含光标、不是鼠标穿透层、
+//! 不是本覆盖层」的窗口即目标。边界取 DWM 扩展边框——`GetWindowRect` 含 Win10+ 不可见的缩放边框与阴影，
 //! 吸出来的矩形会比视觉窗口大若干像素。
 //!
 //! 不用 `WindowFromPoint`：覆盖层铺满虚拟屏且置顶，命中的永远是它自己；issue 建议的
@@ -9,7 +9,8 @@
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GW_HWNDNEXT, GetClassNameW, GetTopWindow, GetWindow, GetWindowRect, IsIconic, IsWindowVisible,
+    GW_HWNDNEXT, GWL_EXSTYLE, GetClassNameW, GetTopWindow, GetWindow, GetWindowLongPtrW, GetWindowRect, IsIconic,
+    IsWindowVisible, WS_EX_TRANSPARENT,
 };
 
 use super::super::geometry::SelRect;
@@ -46,14 +47,34 @@ pub(super) fn window_at(
     None
 }
 
-/// 候选窗口筛选：可见、未最小化、未被 DWM 隐身、不是桌面壳。
+/// 候选窗口筛选：可见、未最小化、不是鼠标穿透层、未被 DWM 隐身、不是桌面壳。
 fn is_candidate(hwnd: HWND) -> bool {
     unsafe {
         if !IsWindowVisible(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
             return false;
         }
     }
-    !is_cloaked(hwnd) && !is_desktop(hwnd)
+    // 先便宜的（`GetWindowLongPtrW`），再 DWM 查询，最后才是类名比较
+    !is_click_through(hwnd) && !is_cloaked(hwnd) && !is_desktop(hwnd)
+}
+
+/// 鼠标穿透层（`WS_EX_TRANSPARENT`）：用户物理上「指」不到它，命中它必然是误判。
+///
+/// 真实案例（issue #225）：TabTip 的 `ShellHandwritingCanvas` 用过一次手写 / 触摸键盘后就一直停在
+/// `IsWindowVisible = TRUE`（重启前不复位）、尺寸整屏、Z 序排在全部真实应用窗口之前，
+/// 于是 `contains()` 对它恒为真——窗口吸附退化成「悬停任何位置都高亮整屏」。
+/// 它的扩展样式实测为 `0x0A0800A8` = TOPMOST | TRANSPARENT | TOOLWINDOW | LAYERED | COMPOSITED | NOACTIVATE。
+///
+/// 只判 TRANSPARENT 这一位，**不加**「全屏 + TOOLWINDOW 一律排除」：那会误伤真想框全屏的用户。
+/// 任务栏、普通窗口、AirSnip 自己的贴图窗口都没有这一位（本机 Z 序枚举只筛出事件目标窗口，见 ADR 0037）。
+fn is_click_through(hwnd: HWND) -> bool {
+    // 查询失败返回 0，按「不是穿透层」处理——宁可多一个候选，也不要因为一次失败漏掉真窗口
+    is_transparent_ex_style(unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) })
+}
+
+/// `is_click_through` 的纯函数部分：`ex` 为 `GWL_EXSTYLE` 的原始值。
+fn is_transparent_ex_style(ex: isize) -> bool {
+    ex & WS_EX_TRANSPARENT.0 as isize != 0
 }
 
 /// DWM 隐身的窗口（`DWMWA_CLOAKED`）：UWP 挂起、虚拟桌面切换后残留的幽灵窗口，
@@ -155,6 +176,23 @@ mod tests {
         assert!(clip((3000, 100, 400, 300), (0, 0), (1920, 1080)).is_none());
         assert!(clip((0, 0, 0, 100), (0, 0), (1920, 1080)).is_none());
         assert!(clip((100, 100, 0, 0), (0, 0), (1920, 1080)).is_none());
+    }
+
+    /// 鼠标穿透层不算候选（issue #225）：位判定不能扫到正常窗口上。
+    #[test]
+    fn transparent_ex_style_is_click_through() {
+        // TabTip 旧实例（issue 原文的 exstyle）：TOPMOST|TRANSPARENT|TOOLWINDOW|LAYERED|COMPOSITED|NOACTIVATE
+        assert!(is_transparent_ex_style(0x0A08_00A8));
+        // 只带这一位
+        assert!(is_transparent_ex_style(WS_EX_TRANSPARENT.0 as isize));
+        // 同一个窗口去掉 TRANSPARENT：不该被排除
+        assert!(!is_transparent_ex_style(0x0A08_0088));
+
+        // 普通窗口 / 任务栏 / AirSnip 贴图窗口（LAYERED 但可点）
+        assert!(!is_transparent_ex_style(0));
+        assert!(!is_transparent_ex_style(0x0000_0100)); // 仅 WINDOWEDGE
+        assert!(!is_transparent_ex_style(0x0008_0000)); // 仅 LAYERED
+        assert!(!is_transparent_ex_style(0x0809_0000)); // LAYERED|TOOLWINDOW|APPWINDOW
     }
 
     /// 命中判定是半开区间：右/下边界上的点不属于该窗口（与 `SelRect::contains` 一致）。
